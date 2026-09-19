@@ -116,9 +116,14 @@
 - 多形态产品统一 AI 核心
 
 ## 六、UI / 表情系统要求
-请重点参考 `assets/04_伴侣机器人表情系统.png`
+请重点参考以下三张表情设计图，它们共同构成完整的表情库：
+- `assets/04_伴侣机器人表情系统.png`（01-25 基础表情）
+- `assets/表情26-50.png`（伴侣机器人扩展表情系统 I）
+- `assets/表情51-75.png`（伴侣机器人扩展表情系统 II）
 
-建议至少保留以下 25 种表情设定：
+表情库共 75 个表情位：
+
+### 基础表情 01-25
 1. Idle
 2. Happy
 3. Excited
@@ -145,9 +150,67 @@
 24. Offline
 25. Charging
 
+### 扩展表情 I 26-50
+
+26. Relaxed
+27. Content
+28. Playful
+29. Wink
+30. Anticipating
+31. Calm
+32. Focused
+33. Determined
+34. Inspired
+35. Realized
+36. Smirking
+37. Affectionate
+38. Hug Me
+39. Nervous
+40. Alert
+41. Alarmed
+42. Bored
+43. Aggrieved
+44. Helpless
+45. Grateful
+46. Encouraging
+47. Approving
+48. Refusing
+49. Secretive
+50. Daydreaming
+
+### 扩展表情 II 51-75
+
+51. Celebrating
+52. Triumphant
+53. Meditating
+54. Dreaming
+55. Yawning
+56. Mischievous
+57. Serious
+58. Protective
+59. Observing
+60. Devoted
+61. Apologetic
+62. Asking Help
+63. Comforting
+64. Cheering
+65. Peeking
+66. Sly
+67. Frozen
+68. Dizzy
+69. Unwell
+70. Groggy
+71. Scanning
+72. Processing
+73. Recording
+74. Syncing
+75. Updating
+
 注意：
-- 第一阶段不一定要把 25 个全部做完，但 UI 体系应为 25 个预留统一结构
+- 第一阶段不一定要把 75 个全部做完，但 UI 体系应为 75 个预留统一结构
 - 每个表情不仅是静态图，还应有“进入、保持、退出”动画概念
+- 扩展表情里出现了一批新的视觉元件（星星眼、螺旋眼、X 眼、爱心、灯泡、盾牌、锁、点赞、爪子、云朵、温度计、扫描框、转圈、进度条、彩带、放大感叹号等），渲染器需要先把这些元件做成可复用的参数化图元
+- 部分扩展表情带有屏幕级特效（如 71 侦测的四角扫描框、73 记录的红点、75 升级的进度条），这类效果按“状态类表情”处理，允许循环动画
 
 ## 七、官网 / 品牌表达要求
 请参考 `assets/01_品牌官网首页概念图.png`

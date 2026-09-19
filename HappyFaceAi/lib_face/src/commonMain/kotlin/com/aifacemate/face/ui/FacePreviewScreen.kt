@@ -238,14 +238,24 @@ private fun ControlPanel(
             }
 
             if (showAll) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    FaceExpression.entries
-                        .filterNot { it in FaceExpression.alphaOne }
-                        .forEach { item ->
+                // 按三张设计图的划分分组：基础 06-25、扩展 I 26-50、扩展 II 51-75
+                listOf(
+                    "基础 06-25" to FaceExpression.basic.filterNot { it in FaceExpression.alphaOne },
+                    "扩展 I 26-50" to FaceExpression.extensionOne,
+                    "扩展 II 51-75" to FaceExpression.extensionTwo,
+                ).forEach { (title, group) ->
+                    Text(
+                        text = title,
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 4.dp),
+                    ) {
+                        group.forEach { item ->
                             ExpressionChip(
                                 expression = item,
                                 selected = item == expression,
@@ -253,13 +263,14 @@ private fun ControlPanel(
                                 onClick = { onExpressionChange(item) },
                             )
                         }
+                    }
                 }
             }
         }
 
         TextButton(onClick = { onShowAllChange(!showAll) }) {
             Text(
-                text = if (showAll) "收起其余表情" else "展开全部 25 个表情位",
+                text = if (showAll) "收起其余表情" else "展开全部 75 个表情位",
                 color = Accent,
                 fontSize = 13.sp,
             )

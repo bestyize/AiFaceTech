@@ -308,21 +308,32 @@ private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetri
             )
 
             EyeShape.HALF_LID -> {
-                drawGlowArc(
-                    center = center,
-                    radiusX = radius,
-                    radiusY = radius * 0.95f,
+                // 半眯眼用细描边，粗了会看成实心半圆
+                val lidTopLeft = Offset(center.x - radius, center.y - radius * 0.92f)
+                val lidSize = Size(radius * 2f, radius * 1.84f)
+                drawArc(
+                    color = color.copy(alpha = 0.1f * glow),
                     startAngle = 0f,
                     sweepAngle = 180f,
-                    strokeWidth = strokeWidth * 0.8f,
+                    useCenter = false,
+                    topLeft = lidTopLeft,
+                    size = lidSize,
+                    style = Stroke(width = strokeWidth * 1.5f, cap = StrokeCap.Round),
+                )
+                drawArc(
                     color = color,
-                    glow = glow * 0.5f,
+                    startAngle = 0f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = lidTopLeft,
+                    size = lidSize,
+                    style = Stroke(width = strokeWidth * 0.5f, cap = StrokeCap.Round),
                 )
                 drawLine(
                     color = color,
                     start = Offset(center.x - radius, center.y),
                     end = Offset(center.x + radius, center.y),
-                    strokeWidth = strokeWidth * 0.8f,
+                    strokeWidth = strokeWidth * 0.5f,
                     cap = StrokeCap.Round,
                 )
             }
@@ -344,6 +355,43 @@ private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetri
                     path = heartPath(center, radius * 0.95f),
                     color = color.copy(alpha = 0.7f * glow.coerceAtMost(1f)),
                     style = Stroke(width = strokeWidth * 0.5f, join = StrokeJoin.Round),
+                )
+            }
+
+            EyeShape.STAR -> {
+                if (glow > 0.02f) {
+                    drawPath(
+                        path = sparklePath(center, radius * 1.9f),
+                        color = color.copy(alpha = 0.14f * glow),
+                    )
+                }
+                drawPath(
+                    path = sparklePath(center, radius * 1.15f),
+                    color = color,
+                )
+            }
+
+            EyeShape.SPIRAL -> drawPath(
+                path = spiralPath(center, radius * 0.95f),
+                color = color,
+                style = Stroke(width = strokeWidth * 0.7f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+
+            EyeShape.CROSS -> {
+                val offset = radius * 0.5f
+                drawLine(
+                    color = color,
+                    start = Offset(center.x - offset, center.y - offset),
+                    end = Offset(center.x + offset, center.y + offset),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(center.x + offset, center.y - offset),
+                    end = Offset(center.x - offset, center.y + offset),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
                 )
             }
         }
@@ -530,6 +578,12 @@ private fun DrawScope.drawMouth(metrics: FaceMetrics, mouth: MouthParams) {
                 size = Size(halfWidth * 0.6f, halfWidth * 0.7f),
             )
         }
+
+        MouthShape.WAVY -> drawPath(
+            path = wavyMouthPath(center, halfWidth * 0.85f, halfWidth * 0.28f),
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
     }
 }
 
@@ -632,6 +686,384 @@ private fun DrawScope.drawMark(metrics: FaceMetrics, mark: MarkParams) {
                     cap = StrokeCap.Round,
                 )
             }
+
+            FaceMark.LIGHT_BULB -> {
+                val bulbRadius = size * 0.3f
+                val bulbCenter = Offset(center.x, center.y - size * 0.18f)
+                drawCircle(
+                    color = color,
+                    radius = bulbRadius,
+                    center = bulbCenter,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(center.x - bulbRadius * 0.5f, center.y + size * 0.18f),
+                    end = Offset(center.x + bulbRadius * 0.5f, center.y + size * 0.18f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(center.x - bulbRadius * 0.35f, center.y + size * 0.38f),
+                    end = Offset(center.x + bulbRadius * 0.35f, center.y + size * 0.38f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                // 三条光芒
+                repeat(3) { index ->
+                    val angle = (-140f + index * 40f) * PI.toFloat() / 180f
+                    val inner = bulbRadius * 1.35f
+                    val outer = bulbRadius * 1.85f
+                    drawLine(
+                        color = color.copy(alpha = color.alpha * 0.75f),
+                        start = Offset(center.x + cosf(angle) * inner, bulbCenter.y + sinf(angle) * inner),
+                        end = Offset(center.x + cosf(angle) * outer, bulbCenter.y + sinf(angle) * outer),
+                        strokeWidth = strokeWidth * 0.8f,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+
+            FaceMark.SHIELD -> {
+                drawPath(
+                    path = shieldPath(center, size * 0.62f),
+                    color = color.copy(alpha = color.alpha * 0.55f),
+                )
+                drawPath(
+                    path = shieldPath(center, size * 0.62f),
+                    color = color,
+                    style = Stroke(width = strokeWidth, join = StrokeJoin.Round),
+                )
+            }
+
+            FaceMark.LOCK -> {
+                val bodyWidth = size * 0.66f
+                val bodyHeight = size * 0.5f
+                val bodyTop = center.y - size * 0.02f
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(center.x - bodyWidth / 2f, bodyTop),
+                    size = Size(bodyWidth, bodyHeight),
+                    cornerRadius = CornerRadius(size * 0.12f),
+                    style = Stroke(width = strokeWidth, join = StrokeJoin.Round),
+                )
+                drawArc(
+                    color = color,
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(center.x - bodyWidth * 0.3f, bodyTop - size * 0.34f),
+                    size = Size(bodyWidth * 0.6f, size * 0.44f),
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+                drawCircle(
+                    color = color,
+                    radius = strokeWidth * 0.6f,
+                    center = Offset(center.x, bodyTop + bodyHeight * 0.45f),
+                )
+            }
+
+            FaceMark.THUMB_UP -> {
+                val fistWidth = size * 0.62f
+                val fistHeight = size * 0.46f
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(center.x - fistWidth * 0.5f, center.y + size * 0.04f),
+                    size = Size(fistWidth, fistHeight),
+                    cornerRadius = CornerRadius(size * 0.16f),
+                    style = Stroke(width = strokeWidth * 1.1f, join = StrokeJoin.Round),
+                )
+                // 竖起来的拇指
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(center.x + fistWidth * 0.02f, center.y - size * 0.62f),
+                    size = Size(fistWidth * 0.44f, size * 0.7f),
+                    cornerRadius = CornerRadius(fistWidth * 0.22f),
+                    style = Stroke(width = strokeWidth * 1.1f, join = StrokeJoin.Round),
+                )
+                repeat(2) { index ->
+                    val y = center.y + size * 0.04f + fistHeight * (0.36f + index * 0.32f)
+                    drawLine(
+                        color = color.copy(alpha = color.alpha * 0.65f),
+                        start = Offset(center.x - fistWidth * 0.3f, y),
+                        end = Offset(center.x - fistWidth * 0.02f, y),
+                        strokeWidth = strokeWidth * 0.8f,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+
+            FaceMark.PAW -> {
+                val padRadius = size * 0.3f
+                drawCircle(
+                    color = color,
+                    radius = padRadius,
+                    center = Offset(center.x, center.y + size * 0.18f),
+                )
+                repeat(3) { index ->
+                    val angle = (-140f + index * 40f) * PI.toFloat() / 180f
+                    drawCircle(
+                        color = color,
+                        radius = padRadius * 0.42f,
+                        center = Offset(
+                            x = center.x + cosf(angle) * padRadius * 1.25f,
+                            y = center.y + size * 0.18f + sinf(angle) * padRadius * 1.15f,
+                        ),
+                    )
+                }
+            }
+
+            FaceMark.CLOUD -> {
+                val cloudColor = color.copy(alpha = color.alpha * 0.35f)
+                val bodyY = center.y + size * 0.05f
+                drawRoundRect(
+                    color = cloudColor,
+                    topLeft = Offset(center.x - size * 0.6f, bodyY - size * 0.2f),
+                    size = Size(size * 1.2f, size * 0.45f),
+                    cornerRadius = CornerRadius(size * 0.22f),
+                )
+                drawCircle(cloudColor, size * 0.3f, Offset(center.x - size * 0.28f, bodyY - size * 0.22f))
+                drawCircle(cloudColor, size * 0.36f, Offset(center.x + size * 0.08f, bodyY - size * 0.3f))
+                drawCircle(cloudColor, size * 0.26f, Offset(center.x + size * 0.42f, bodyY - size * 0.16f))
+                drawPath(
+                    path = sparklePath(Offset(center.x + size * 0.1f, bodyY - size * 0.34f), size * 0.22f),
+                    color = color,
+                )
+                drawCircle(color, strokeWidth * 0.5f, Offset(center.x - size * 0.75f, bodyY + size * 0.42f))
+                drawCircle(color, strokeWidth * 0.4f, Offset(center.x - size * 0.55f, bodyY + size * 0.6f))
+            }
+
+            FaceMark.THERMOMETER -> {
+                val stemTop = center.y - size * 0.7f
+                val stemBottom = center.y + size * 0.3f
+                drawLine(
+                    color = color,
+                    start = Offset(center.x, stemTop),
+                    end = Offset(center.x, stemBottom),
+                    strokeWidth = strokeWidth * 1.4f,
+                    cap = StrokeCap.Round,
+                )
+                drawCircle(
+                    color = color,
+                    radius = size * 0.28f,
+                    center = Offset(center.x, stemBottom + size * 0.16f),
+                )
+                repeat(2) { index ->
+                    val y = stemTop + size * (0.32f + index * 0.22f)
+                    drawLine(
+                        color = color.copy(alpha = color.alpha * 0.7f),
+                        start = Offset(center.x + strokeWidth * 1.1f, y),
+                        end = Offset(center.x + strokeWidth * 2.6f, y),
+                        strokeWidth = strokeWidth * 0.6f,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+
+            FaceMark.SCAN_FRAME -> {
+                // 屏幕级特效：贴着面板四角画 L 形扫描框
+                val inset = metrics.panelHeight * 0.06f
+                val arm = metrics.panelHeight * 0.13f
+                val frameColor = color.copy(alpha = color.alpha * 0.85f)
+                val left = metrics.panelLeft + inset
+                val right = metrics.panelRight - inset
+                val top = metrics.panelTop + inset
+                val bottom = metrics.panelBottom - inset
+
+                fun bracket(cornerX: Float, cornerY: Float, dx: Float, dy: Float) {
+                    drawLine(
+                        color = frameColor,
+                        start = Offset(cornerX, cornerY),
+                        end = Offset(cornerX + dx * arm, cornerY),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round,
+                    )
+                    drawLine(
+                        color = frameColor,
+                        start = Offset(cornerX, cornerY),
+                        end = Offset(cornerX, cornerY + dy * arm),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round,
+                    )
+                }
+
+                bracket(left, top, 1f, 1f)
+                bracket(right, top, -1f, 1f)
+                bracket(left, bottom, 1f, -1f)
+                bracket(right, bottom, -1f, -1f)
+            }
+
+            FaceMark.SPINNER -> {
+                val radius = size * 0.5f
+                repeat(8) { index ->
+                    val angle = (index * 45f) * PI.toFloat() / 180f
+                    val alpha = 0.25f + 0.75f * (index / 7f)
+                    drawLine(
+                        color = color.copy(alpha = color.alpha * alpha),
+                        start = Offset(
+                            center.x + cosf(angle) * radius * 0.6f,
+                            center.y + sinf(angle) * radius * 0.6f,
+                        ),
+                        end = Offset(
+                            center.x + cosf(angle) * radius,
+                            center.y + sinf(angle) * radius,
+                        ),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+
+            FaceMark.PROGRESS_BAR -> {
+                val blocks = 4
+                val blockWidth = size * 0.28f
+                val gap = size * 0.12f
+                val totalWidth = blocks * blockWidth + (blocks - 1) * gap
+                repeat(blocks) { index ->
+                    drawRoundRect(
+                        color = color.copy(alpha = color.alpha * if (index < blocks - 1) 1f else 0.35f),
+                        topLeft = Offset(
+                            center.x - totalWidth / 2f + index * (blockWidth + gap),
+                            center.y - size * 0.12f,
+                        ),
+                        size = Size(blockWidth, size * 0.24f),
+                        cornerRadius = CornerRadius(size * 0.06f),
+                    )
+                }
+            }
+
+            FaceMark.CONFETTI -> {
+                val palette = listOf(
+                    FacePalette.Blush,
+                    FacePalette.Tear,
+                    FacePalette.EarGlow,
+                    FacePalette.Charge,
+                    FacePalette.Glow,
+                )
+                repeat(11) { index ->
+                    val angle = (index * 33f) * PI.toFloat() / 180f
+                    val distance = size * (0.4f + 0.26f * (index % 3))
+                    val dotColor = palette[index % palette.size].copy(alpha = color.alpha * 0.9f)
+                    val position = Offset(
+                        x = center.x + cosf(angle) * distance,
+                        y = center.y + sinf(angle) * distance * 0.85f,
+                    )
+                    if (index % 2 == 0) {
+                        drawCircle(dotColor, strokeWidth * 0.9f, position)
+                    } else {
+                        drawRoundRect(
+                            color = dotColor,
+                            topLeft = Offset(position.x - size * 0.12f, position.y - size * 0.055f),
+                            size = Size(size * 0.24f, size * 0.11f),
+                            cornerRadius = CornerRadius(size * 0.04f),
+                        )
+                    }
+                }
+            }
+
+            FaceMark.CROSS_OUT -> {
+                val arm = size * 0.42f
+                drawLine(
+                    color = color,
+                    start = Offset(center.x - arm, center.y - arm),
+                    end = Offset(center.x + arm, center.y + arm),
+                    strokeWidth = strokeWidth * 1.2f,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(center.x + arm, center.y - arm),
+                    end = Offset(center.x - arm, center.y + arm),
+                    strokeWidth = strokeWidth * 1.2f,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            FaceMark.ALARM -> {
+                repeat(5) { index ->
+                    val angle = (-70f + index * 35f) * PI.toFloat() / 180f
+                    val inner = size * 0.3f
+                    val outer = size * (0.72f + 0.06f * (index % 2))
+                    drawLine(
+                        color = color,
+                        start = Offset(center.x + cosf(angle) * inner, center.y + sinf(angle) * inner),
+                        end = Offset(center.x + cosf(angle) * outer, center.y + sinf(angle) * outer),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+
+            FaceMark.SPARK_LINES -> repeat(3) { index ->
+                val offsetY = (index - 1) * size * 0.26f
+                drawLine(
+                    color = color.copy(alpha = color.alpha * (1f - 0.2f * index)),
+                    start = Offset(center.x - size * 0.32f, center.y + offsetY),
+                    end = Offset(center.x + size * 0.32f, center.y + offsetY),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            FaceMark.ARROW_UP -> {
+                drawLine(
+                    color = color,
+                    start = Offset(center.x, center.y + size * 0.5f),
+                    end = Offset(center.x, center.y - size * 0.35f),
+                    strokeWidth = strokeWidth * 1.2f,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(center.x, center.y - size * 0.45f),
+                    end = Offset(center.x - size * 0.3f, center.y - size * 0.1f),
+                    strokeWidth = strokeWidth * 1.2f,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(center.x, center.y - size * 0.45f),
+                    end = Offset(center.x + size * 0.3f, center.y - size * 0.1f),
+                    strokeWidth = strokeWidth * 1.2f,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            FaceMark.SYNC_ARROW -> {
+                val radius = size * 0.45f
+                drawArc(
+                    color = color,
+                    startAngle = 110f,
+                    sweepAngle = 300f,
+                    useCenter = false,
+                    topLeft = Offset(center.x - radius, center.y - radius),
+                    size = Size(radius * 2f, radius * 2f),
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+                val headX = center.x + radius * 0.85f
+                val headY = center.y - radius * 0.5f
+                drawLine(
+                    color = color,
+                    start = Offset(headX, headY),
+                    end = Offset(headX - size * 0.26f, headY),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(headX, headY),
+                    end = Offset(headX, headY + size * 0.26f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            FaceMark.REC_DOT -> drawCircle(
+                color = color,
+                radius = size * 0.32f,
+                center = center,
+            )
         }
     }
 }

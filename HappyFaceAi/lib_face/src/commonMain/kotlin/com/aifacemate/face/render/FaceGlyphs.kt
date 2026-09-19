@@ -2,6 +2,9 @@ package com.aifacemate.face.render
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * 表情用的矢量图形。全部用路径画，不依赖任何图片资源与字体，
@@ -91,4 +94,46 @@ internal fun zPath(center: Offset, radius: Float): Path = Path().apply {
     lineTo(center.x + radius, center.y - radius)
     lineTo(center.x - radius, center.y + radius)
     lineTo(center.x + radius, center.y + radius)
+}
+
+/** 波浪嘴，委屈 / 迷糊。 */
+internal fun wavyMouthPath(center: Offset, halfWidth: Float, depth: Float): Path = Path().apply {
+    moveTo(center.x - halfWidth, center.y)
+    quadraticTo(center.x - halfWidth * 0.5f, center.y - depth, center.x, center.y)
+    quadraticTo(center.x + halfWidth * 0.5f, center.y + depth, center.x + halfWidth, center.y)
+}
+
+/** 螺旋线，晕乎的螺旋眼。 */
+internal fun spiralPath(center: Offset, radius: Float, turns: Float = 2.2f): Path {
+    val steps = 120
+    val totalAngle = turns * 2f * PI.toFloat()
+
+    return Path().apply {
+        for (step in 0..steps) {
+            val progress = step / steps.toFloat()
+            val angle = totalAngle * progress
+            val currentRadius = radius * progress
+            val x = center.x + cos(angle) * currentRadius
+            val y = center.y + sin(angle) * currentRadius
+            if (step == 0) moveTo(x, y) else lineTo(x, y)
+        }
+    }
+}
+
+/** 盾牌，守护。 */
+internal fun shieldPath(center: Offset, halfHeight: Float): Path {
+    val halfWidth = halfHeight * 0.72f
+    val top = center.y - halfHeight
+    val bottom = center.y + halfHeight
+    val shoulder = center.y + halfHeight * 0.05f
+
+    return Path().apply {
+        moveTo(center.x - halfWidth, top)
+        lineTo(center.x + halfWidth, top)
+        lineTo(center.x + halfWidth, shoulder)
+        // 直线收拢到底部尖角，五边形盾牌轮廓
+        lineTo(center.x, bottom)
+        lineTo(center.x - halfWidth, shoulder)
+        close()
+    }
 }

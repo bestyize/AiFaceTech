@@ -60,22 +60,10 @@ fun main(args: Array<String>) {
         }
     }
 
-    val rows = (FaceExpression.entries.size + COLUMNS - 1) / COLUMNS
-    renderToFile(
-        file = File(outputDir, "_overview.png"),
-        width = TILE_WIDTH * COLUMNS,
-        height = TILE_HEIGHT * rows,
-    ) {
-        Column(Modifier.fillMaxSize().background(SheetBackground)) {
-            FaceExpression.entries.chunked(COLUMNS).forEach { rowExpressions ->
-                Row {
-                    rowExpressions.forEach { expression ->
-                        FaceTile(expression, showLabel = true)
-                    }
-                }
-            }
-        }
-    }
+    // 与三张设计图一一对应：基础 01-25、扩展 I 26-50、扩展 II 51-75
+    renderOverviewSheet(File(outputDir, "_overview-01-25.png"), FaceExpression.basic)
+    renderOverviewSheet(File(outputDir, "_overview-26-50.png"), FaceExpression.extensionOne)
+    renderOverviewSheet(File(outputDir, "_overview-51-75.png"), FaceExpression.extensionTwo)
 
     // 整机界面截图：顺带验证调试台 UI 在运行时能正常组合
     renderToFile(
@@ -97,7 +85,27 @@ fun main(args: Array<String>) {
     // 实机屏幕（16:9）效果图：只有黑玻璃 + 眼睛 + 猫嘴，不带耳朵与外壳
     renderDeviceSheet(File(outputDir, "_device-sheet.png"))
 
-    println("已导出 ${FaceExpression.entries.size + 3} 张图到 ${outputDir.absolutePath}")
+    println("已导出 ${FaceExpression.entries.size + 4} 张图到 ${outputDir.absolutePath}")
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+private fun renderOverviewSheet(file: File, expressions: List<FaceExpression>) {
+    val rows = (expressions.size + COLUMNS - 1) / COLUMNS
+    renderToFile(
+        file = file,
+        width = TILE_WIDTH * COLUMNS,
+        height = TILE_HEIGHT * rows,
+    ) {
+        Column(Modifier.fillMaxSize().background(SheetBackground)) {
+            expressions.chunked(COLUMNS).forEach { rowExpressions ->
+                Row {
+                    rowExpressions.forEach { expression ->
+                        FaceTile(expression, showLabel = true)
+                    }
+                }
+            }
+        }
+    }
 }
 
 private const val DEVICE_TILE_WIDTH = 480
