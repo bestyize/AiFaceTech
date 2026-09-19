@@ -2,6 +2,7 @@ package com.aifacemate.face.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,14 +19,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,11 +31,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,8 +56,8 @@ private val SIDE_BY_SIDE_THRESHOLD = 720.dp
 /**
  * 表情调试台：左边是预览区，右边是操作区。
  *
- * 右侧操作区顶部是「回到实机全屏」，下面是渲染表面与 75 个表情位（全部展开、可滚动）。
- * 这是给产品、设计、开发内部走查用的界面，也方便直接在真机上验证表情位。
+ * 操作区刻意做得紧凑：标题左侧，「生命感」与「回到全屏」收纳到右上角，
+ * 渲染表面一行小胶囊，剩下的空间全部留给 100 个表情位（全部展开、可滚动）。
  */
 @Composable
 fun FacePreviewScreen(
@@ -198,76 +197,77 @@ private fun ControlPane(
     Column(
         modifier = modifier
             .background(PanelSurface)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        Text(
-            text = "脸部表情系统 · Alpha 1",
-            color = Color.White,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = buildString {
-                append("当前：")
-                append(expression.cnName)
-                append(" · ")
-                append(expression.enName)
-                append("（")
-                append(expression.ordinal + 1)
-                append(" / 75）")
-            },
-            color = Color.White.copy(alpha = 0.5f),
-            fontSize = 12.sp,
-            modifier = Modifier.padding(top = 2.dp),
-        )
+        // 紧凑标题行：左侧标题，右上角收纳「生命感」与「回到全屏」
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "脸部表情系统 · Alpha 1",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = buildString {
+                        append(expression.cnName)
+                        append(" · ")
+                        append(expression.enName)
+                        append("（")
+                        append(expression.ordinal + 1)
+                        append(" / ")
+                        append(FaceExpression.entries.size)
+                        append("）")
+                    },
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
 
-        // 顶部主操作：回到实机全屏
-        if (onExitToDisplay != null) {
-            Button(
-                onClick = onExitToDisplay,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Accent,
-                    contentColor = Color.Black,
-                ),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(text = "回到实机全屏", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                CompactChip(
+                    label = "生命感",
+                    selected = animate,
+                    onClick = { onAnimateChange(!animate) },
+                )
+                if (onExitToDisplay != null) {
+                    CompactActionButton(
+                        label = "回到全屏",
+                        onClick = onExitToDisplay,
+                    )
+                }
             }
         }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        ) {
-            Text(
-                text = "生命感动画",
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 12.sp,
-                modifier = Modifier.weight(1f),
-            )
-            Switch(
-                checked = animate,
-                onCheckedChange = onAnimateChange,
-                modifier = Modifier.width(46.dp),
-            )
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.padding(top = 8.dp),
         ) {
             Text(
                 text = "渲染表面",
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 12.sp,
+                color = Color.White.copy(alpha = 0.45f),
+                fontSize = 11.sp,
             )
-            SurfaceChip(
+            CompactChip(
                 label = "整机概念图",
                 selected = surface == FaceSurface.PRODUCT_MOCKUP,
                 onClick = { onSurfaceChange(FaceSurface.PRODUCT_MOCKUP) },
             )
-            SurfaceChip(
+            CompactChip(
                 label = "实机屏幕",
                 selected = surface == FaceSurface.DEVICE_SCREEN,
                 onClick = { onSurfaceChange(FaceSurface.DEVICE_SCREEN) },
@@ -276,10 +276,10 @@ private fun ControlPane(
 
         HorizontalDivider(
             color = Color.White.copy(alpha = 0.08f),
-            modifier = Modifier.padding(vertical = 12.dp),
+            modifier = Modifier.padding(vertical = 10.dp),
         )
 
-        // 75 个表情位全部展开，操作区自己滚动
+        // 剩下的空间全部给 100 个表情位，操作区自己滚动
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -294,13 +294,13 @@ private fun ControlPane(
                     modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
                 )
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.padding(bottom = 12.dp),
                 ) {
                     group.expressions.forEach { item ->
-                        ExpressionChip(
-                            expression = item,
+                        CompactChip(
+                            label = item.cnName,
                             selected = item == expression,
                             onClick = { onExpressionChange(item) },
                         )
@@ -312,9 +312,60 @@ private fun ControlPane(
     }
 }
 
+/**
+ * 紧凑胶囊：操作区里的开关与表情位都用它。
+ * 比 Material 的 FilterChip 矮一截，同样的高度能多放一行表情。
+ */
+@Composable
+private fun CompactChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) Accent else Color.White.copy(alpha = 0.08f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color.Black else Color.White.copy(alpha = 0.78f),
+            fontSize = 12.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+/** 右上角的主操作按钮：回到实机全屏。 */
+@Composable
+private fun CompactActionButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Accent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+    ) {
+        Text(
+            text = label,
+            color = Color.Black,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+        )
+    }
+}
+
 private data class ExpressionGroup(val title: String, val expressions: List<FaceExpression>)
 
-/** 按三张设计图 + Alpha 1 精修分组，便于走查时定位。 */
+/** 按四张设计图 + Alpha 1 精修分组，便于走查时定位。 */
 private fun expressionGroups(): List<ExpressionGroup> = listOf(
     ExpressionGroup("Alpha 1 精修", FaceExpression.alphaOne),
     ExpressionGroup(
@@ -323,49 +374,7 @@ private fun expressionGroups(): List<ExpressionGroup> = listOf(
     ),
     ExpressionGroup("扩展 I 26-50", FaceExpression.extensionOne),
     ExpressionGroup("扩展 II 51-75", FaceExpression.extensionTwo),
-)
-
-@Composable
-private fun SurfaceChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        colors = chipColors(),
-        label = {
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                color = if (selected) Color.Black else Color.White.copy(alpha = 0.8f),
-            )
-        },
-    )
-}
-
-@Composable
-private fun ExpressionChip(
-    expression: FaceExpression,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        colors = chipColors(),
-        label = {
-            Text(
-                text = expression.cnName,
-                fontSize = 12.sp,
-                color = if (selected) Color.Black else Color.White.copy(alpha = 0.8f),
-            )
-        },
-    )
-}
-
-/** 选中态用品牌暖色，不用 Material 默认的紫色容器色。 */
-@Composable
-private fun chipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = Accent,
-    selectedLabelColor = Color.Black,
+    ExpressionGroup("扩展 III 76-100", FaceExpression.extensionThree),
 )
 
 @Preview
