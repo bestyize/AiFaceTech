@@ -1064,6 +1064,156 @@ private fun DrawScope.drawMark(metrics: FaceMetrics, mark: MarkParams) {
                 radius = size * 0.32f,
                 center = center,
             )
+
+            FaceMark.CLOCK -> {
+                // 守候：表盘 + 时针分针
+                val radius = size * 0.5f
+                drawCircle(
+                    color = color,
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+                drawLine(
+                    color = color,
+                    start = center,
+                    end = Offset(center.x, center.y - radius * 0.62f),
+                    strokeWidth = strokeWidth * 0.9f,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = center,
+                    end = Offset(center.x + radius * 0.55f, center.y + radius * 0.2f),
+                    strokeWidth = strokeWidth * 0.9f,
+                    cap = StrokeCap.Round,
+                )
+                drawCircle(color = color, radius = strokeWidth * 0.55f, center = center)
+            }
+
+            FaceMark.MUSIC_NOTE -> {
+                // 哼唱：两个符头 + 符杆 + 符尾
+                val headRadius = size * 0.26f
+                val leftHead = Offset(center.x - size * 0.28f, center.y + size * 0.42f)
+                val rightHead = Offset(center.x + size * 0.3f, center.y + size * 0.24f)
+                drawOval(
+                    color = color,
+                    topLeft = Offset(leftHead.x - headRadius * 1.25f, leftHead.y - headRadius * 0.85f),
+                    size = Size(headRadius * 2.5f, headRadius * 1.7f),
+                )
+                drawOval(
+                    color = color,
+                    topLeft = Offset(rightHead.x - headRadius * 1.25f, rightHead.y - headRadius * 0.85f),
+                    size = Size(headRadius * 2.5f, headRadius * 1.7f),
+                )
+                val leftStemTop = Offset(leftHead.x + headRadius * 1.2f, leftHead.y - headRadius * 3.4f)
+                val rightStemTop = Offset(rightHead.x + headRadius * 1.2f, rightHead.y - headRadius * 3.4f)
+                drawLine(
+                    color = color,
+                    start = Offset(leftHead.x + headRadius * 1.2f, leftHead.y),
+                    end = leftStemTop,
+                    strokeWidth = strokeWidth * 1.1f,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(rightHead.x + headRadius * 1.2f, rightHead.y),
+                    end = rightStemTop,
+                    strokeWidth = strokeWidth * 1.1f,
+                    cap = StrokeCap.Round,
+                )
+                // 连接两端的横梁，读起来像一个音符组
+                drawLine(
+                    color = color,
+                    start = leftStemTop,
+                    end = rightStemTop,
+                    strokeWidth = strokeWidth * 1.3f,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            FaceMark.BATTERY_FULL -> {
+                // 满电：电池外壳 + 正极触点 + 三格电量
+                val bodyWidth = size * 1.1f
+                val bodyHeight = size * 0.62f
+                val bodyTop = center.y - bodyHeight / 2f
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(center.x - bodyWidth / 2f, bodyTop),
+                    size = Size(bodyWidth, bodyHeight),
+                    cornerRadius = CornerRadius(size * 0.12f),
+                    style = Stroke(width = strokeWidth, join = StrokeJoin.Round),
+                )
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(center.x + bodyWidth / 2f, center.y - bodyHeight * 0.18f),
+                    size = Size(size * 0.14f, bodyHeight * 0.36f),
+                    cornerRadius = CornerRadius(size * 0.05f),
+                )
+                repeat(3) { index ->
+                    val barWidth = bodyWidth * 0.2f
+                    val gap = bodyWidth * 0.08f
+                    drawRoundRect(
+                        color = color,
+                        topLeft = Offset(
+                            center.x - (barWidth * 3f + gap * 2f) / 2f + index * (barWidth + gap),
+                            bodyTop + bodyHeight * 0.22f,
+                        ),
+                        size = Size(barWidth, bodyHeight * 0.56f),
+                        cornerRadius = CornerRadius(size * 0.05f),
+                    )
+                }
+            }
+
+            FaceMark.SUN -> {
+                // 迎接新的一天：太阳 + 八道光芒
+                val sunRadius = size * 0.32f
+                drawCircle(
+                    color = color.copy(alpha = color.alpha * 0.35f),
+                    radius = sunRadius,
+                    center = center,
+                )
+                drawCircle(
+                    color = color,
+                    radius = sunRadius,
+                    center = center,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                )
+                repeat(8) { index ->
+                    val angle = (index * 45f) * PI.toFloat() / 180f
+                    val inner = sunRadius * 1.45f
+                    val outer = sunRadius * 1.95f
+                    drawLine(
+                        color = color,
+                        start = Offset(center.x + cosf(angle) * inner, center.y + sinf(angle) * inner),
+                        end = Offset(center.x + cosf(angle) * outer, center.y + sinf(angle) * outer),
+                        strokeWidth = strokeWidth * 0.9f,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+
+            FaceMark.ROSE -> {
+                // 烦恼：花心螺旋 + 五片描边花瓣，描边比实心更像设计图里的玫瑰
+                val petalRadius = size * 0.26f
+                repeat(5) { index ->
+                    val angle = (-90f + index * 72f) * PI.toFloat() / 180f
+                    drawCircle(
+                        color = color.copy(alpha = color.alpha * 0.9f),
+                        radius = petalRadius,
+                        center = Offset(
+                            center.x + cosf(angle) * petalRadius * 1.05f,
+                            center.y + sinf(angle) * petalRadius * 1.05f,
+                        ),
+                        style = Stroke(width = strokeWidth * 0.7f),
+                    )
+                }
+                drawPath(
+                    path = spiralPath(center, size * 0.22f, turns = 1.6f),
+                    color = color,
+                    style = Stroke(width = strokeWidth * 0.8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+            }
         }
     }
 }

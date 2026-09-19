@@ -1,8 +1,9 @@
 package com.aifacemate.face.model
 
 /**
- * 75 个表情位，对齐三张设计图：
- * `04_伴侣机器人表情系统.png`（01-25）、`表情26-50.png`（扩展 I）、`表情51-75.png`（扩展 II）。
+ * 100 个表情位，对齐四张设计图：
+ * `04_伴侣机器人表情系统.png`（01-25）、`表情26-50.png`（扩展 I）、
+ * `表情51-75.png`（扩展 II）、`表情76-100.png`（扩展 III）。
  *
  * 第一阶段只精修 [alphaOne] 中的 5 个表情，其余表情保留统一结构，
  * 后续按 Face Pack 逐步替换参数，不需要改动渲染器。
@@ -87,7 +88,34 @@ enum class FaceExpression(val cnName: String, val enName: String) {
     PROCESSING("处理中", "Processing"),
     RECORDING("记录", "Recording"),
     SYNCING("同步", "Syncing"),
-    UPDATING("升级", "Updating");
+    UPDATING("升级", "Updating"),
+
+    // ---------- 扩展表情 III 76-100 ----------
+    WELCOME_BACK("欢迎回来", "Welcome Back"),
+    EAGER("迫不及待", "Eager"),
+    ACKNOWLEDGING("认可", "Acknowledging"),
+    NAUGHTY("淘气", "Naughty"),
+    REASSURED("安心", "Reassured"),
+    MISSING_YOU("想念", "Missing You"),
+    FAITHFUL_WAITING("守候", "Faithful Waiting"),
+    WANT_PRAISE("求表扬", "Want Praise"),
+    REWARDED("被奖励", "Rewarded"),
+    FLATTERED("被夸奖", "Flattered"),
+    ATTENTIVE("专心倾听", "Attentive"),
+    WHISPERING("小声说", "Whispering"),
+    STRETCHING("伸懒腰", "Stretching"),
+    COZY("舒适", "Cozy"),
+    BASHFUL_SMILE("害羞笑", "Bashful Smile"),
+    SPEECHLESS("无语", "Speechless"),
+    TROUBLED("烦恼", "Troubled"),
+    FLUSTERED("手足无措", "Flustered"),
+    CLINGY("依赖", "Clingy"),
+    SNEAKING_A_PEEK("偷看", "Sneaking a Peek"),
+    HELPFUL("乐于助人", "Helpful"),
+    HUMMING("哼唱", "Humming"),
+    FULLY_CHARGED("满电", "Fully Charged"),
+    GOOD_NIGHT("晚安", "Good Night"),
+    NEW_DAY("迎接新的一天", "New Day");
 
     /** 小写英文 id，用于配置、日志与后续 Face Pack 资源命名。 */
     val id: String get() = name.lowercase()
@@ -104,6 +132,9 @@ enum class FaceExpression(val cnName: String, val enName: String) {
 
         /** 扩展表情 II 51-75。 */
         val extensionTwo: List<FaceExpression> = entries.subList(50, 75)
+
+        /** 扩展表情 III 76-100。 */
+        val extensionThree: List<FaceExpression> = entries.subList(75, 100)
     }
 }
 

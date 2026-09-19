@@ -60,10 +60,11 @@ fun main(args: Array<String>) {
         }
     }
 
-    // 与三张设计图一一对应：基础 01-25、扩展 I 26-50、扩展 II 51-75
+    // 与四张设计图一一对应：基础 01-25、扩展 I 26-50、扩展 II 51-75、扩展 III 76-100
     renderOverviewSheet(File(outputDir, "_overview-01-25.png"), FaceExpression.basic)
     renderOverviewSheet(File(outputDir, "_overview-26-50.png"), FaceExpression.extensionOne)
     renderOverviewSheet(File(outputDir, "_overview-51-75.png"), FaceExpression.extensionTwo)
+    renderOverviewSheet(File(outputDir, "_overview-76-100.png"), FaceExpression.extensionThree)
 
     // 整机界面截图：顺带验证调试台 UI 在运行时能正常组合
     renderToFile(
@@ -108,7 +109,8 @@ fun main(args: Array<String>) {
     // 实机屏幕（16:9）效果图：只有黑玻璃 + 眼睛 + 猫嘴，不带耳朵与外壳
     renderDeviceSheet(File(outputDir, "_device-sheet.png"))
 
-    println("已导出 ${FaceExpression.entries.size + 5} 张图到 ${outputDir.absolutePath}")
+    // 单张表情 + 四张总览 + 两种预览台布局 + 实机屏幕
+    println("已导出 ${FaceExpression.entries.size + 7} 张图到 ${outputDir.absolutePath}")
 }
 
 @OptIn(ExperimentalComposeUiApi::class)

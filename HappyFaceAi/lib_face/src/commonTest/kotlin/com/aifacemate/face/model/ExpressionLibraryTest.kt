@@ -7,8 +7,12 @@ import kotlin.test.assertTrue
 class ExpressionLibraryTest {
 
     @Test
-    fun reservesAll75ExpressionSlots() {
-        assertEquals(75, FaceExpression.entries.size)
+    fun reservesAll100ExpressionSlots() {
+        assertEquals(100, FaceExpression.entries.size)
+        assertEquals(25, FaceExpression.basic.size)
+        assertEquals(25, FaceExpression.extensionOne.size)
+        assertEquals(25, FaceExpression.extensionTwo.size)
+        assertEquals(25, FaceExpression.extensionThree.size)
     }
 
     @Test
@@ -76,6 +80,40 @@ class ExpressionLibraryTest {
                 FaceExpression.UPDATING,
             ),
             FaceExpression.entries.subList(50, 75),
+        )
+    }
+
+    @Test
+    fun extensionThreeKeepsTheDesignedOrder() {
+        assertEquals(
+            listOf(
+                FaceExpression.WELCOME_BACK,
+                FaceExpression.EAGER,
+                FaceExpression.ACKNOWLEDGING,
+                FaceExpression.NAUGHTY,
+                FaceExpression.REASSURED,
+                FaceExpression.MISSING_YOU,
+                FaceExpression.FAITHFUL_WAITING,
+                FaceExpression.WANT_PRAISE,
+                FaceExpression.REWARDED,
+                FaceExpression.FLATTERED,
+                FaceExpression.ATTENTIVE,
+                FaceExpression.WHISPERING,
+                FaceExpression.STRETCHING,
+                FaceExpression.COZY,
+                FaceExpression.BASHFUL_SMILE,
+                FaceExpression.SPEECHLESS,
+                FaceExpression.TROUBLED,
+                FaceExpression.FLUSTERED,
+                FaceExpression.CLINGY,
+                FaceExpression.SNEAKING_A_PEEK,
+                FaceExpression.HELPFUL,
+                FaceExpression.HUMMING,
+                FaceExpression.FULLY_CHARGED,
+                FaceExpression.GOOD_NIGHT,
+                FaceExpression.NEW_DAY,
+            ),
+            FaceExpression.entries.subList(75, 100),
         )
     }
 
@@ -179,6 +217,40 @@ class ExpressionLibraryTest {
         assertTrue(FaceMark.CONFETTI in FaceExpression.CELEBRATING.markSet(), "庆祝需要彩带")
         assertTrue(FaceMark.CROSS_OUT in FaceExpression.REFUSING.markSet(), "拒绝需要红色叉")
         assertTrue(FaceMark.ALARM in FaceExpression.ALARMED.markSet(), "受惊需要惊叹爆发线")
+    }
+
+    @Test
+    fun extensionThreeUsesTheNewPrimitives() {
+        fun FaceExpression.params() = ExpressionLibrary.paramsFor(this)
+        fun FaceExpression.markSet() = params().marks.map { it.mark }.toSet()
+
+        assertEquals(EyeShape.SPIRAL, FaceExpression.FLUSTERED.params().leftEye.shape)
+        assertEquals(EyeShape.STAR, FaceExpression.REWARDED.params().leftEye.shape)
+        assertEquals(EyeShape.HEART, FaceExpression.FLATTERED.params().leftEye.shape)
+        assertEquals(EyeShape.CLOSED, FaceExpression.SPEECHLESS.params().leftEye.shape)
+
+        assertTrue(FaceMark.CLOCK in FaceExpression.FAITHFUL_WAITING.markSet(), "守候需要时钟")
+        assertTrue(FaceMark.ROSE in FaceExpression.TROUBLED.markSet(), "烦恼需要玫瑰花")
+        assertTrue(FaceMark.MUSIC_NOTE in FaceExpression.HUMMING.markSet(), "哼唱需要音符")
+        assertTrue(FaceMark.MUSIC_NOTE in FaceExpression.COZY.markSet(), "舒适需要音符")
+        assertTrue(FaceMark.BATTERY_FULL in FaceExpression.FULLY_CHARGED.markSet(), "满电需要电池图标")
+        assertTrue(FaceMark.SUN in FaceExpression.NEW_DAY.markSet(), "迎接新的一天需要太阳")
+    }
+
+    @Test
+    fun stretchingRaisesBothPaws() {
+        val paws = ExpressionLibrary.paramsFor(FaceExpression.STRETCHING).marks.filter { it.mark == FaceMark.PAW }
+        assertEquals(2, paws.size, "伸懒腰需要两只爪子")
+        assertTrue(paws.any { it.offsetX < 0f } && paws.any { it.offsetX > 0f }, "爪子应当分列两侧")
+    }
+
+    @Test
+    fun goodNightDimsPanelAndShowsZzz() {
+        val params = ExpressionLibrary.paramsFor(FaceExpression.GOOD_NIGHT)
+        assertEquals(EyeShape.CALM_ARC, params.leftEye.shape)
+        assertTrue(params.panelDim > 0f, "晚安时屏幕应当压暗")
+        assertTrue(params.earGlow < 1f, "晚安时耳朵灯应当减弱")
+        assertTrue(params.marks.any { it.mark == FaceMark.ZZZ }, "晚安需要 zzz")
     }
 
     @Test
