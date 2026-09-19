@@ -78,14 +78,37 @@ fun main(args: Array<String>) {
                 background = Color(0xFF09090C),
             ),
         ) {
-            FacePreviewScreen(modifier = Modifier.fillMaxSize())
+            FacePreviewScreen(
+                modifier = Modifier.fillMaxSize(),
+                onExitToDisplay = {},
+            )
+        }
+    }
+
+    // 窄屏下的上下布局（窗口宽度不足以左右分栏时）
+    renderToFile(
+        file = File(outputDir, "_app-preview-narrow.png"),
+        width = 620,
+        height = 900,
+    ) {
+        MaterialTheme(
+            colorScheme = darkColorScheme(
+                primary = Color(0xFFFFC46B),
+                surface = Color(0xFF121218),
+                background = Color(0xFF09090C),
+            ),
+        ) {
+            FacePreviewScreen(
+                modifier = Modifier.fillMaxSize(),
+                onExitToDisplay = {},
+            )
         }
     }
 
     // 实机屏幕（16:9）效果图：只有黑玻璃 + 眼睛 + 猫嘴，不带耳朵与外壳
     renderDeviceSheet(File(outputDir, "_device-sheet.png"))
 
-    println("已导出 ${FaceExpression.entries.size + 4} 张图到 ${outputDir.absolutePath}")
+    println("已导出 ${FaceExpression.entries.size + 5} 张图到 ${outputDir.absolutePath}")
 }
 
 @OptIn(ExperimentalComposeUiApi::class)

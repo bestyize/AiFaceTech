@@ -18,7 +18,8 @@ lib_face/src/commonMain/kotlin/com/aifacemate/face/
 
 ## 当前状态（Alpha 1）
 
-- 25 个表情位全部有参数，其中 5 个已按设计图精修并冻结：Idle / Happy / Curious / Sleeping / Greeting
+- 75 个表情位全部有参数（基础 01-25 / 扩展 I 26-50 / 扩展 II 51-75），其中 5 个已按设计图精修并冻结：Idle / Happy / Curious / Sleeping / Greeting
+- 图元库覆盖：圆环眼、弧形眼、半睁眼、爱心眼、星星眼、螺旋眼、叉叉眼；猫嘴、微笑、张嘴吐舌、波浪嘴；灯泡、盾牌、锁、点赞、猫爪、云朵、温度计、四角扫描框、转圈、进度条、彩带、红叉、爆发线等情绪符号
 - 两种渲染表面：`DEVICE_SCREEN`（实机 4.0 英寸 16:9 屏铺满，只有脸）与 `PRODUCT_MOCKUP`（整机概念图，带发光耳朵与外壳）
 - 待机生命感：随机间隔眨眼（2.4s ~ 6.4s）+ 呼吸起伏；弧形眼表情不参与眨眼
 - 表情切换：420ms 缓入缓出过渡，数值参数插值、眼型/嘴型过半切换、情绪符号淡入淡出
@@ -34,6 +35,14 @@ lib_face/src/commonMain/kotlin/com/aifacemate/face/
 ```
 
 导出的图片在 `desktopApp/build/face-sheets/`，可直接与 `assets/04_伴侣机器人表情系统.png` 对照走查。
+其中 `_overview-01-25 / _overview-26-50 / _overview-51-75` 与三张设计图一一对应。
+
+## 调试台布局
+
+`FacePreviewScreen` 采用左预览 + 右操作的分栏布局：左侧是脸部预览区，
+右侧顶部依次是「回到实机全屏」、生命感动画开关、渲染表面切换，下面是 75 个表情位
+（按 Alpha 1 / 基础 / 扩展 I / 扩展 II 分组，全部展开、可滚动）。
+窗口宽度不足 720dp 时自动退化成上下布局。
 
 ## 实机形态与调试入口
 
@@ -47,6 +56,6 @@ lib_face/src/commonMain/kotlin/com/aifacemate/face/
 ## 下一步（按 PRD 的 Alpha 阶段）
 
 1. Alpha 2：按设计图继续精修猫脸比例、耳朵与屏幕外壳细节
-2. Alpha 3：口型联动（`MouthParams.openness`）、说话与倾听的循环动画、更丰富的待机小动作
-3. Alpha 4：把其余 20 个表情位逐个精修，支持导出 Face Pack
+2. Alpha 3：口型联动（`MouthParams.openness`）、说话与倾听的循环动画、状态类表情的循环动效（侦测扫描、记录闪烁、升级进度、处理中转圈）
+3. Alpha 4：把其余 70 个表情位逐个精修，支持导出 Face Pack
 4. Alpha 5：接入 ASR / LLM / TTS，让大模型直接输出 `emotion` 驱动本库
