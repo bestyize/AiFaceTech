@@ -36,16 +36,23 @@ import kotlin.math.PI
  * [surface] 决定构图：
  * - [FaceSurface.DEVICE_SCREEN]：实机屏幕内容，铺满整块屏，不画耳朵和外壳；
  * - [FaceSurface.PRODUCT_MOCKUP]：整机概念图，带发光耳朵和机身外壳。
+ *
+ * [diffuseGlow] 控制最外层那圈扩散光晕（大面积辉光 + 最宽的柔边描边）：
+ * 1.0 是设计稿的发光质感，0 只保留贴着笔画的近边发光与实心描边。
+ * 眼睛的扩散光半径是面板高的 0.48 倍，两只眼并排几乎铺满整块屏，
+ * 所以这个参数对“黑屏够不够黑”的影响比想象中大。
  */
 @Composable
 fun CatFace(
     params: FaceParams,
     modifier: Modifier = Modifier,
     surface: FaceSurface = FaceSurface.PRODUCT_MOCKUP,
+    diffuseGlow: Float = 1f,
 ) {
     Canvas(modifier) {
         val metrics = computeFaceMetrics(size.width, size.height, surface)
         if (metrics.panelWidth <= 0f || metrics.panelHeight <= 0f) return@Canvas
+        val diffuse = diffuseGlow.coerceIn(0f, 2f)
 
         val pivot = Offset(metrics.panelCenterX, metrics.panelCenterY)
         val faceTransform: DrawTransform.() -> Unit = {
@@ -60,7 +67,7 @@ fun CatFace(
                 drawEar(metrics, direction = -1f, glow = params.earGlow)
                 drawEar(metrics, direction = 1f, glow = params.earGlow)
                 drawScreenPanel(metrics, dim = params.panelDim, withHousing = true)
-                drawFaceContent(metrics, params)
+                drawFaceContent(metrics, params, diffuse)
             }
         } else {
             // 实机屏幕：屏幕本身铺满且不能旋转，只有脸会倾斜、缩放、呼吸
@@ -70,27 +77,29 @@ fun CatFace(
                 withHousing = false,
             )
             withTransform(faceTransform) {
-                drawFaceContent(metrics, params)
+                drawFaceContent(metrics, params, diffuse)
             }
         }
     }
 }
 
 /** 屏幕上真正会动的部分：腮红、眼睛、猫嘴、情绪符号。 */
-private fun DrawScope.drawFaceContent(metrics: FaceMetrics, params: FaceParams) {
+private fun DrawScope.drawFaceContent(metrics: FaceMetrics, params: FaceParams, diffuse: Float) {
     drawEye(
         center = Offset(metrics.leftEyeCenterX, metrics.eyeCenterY),
         eye = params.leftEye,
         metrics = metrics,
+        diffuse = diffuse,
     )
     drawEye(
         center = Offset(metrics.rightEyeCenterX, metrics.eyeCenterY),
         eye = params.rightEye,
         metrics = metrics,
+        diffuse = diffuse,
     )
     // 腮红画在眼睛之后：否则会被眼睛的光晕冲淡，粉色会发灰
     drawBlush(metrics, alpha = params.blushAlpha)
-    drawMouth(metrics, params.mouth)
+    drawMouth(metrics, params.mouth, diffuse)
     params.marks.forEach { drawMark(metrics, it) }
 }
 
@@ -197,29 +206,38 @@ private fun DrawScope.drawScreenPanel(metrics: FaceMetrics, dim: Float, withHous
         )
     }
 
-    // 黑玻璃屏。实机模式下这就是整块显示屏。
-    drawRoundRect(
-        brush = Brush.verticalGradient(
-            colors = listOf(FacePalette.PanelTop, FacePalette.PanelBottom),
-            startY = metrics.panelTop,
-            endY = metrics.panelBottom,
-        ),
-        topLeft = Offset(metrics.panelLeft, metrics.panelTop),
-        size = Size(metrics.panelWidth, metrics.panelHeight),
-        cornerRadius = corner,
-    )
-
-    // 顶部一道玻璃高光
-    drawRoundRect(
-        brush = Brush.verticalGradient(
-            colors = listOf(Color.White.copy(alpha = 0.07f), Color.Transparent),
-            startY = metrics.panelTop,
-            endY = metrics.panelTop + metrics.panelHeight * 0.45f,
-        ),
-        topLeft = Offset(metrics.panelLeft, metrics.panelTop),
-        size = Size(metrics.panelWidth, metrics.panelHeight),
-        cornerRadius = corner,
-    )
+    if (withHousing) {
+        // 概念图：黑玻璃 + 顶部一道玻璃高光，做出产品渲染图的材质感
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(FacePalette.PanelTop, FacePalette.PanelBottom),
+                startY = metrics.panelTop,
+                endY = metrics.panelBottom,
+            ),
+            topLeft = Offset(metrics.panelLeft, metrics.panelTop),
+            size = Size(metrics.panelWidth, metrics.panelHeight),
+            cornerRadius = corner,
+        )
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color.White.copy(alpha = 0.07f), Color.Transparent),
+                startY = metrics.panelTop,
+                endY = metrics.panelTop + metrics.panelHeight * 0.45f,
+            ),
+            topLeft = Offset(metrics.panelLeft, metrics.panelTop),
+            size = Size(metrics.panelWidth, metrics.panelHeight),
+            cornerRadius = corner,
+        )
+    } else {
+        // 实机屏幕：屏幕底色就是纯黑。
+        // App 画什么像素屏上就是什么，玻璃渐变与高光只会让黑屏“顶部发亮”，
+        // 那是产品渲染图的材质效果，不属于屏幕内容。
+        drawRect(
+            color = Color.Black,
+            topLeft = Offset(metrics.panelLeft, metrics.panelTop),
+            size = Size(metrics.panelWidth, metrics.panelHeight),
+        )
+    }
 
     if (dim > 0.01f) {
         drawRoundRect(
@@ -256,7 +274,7 @@ private fun DrawScope.drawBlush(metrics: FaceMetrics, alpha: Float) {
 
 // ---------------------------------------------------------------- 眼睛
 
-private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetrics) {
+private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetrics, diffuse: Float) {
     val radius = metrics.eyeRadius * eye.radius
     if (radius <= 0f) return
 
@@ -265,9 +283,10 @@ private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetri
     val color = FacePalette.Glow
     val isRingEye = eye.shape == EyeShape.OPEN || eye.shape == EyeShape.WIDE
     val haloScale = if (isRingEye) 2.6f else 1.8f
-    val haloAlpha = (if (isRingEye) 0.32f else 0.15f) * glow
+    val haloAlpha = (if (isRingEye) 0.32f else 0.15f) * glow * diffuse
 
-    if (glow > 0.02f) {
+    // 最外层的扩散光：一块大面积径向渐变，是“整块屏发灰”的主因
+    if (glow > 0.02f && haloAlpha > 0.002f) {
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
@@ -284,7 +303,7 @@ private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetri
 
     rotate(degrees = eye.tiltDegrees, pivot = center) {
         when (eye.shape) {
-            EyeShape.OPEN, EyeShape.WIDE -> drawRingEye(center, radius, eye, strokeWidth, color, glow)
+            EyeShape.OPEN, EyeShape.WIDE -> drawRingEye(center, radius, eye, strokeWidth, color, glow, diffuse)
             EyeShape.HAPPY_ARC -> drawGlowArc(
                 center = center,
                 radiusX = radius,
@@ -294,6 +313,7 @@ private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetri
                 strokeWidth = strokeWidth,
                 color = color,
                 glow = glow,
+                diffuse = diffuse,
             )
 
             EyeShape.CALM_ARC -> drawGlowArc(
@@ -305,6 +325,7 @@ private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetri
                 strokeWidth = strokeWidth,
                 color = color,
                 glow = glow,
+                diffuse = diffuse,
             )
 
             EyeShape.HALF_LID -> {
@@ -405,19 +426,21 @@ private fun DrawScope.drawRingEye(
     strokeWidth: Float,
     color: Color,
     glow: Float,
+    diffuse: Float,
 ) {
     val openness = eye.openness.coerceIn(0f, 1f)
     val radiusY = (radius * openness).coerceAtLeast(strokeWidth * 0.5f)
     val topLeft = Offset(center.x - radius, center.y - radiusY)
     val size = Size(radius * 2f, radiusY * 2f)
 
-    // 多层描边叠加出“发光”而不是一块死白
+    // 最外层柔边：宽度最大、最模糊的一圈，属于“扩散光晕”，关掉后屏幕更黑
     drawOval(
-        color = color.copy(alpha = 0.12f * glow),
+        color = color.copy(alpha = 0.12f * glow * diffuse),
         topLeft = topLeft,
         size = size,
         style = Stroke(width = strokeWidth * 2.6f, cap = StrokeCap.Round),
     )
+    // 近边发光：贴着笔画的一圈，保留它才有霓虹感
     drawOval(
         color = color.copy(alpha = 0.3f * glow),
         topLeft = topLeft,
@@ -453,12 +476,14 @@ private fun DrawScope.drawGlowArc(
     strokeWidth: Float,
     color: Color,
     glow: Float,
+    diffuse: Float = 1f,
 ) {
     val topLeft = Offset(center.x - radiusX, center.y - radiusY)
     val size = Size(radiusX * 2f, radiusY * 2f)
 
+    // 最外层柔边（扩散光晕）
     drawArc(
-        color = color.copy(alpha = 0.12f * glow),
+        color = color.copy(alpha = 0.12f * glow * diffuse),
         startAngle = startAngle,
         sweepAngle = sweepAngle,
         useCenter = false,
@@ -466,6 +491,7 @@ private fun DrawScope.drawGlowArc(
         size = size,
         style = Stroke(width = strokeWidth * 2.6f, cap = StrokeCap.Round),
     )
+    // 近边发光
     drawArc(
         color = color.copy(alpha = 0.3f * glow),
         startAngle = startAngle,
@@ -488,7 +514,7 @@ private fun DrawScope.drawGlowArc(
 
 // ---------------------------------------------------------------- 猫嘴
 
-private fun DrawScope.drawMouth(metrics: FaceMetrics, mouth: MouthParams) {
+private fun DrawScope.drawMouth(metrics: FaceMetrics, mouth: MouthParams, diffuse: Float) {
     val center = Offset(
         x = metrics.panelCenterX + mouth.offsetX * metrics.panelWidth,
         y = metrics.mouthCenterY + mouth.offsetY * metrics.panelHeight,
@@ -513,6 +539,7 @@ private fun DrawScope.drawMouth(metrics: FaceMetrics, mouth: MouthParams) {
             strokeWidth = strokeWidth,
             color = color,
             glow = 1f,
+            diffuse = diffuse,
         )
 
         MouthShape.OPEN_SMILE -> {
@@ -526,6 +553,7 @@ private fun DrawScope.drawMouth(metrics: FaceMetrics, mouth: MouthParams) {
                 strokeWidth = strokeWidth,
                 color = color,
                 glow = 1f,
+                diffuse = diffuse,
             )
             if (mouth.showTongue) {
                 drawOval(
@@ -564,6 +592,7 @@ private fun DrawScope.drawMouth(metrics: FaceMetrics, mouth: MouthParams) {
             strokeWidth = strokeWidth,
             color = color,
             glow = 1f,
+            diffuse = diffuse,
         )
 
         MouthShape.TONGUE -> {

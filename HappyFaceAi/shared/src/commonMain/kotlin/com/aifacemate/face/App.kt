@@ -15,6 +15,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.tooling.preview.Preview
 import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.model.next
+import com.aifacemate.face.ui.DEFAULT_DIFFUSE_GLOW
 import com.aifacemate.face.ui.FaceDisplay
 import com.aifacemate.face.ui.FacePreviewScreen
 
@@ -26,7 +27,8 @@ import com.aifacemate.face.ui.FacePreviewScreen
  * - 单击屏幕：切到下一个表情（原型阶段用来在真机屏上逐个走查）
  * - 长按屏幕：进入内部预览页，用来切换表情、走查 100 个表情位
  *
- * 表情状态提升到这里，预览页和实机全屏共用同一份，切来切去不会丢。
+ * 表情与两个渲染开关（扩散光晕、耳朵灯）的状态都提升到这里，预览页与实机全屏共用同一份，
+ * 所以在调试台里关掉的扩散光晕，回到全屏依然是关的，切来切去也不会丢。
  */
 @Composable
 @Preview
@@ -40,12 +42,18 @@ fun App() {
     ) {
         var showPreview by remember { mutableStateOf(false) }
         var expression by remember { mutableStateOf(FaceExpression.IDLE) }
+        var diffuseGlow by remember { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
+        var earLight by remember { mutableStateOf(true) }
 
         if (showPreview) {
             FacePreviewScreen(
                 modifier = Modifier.fillMaxSize(),
                 expression = expression,
                 onExpressionChange = { expression = it },
+                diffuseGlow = diffuseGlow,
+                onDiffuseGlowChange = { diffuseGlow = it },
+                earLight = earLight,
+                onEarLightChange = { earLight = it },
                 onExitToDisplay = { showPreview = false },
             )
         } else {
@@ -59,6 +67,8 @@ fun App() {
                         )
                     },
                 expression = expression,
+                diffuseGlow = diffuseGlow,
+                earLight = earLight,
             )
         }
     }

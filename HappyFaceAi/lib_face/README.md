@@ -21,6 +21,8 @@ lib_face/src/commonMain/kotlin/com/aifacemate/face/
 - 100 个表情位全部有参数（基础 01-25 / 扩展 I 26-50 / 扩展 II 51-75 / 扩展 III 76-100），其中 5 个已按设计图精修并冻结：Idle / Happy / Curious / Sleeping / Greeting
 - 图元库覆盖：圆环眼、弧形眼、半睁眼、爱心眼、星星眼、螺旋眼、叉叉眼；猫嘴、微笑、张嘴吐舌、波浪嘴；灯泡、盾牌、锁、点赞、猫爪、云朵、温度计、四角扫描框、转圈、进度条、彩带、红叉、爆发线、时钟、音符、电池、太阳、玫瑰等情绪符号
 - 两种渲染表面：`DEVICE_SCREEN`（实机 4.0 英寸 16:9 屏铺满，只有脸）与 `PRODUCT_MOCKUP`（整机概念图，带发光耳朵与外壳）
+- 屏幕底色按表面区分：**实机屏幕是纯黑**（App 画什么像素屏上就是什么），玻璃渐变与顶部高光只出现在概念图里
+- 两个渲染开关：**扩散光晕**（`DEFAULT_DIFFUSE_GLOW`，只控制最外层的大面积辉光，近边发光始终保留）与**耳朵灯**；状态提升到 `App`，调试台与实机全屏共用同一份
 - 待机生命感：随机间隔眨眼（2.4s ~ 6.4s）+ 呼吸起伏；弧形眼表情不参与眨眼
 - 表情切换：420ms 缓入缓出过渡，数值参数插值、眼型/嘴型过半切换、情绪符号淡入淡出
 - 全部图形为矢量绘制，不依赖图片与字体，可等比渲染到 4 英寸屏幕或任意预览窗口
@@ -30,17 +32,19 @@ lib_face/src/commonMain/kotlin/com/aifacemate/face/
 ```bash
 ./gradlew :lib_face:jvmTest                 # 逻辑层测试（参数、动画、布局）
 ./gradlew :desktopApp:run                   # 打开调试台，实时切换表情
-./gradlew :desktopApp:exportFaceSheets      # 离屏导出 100 张表情图 + 四张总览图
+./gradlew :desktopApp:exportFaceSheets      # 离屏导出 100 张表情图 + 总览 / 对比 / 实机全屏走查图
 ./gradlew :androidApp:assembleDebug         # 打包 Android 原型
 ```
 
 导出的图片在 `desktopApp/build/face-sheets/`，可直接与 `assets/04_伴侣机器人表情系统.png` 对照走查。
-其中 `_overview-01-25 / _overview-26-50 / _overview-51-75 / _overview-76-100` 与四张设计图一一对应。
+- `_overview-01-25 / -26-50 / -51-75 / -76-100` 与四张设计图一一对应；同名 `-nodiffuse` 是关掉扩散光晕的版本
+- `_compare-diffuse` / `_compare-diffuse-levels` 用来挑扩散光晕档位（1.0 / 0.6 / 0.3 / 0）
+- `_device-sheet` / `_device-sheet-nodiffuse` 走的是实机全屏组件本身，用来确认"回到全屏"看到的效果
 
 ## 调试台布局
 
 `FacePreviewScreen` 采用左预览 + 右操作的分栏布局：左侧是脸部预览区，
-右侧标题旁边收纳「生命感」与「回到全屏」两个小胶囊，下面一行是渲染表面切换，
+右侧标题旁边收纳「生命感」与「回到全屏」两个小胶囊，下面一行是渲染表面切换 + 「耳朵灯」「扩散光晕」两个渲染开关，
 其余空间全部给 100 个表情位（按 Alpha 1 / 基础 / 扩展 I / 扩展 II / 扩展 III 分组，全部展开、可滚动）。
 窗口宽度不足 720dp 时自动退化成上下布局。
 
@@ -51,7 +55,8 @@ lib_face/src/commonMain/kotlin/com/aifacemate/face/
 表情参数里的 `earGlow` 在实机屏幕上不生效（有测试锁住这个产品决定）。
 
 调试入口：**在实机全屏界面长按屏幕**进入 `FacePreviewScreen`，可以切表情、走查 100 个表情位、
-在「整机概念图 / 实机屏幕」两种渲染表面之间切换；点「回到实机全屏」返回。
+在「整机概念图 / 实机屏幕」两种渲染表面之间切换、开关扩散光晕与耳朵灯；点「回到实机全屏」返回，
+开关状态会一起带回去（不会出现"预览关了、全屏还有"）。
 
 ## 下一步（按 PRD 的 Alpha 阶段）
 

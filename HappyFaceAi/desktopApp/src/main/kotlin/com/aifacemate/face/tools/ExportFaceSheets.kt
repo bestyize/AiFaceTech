@@ -25,6 +25,7 @@ import com.aifacemate.face.model.ExpressionLibrary
 import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.render.CatFace
 import com.aifacemate.face.render.FaceSurface
+import com.aifacemate.face.ui.FaceDisplay
 import com.aifacemate.face.ui.FacePreviewScreen
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
@@ -61,10 +62,15 @@ fun main(args: Array<String>) {
     }
 
     // 与四张设计图一一对应：基础 01-25、扩展 I 26-50、扩展 II 51-75、扩展 III 76-100
-    renderOverviewSheet(File(outputDir, "_overview-01-25.png"), FaceExpression.basic)
-    renderOverviewSheet(File(outputDir, "_overview-26-50.png"), FaceExpression.extensionOne)
-    renderOverviewSheet(File(outputDir, "_overview-51-75.png"), FaceExpression.extensionTwo)
-    renderOverviewSheet(File(outputDir, "_overview-76-100.png"), FaceExpression.extensionThree)
+    overviewGroups.forEach { (name, expressions) ->
+        renderOverviewSheet(File(outputDir, "_overview-$name.png"), expressions)
+        // 关掉扩散光晕的同一批：只留近边发光，黑屏不再被大面积辉光铺灰
+        renderOverviewSheet(
+            File(outputDir, "_overview-$name-nodiffuse.png"),
+            expressions,
+            diffuseGlow = 0f,
+        )
+    }
 
     // 整机界面截图：顺带验证调试台 UI 在运行时能正常组合
     renderToFile(
@@ -106,15 +112,98 @@ fun main(args: Array<String>) {
         }
     }
 
-    // 实机屏幕（16:9）效果图：只有黑玻璃 + 眼睛 + 猫嘴，不带耳朵与外壳
-    renderDeviceSheet(File(outputDir, "_device-sheet.png"))
+    // 实机全屏（16:9）效果图：走的就是 App 里「回到全屏」那条路径（FaceDisplay）
+    renderDeviceSheet(File(outputDir, "_device-sheet.png"), diffuseGlow = 1f)
+    renderDeviceSheet(File(outputDir, "_device-sheet-nodiffuse.png"), diffuseGlow = 0f)
 
-    // 单张表情 + 四张总览 + 两种预览台布局 + 实机屏幕
-    println("已导出 ${FaceExpression.entries.size + 7} 张图到 ${outputDir.absolutePath}")
+    // 扩散光晕开 / 关的并排对比：每两格一组，左有扩散光晕、右无
+    renderComparisonSheet(File(outputDir, "_compare-diffuse.png"))
+
+    // 扩散光晕强度的四档对比：1.0（现状）/ 0.6 / 0.3 / 0
+    renderDiffuseLevelsSheet(File(outputDir, "_compare-diffuse-levels.png"))
+
+    // 单张表情 + 四张总览 + 四张无光晕总览 + 两张对比图 + 两种预览台布局 + 实机屏幕
+    println("已导出 ${FaceExpression.entries.size + 13} 张图到 ${outputDir.absolutePath}")
+}
+
+/** 四张设计图对应的分组，导出总览时按这个顺序走。 */
+private val overviewGroups: List<Pair<String, List<FaceExpression>>> = listOf(
+    "01-25" to FaceExpression.basic,
+    "26-50" to FaceExpression.extensionOne,
+    "51-75" to FaceExpression.extensionTwo,
+    "76-100" to FaceExpression.extensionThree,
+)
+
+/** 挑几个有代表性的表情，把「有扩散光晕 / 无扩散光晕」并排放在一起看差异。 */
+private val DIFFUSE_COMPARISON_SAMPLES = listOf(
+    FaceExpression.IDLE,
+    FaceExpression.HAPPY,
+    FaceExpression.SLEEPING,
+    FaceExpression.OFFLINE,
+    FaceExpression.GOOD_NIGHT,
+    FaceExpression.CELEBRATING,
+    FaceExpression.CURIOUS,
+    FaceExpression.MISSING_YOU,
+    FaceExpression.FLUSTERED,
+    FaceExpression.NEW_DAY,
+)
+
+/** 扩散光晕强度的四个档位，用来挑一个“还有发光感、但黑屏够黑”的中间值。 */
+private val DIFFUSE_LEVELS = listOf(1f, 0.6f, 0.3f, 0f)
+
+private val DIFFUSE_LEVEL_SAMPLES = listOf(
+    FaceExpression.IDLE,
+    FaceExpression.HAPPY,
+    FaceExpression.MISSING_YOU,
+)
+
+@OptIn(ExperimentalComposeUiApi::class)
+private fun renderDiffuseLevelsSheet(file: File) {
+    renderToFile(
+        file = file,
+        width = TILE_WIDTH * DIFFUSE_LEVELS.size,
+        height = TILE_HEIGHT * DIFFUSE_LEVEL_SAMPLES.size,
+    ) {
+        Column(Modifier.fillMaxSize().background(SheetBackground)) {
+            DIFFUSE_LEVEL_SAMPLES.forEach { expression ->
+                Row {
+                    DIFFUSE_LEVELS.forEach { level ->
+                        FaceTile(expression, showLabel = true, diffuseGlow = level)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
-private fun renderOverviewSheet(file: File, expressions: List<FaceExpression>) {
+private fun renderComparisonSheet(file: File) {
+    val perRow = 2 // 每行两组，每组两张（有扩散光晕 + 无扩散光晕）
+    val rows = (DIFFUSE_COMPARISON_SAMPLES.size + perRow - 1) / perRow
+    renderToFile(
+        file = file,
+        width = TILE_WIDTH * 2 * perRow,
+        height = TILE_HEIGHT * rows,
+    ) {
+        Column(Modifier.fillMaxSize().background(SheetBackground)) {
+            DIFFUSE_COMPARISON_SAMPLES.chunked(perRow).forEach { rowExpressions ->
+                Row {
+                    rowExpressions.forEach { expression ->
+                        FaceTile(expression, showLabel = true, diffuseGlow = 1f)
+                        FaceTile(expression, showLabel = true, diffuseGlow = 0f)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+private fun renderOverviewSheet(
+    file: File,
+    expressions: List<FaceExpression>,
+    diffuseGlow: Float = 1f,
+) {
     val rows = (expressions.size + COLUMNS - 1) / COLUMNS
     renderToFile(
         file = file,
@@ -125,7 +214,7 @@ private fun renderOverviewSheet(file: File, expressions: List<FaceExpression>) {
             expressions.chunked(COLUMNS).forEach { rowExpressions ->
                 Row {
                     rowExpressions.forEach { expression ->
-                        FaceTile(expression, showLabel = true)
+                        FaceTile(expression, showLabel = true, diffuseGlow = diffuseGlow)
                     }
                 }
             }
@@ -137,7 +226,7 @@ private const val DEVICE_TILE_WIDTH = 480
 private const val DEVICE_TILE_HEIGHT = 270
 
 @OptIn(ExperimentalComposeUiApi::class)
-private fun renderDeviceSheet(file: File) {
+private fun renderDeviceSheet(file: File, diffuseGlow: Float) {
     val expressions = FaceExpression.alphaOne
     renderToFile(
         file = file,
@@ -151,10 +240,12 @@ private fun renderDeviceSheet(file: File) {
                         .size(DEVICE_TILE_WIDTH.dp, DEVICE_TILE_HEIGHT.dp)
                         .background(Color.Black),
                 ) {
-                    CatFace(
-                        params = ExpressionLibrary.paramsFor(expression),
+                    // 用实机全屏组件本身，保证导出图和「回到全屏」看到的一致
+                    FaceDisplay(
                         modifier = Modifier.fillMaxSize(),
-                        surface = FaceSurface.DEVICE_SCREEN,
+                        expression = expression,
+                        animate = false,
+                        diffuseGlow = diffuseGlow,
                     )
                 }
             }
@@ -165,7 +256,7 @@ private fun renderDeviceSheet(file: File) {
 private val SheetBackground = Color(0xFF15151A)
 
 @Composable
-private fun FaceTile(expression: FaceExpression, showLabel: Boolean) {
+private fun FaceTile(expression: FaceExpression, showLabel: Boolean, diffuseGlow: Float = 1f) {
     Column(
         modifier = Modifier
             .size(TILE_WIDTH.dp, TILE_HEIGHT.dp)
@@ -180,6 +271,7 @@ private fun FaceTile(expression: FaceExpression, showLabel: Boolean) {
             CatFace(
                 params = ExpressionLibrary.paramsFor(expression),
                 modifier = Modifier.fillMaxSize(),
+                diffuseGlow = diffuseGlow,
             )
         }
         if (showLabel) {

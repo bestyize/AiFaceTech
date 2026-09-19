@@ -58,12 +58,19 @@ private val SIDE_BY_SIDE_THRESHOLD = 720.dp
  *
  * 操作区刻意做得紧凑：标题左侧，「生命感」与「回到全屏」收纳到右上角，
  * 渲染表面一行小胶囊，剩下的空间全部留给 100 个表情位（全部展开、可滚动）。
+ *
+ * 表情与两个渲染开关（扩散光晕、耳朵灯）都可以由外部托管：
+ * 传进来就用外部的，不传就自己管，这样全屏页与调试台能共用同一份状态。
  */
 @Composable
 fun FacePreviewScreen(
     modifier: Modifier = Modifier,
     expression: FaceExpression? = null,
     onExpressionChange: ((FaceExpression) -> Unit)? = null,
+    diffuseGlow: Float? = null,
+    onDiffuseGlowChange: ((Float) -> Unit)? = null,
+    earLight: Boolean? = null,
+    onEarLightChange: ((Boolean) -> Unit)? = null,
     onExitToDisplay: (() -> Unit)? = null,
 ) {
     // 外部托管表情时用外部的，否则自己管，方便单独预览这个页面
@@ -75,6 +82,18 @@ fun FacePreviewScreen(
 
     var animate by remember { mutableStateOf(true) }
     var surface by remember { mutableStateOf(FaceSurface.PRODUCT_MOCKUP) }
+    // 扩散光晕开关：只关掉最外层那圈大面积辉光，近边发光保留
+    var internalDiffuseGlow by remember { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
+    val currentDiffuseGlow = diffuseGlow ?: internalDiffuseGlow
+    val selectDiffuseGlow: (Float) -> Unit = { value ->
+        if (onDiffuseGlowChange != null) onDiffuseGlowChange(value) else internalDiffuseGlow = value
+    }
+    // 耳朵灯开关：关掉之后耳朵与耳后的暖光晕全部消失
+    var internalEarLight by remember { mutableStateOf(true) }
+    val currentEarLight = earLight ?: internalEarLight
+    val selectEarLight: (Boolean) -> Unit = { value ->
+        if (onEarLightChange != null) onEarLightChange(value) else internalEarLight = value
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -90,6 +109,8 @@ fun FacePreviewScreen(
                     expression = currentExpression,
                     animate = animate,
                     surface = surface,
+                    earLight = currentEarLight,
+                    diffuseGlow = currentDiffuseGlow,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 ControlPane(
@@ -99,6 +120,10 @@ fun FacePreviewScreen(
                     onAnimateChange = { animate = it },
                     surface = surface,
                     onSurfaceChange = { surface = it },
+                    earLight = currentEarLight,
+                    onEarLightChange = selectEarLight,
+                    diffuseGlow = currentDiffuseGlow,
+                    onDiffuseGlowChange = selectDiffuseGlow,
                     onExitToDisplay = onExitToDisplay,
                     modifier = Modifier.width(controlWidth).fillMaxHeight(),
                 )
@@ -109,6 +134,8 @@ fun FacePreviewScreen(
                     expression = currentExpression,
                     animate = animate,
                     surface = surface,
+                    earLight = currentEarLight,
+                    diffuseGlow = currentDiffuseGlow,
                     modifier = Modifier.fillMaxWidth().weight(0.55f),
                 )
                 ControlPane(
@@ -118,6 +145,10 @@ fun FacePreviewScreen(
                     onAnimateChange = { animate = it },
                     surface = surface,
                     onSurfaceChange = { surface = it },
+                    earLight = currentEarLight,
+                    onEarLightChange = selectEarLight,
+                    diffuseGlow = currentDiffuseGlow,
+                    onDiffuseGlowChange = selectDiffuseGlow,
                     onExitToDisplay = onExitToDisplay,
                     // 窄屏上下布局：预览占 55%、操作区占 45%，列表在操作区内滚动
                     modifier = Modifier.fillMaxWidth().weight(0.45f),
@@ -132,14 +163,19 @@ private fun PreviewPane(
     expression: FaceExpression,
     animate: Boolean,
     surface: FaceSurface,
+    earLight: Boolean,
+    diffuseGlow: Float,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier.drawBehind {
-            // 背后的暖色环境光，让发光屏幕有“落在桌面上的光”
+            // 背后的暖色环境光，让发光屏幕有“落在桌面上的光”；关掉耳朵灯时一起收掉
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Accent.copy(alpha = 0.16f), Color.Transparent),
+                    colors = listOf(
+                        Accent.copy(alpha = if (earLight) 0.16f else 0f),
+                        Color.Transparent,
+                    ),
                     center = Offset(size.width / 2f, size.height * 0.42f),
                     radius = size.minDimension * 0.75f,
                 ),
@@ -155,6 +191,8 @@ private fun PreviewPane(
                 animate = animate,
                 modifier = Modifier.fillMaxSize().padding(12.dp),
                 surface = FaceSurface.PRODUCT_MOCKUP,
+                earLight = earLight,
+                diffuseGlow = diffuseGlow,
             )
 
             // 实机模式：按 4.0 英寸 16:9 的比例预览屏幕里真正会显示的内容
@@ -175,6 +213,8 @@ private fun PreviewPane(
                         animate = animate,
                         modifier = Modifier.fillMaxSize(),
                         surface = FaceSurface.DEVICE_SCREEN,
+                        earLight = earLight,
+                        diffuseGlow = diffuseGlow,
                     )
                 }
             }
@@ -191,6 +231,10 @@ private fun ControlPane(
     onAnimateChange: (Boolean) -> Unit,
     surface: FaceSurface,
     onSurfaceChange: (FaceSurface) -> Unit,
+    earLight: Boolean,
+    onEarLightChange: (Boolean) -> Unit,
+    diffuseGlow: Float,
+    onDiffuseGlowChange: (Float) -> Unit,
     onExitToDisplay: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
@@ -271,6 +315,18 @@ private fun ControlPane(
                 label = "实机屏幕",
                 selected = surface == FaceSurface.DEVICE_SCREEN,
                 onClick = { onSurfaceChange(FaceSurface.DEVICE_SCREEN) },
+            )
+            CompactChip(
+                label = "耳朵灯",
+                selected = earLight,
+                onClick = { onEarLightChange(!earLight) },
+            )
+            CompactChip(
+                label = "扩散光晕",
+                selected = diffuseGlow > 0.01f,
+                onClick = {
+                    onDiffuseGlowChange(if (diffuseGlow > 0.01f) 0f else DEFAULT_DIFFUSE_GLOW)
+                },
             )
         }
 
