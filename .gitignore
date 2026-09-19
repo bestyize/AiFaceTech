@@ -1,0 +1,18 @@
+# 构建产物
+**/build/
+.gradle/
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+
+# 本地环境配置（含 Android SDK 路径，不进版本库）
+local.properties
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
