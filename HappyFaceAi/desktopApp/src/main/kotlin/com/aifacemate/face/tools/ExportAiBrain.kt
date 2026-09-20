@@ -15,11 +15,18 @@ import java.io.File
 @OptIn(ExperimentalComposeUiApi::class)
 fun main(args: Array<String>) {
     val output = File(args.firstOrNull() ?: "build/ai-brain").apply { mkdirs() }
-    listOf(Triple("wide", 1440, 900), Triple("device-landscape", 817, 375)).forEach { (name, width, height) ->
+    // 第三张用「自定义」提供商：它没有内置模型，用来走查空态文案。
+    val cases = listOf(
+        Triple("wide", 1440, 900) to AiBrainUiState(),
+        Triple("device-landscape", 817, 375) to AiBrainUiState(),
+        Triple("device-landscape-custom-provider", 817, 375) to AiBrainUiState().selectProvider("custom"),
+    )
+    cases.forEach { (size, state) ->
+        val (name, width, height) = size
         val scene = ImageComposeScene(width, height, Density(1f)) {
             MaterialTheme(colorScheme = darkColorScheme(primary = LifeColors.Amber)) {
                 AiBrainScreen(
-                    state = AiBrainUiState(),
+                    state = state,
                     onBack = {},
                     onProviderSelected = {},
                     onModelSelected = {},

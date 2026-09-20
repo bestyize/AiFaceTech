@@ -933,6 +933,15 @@ private fun AiBrainTitleRow(compact: Boolean, onBack: () -> Unit) {
 /** 当前大脑：展示（不配置）供应商、模型、特点标签，以及小星状态。 */
 @Composable
 private fun CurrentBrainCard(state: AiBrainUiState, compact: Boolean) {
+    val model = state.selectedModel
+    val modelName = model.name.ifEmpty { "未选择模型" }
+    val modelDetail = model.summary.ifEmpty { model.description }.ifEmpty {
+        if (modelName == "未选择模型") {
+            "点「获取模型列表」或 ＋ 添加模型"
+        } else {
+            "来自 ${state.selectedProvider.name} 的可用模型"
+        }
+    }
     BrainCard(compact) {
         Row(
             Modifier.fillMaxWidth(),
@@ -953,7 +962,7 @@ private fun CurrentBrainCard(state: AiBrainUiState, compact: Boolean) {
             ProviderMark(state.selectedProvider.id, if (compact) 34.dp else 56.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 5.dp)) {
                 Text(
-                    "${state.selectedProvider.name} · ${state.selectedModel.name}",
+                    "${state.selectedProvider.name} · $modelName",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = if (compact) 11.sp else 21.sp,
@@ -961,9 +970,7 @@ private fun CurrentBrainCard(state: AiBrainUiState, compact: Boolean) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    state.selectedModel.summary
-                        .ifEmpty { state.selectedModel.description }
-                        .ifEmpty { "来自 ${state.selectedProvider.name} 的可用模型" },
+                    modelDetail,
                     color = LifeColors.Secondary,
                     fontSize = if (compact) 10.sp else 13.sp,
                     maxLines = 1,
