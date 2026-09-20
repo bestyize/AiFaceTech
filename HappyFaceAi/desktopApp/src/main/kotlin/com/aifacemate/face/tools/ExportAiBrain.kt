@@ -28,7 +28,7 @@ fun main(args: Array<String>) {
                     onBaseUrlChanged = {},
                     onApiKeyChanged = {},
                     onModelChanged = {},
-                    onSave = {},
+                    onFetchModels = {},
                 )
             }
         }

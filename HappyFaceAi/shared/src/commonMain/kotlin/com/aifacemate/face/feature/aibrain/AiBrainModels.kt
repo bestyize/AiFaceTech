@@ -11,6 +11,8 @@ data class AiModel(
     val description: String,
     val recommended: Boolean = false,
     val tags: List<String> = emptyList(),
+    /** 「当前大脑」卡片里的一句话概括；留空时回退到 [description]。 */
+    val summary: String = "",
 )
 
 data class AiProvider(
@@ -29,10 +31,11 @@ data class BrainConfig(
     val apiKey: String = "",
 )
 
-enum class ThinkingMode(val title: String, val description: String, val symbol: String) {
-    Fast("快速", "更快响应 · 简单问答", "⚡"),
-    Balanced("平衡", "效果与速度兼顾", "⚖"),
-    Deep("深度", "更深入思考 · 复杂任务", "◉"),
+/** 思考模式。[detail] 用换行分成两行，对齐设计稿的两行说明。 */
+enum class ThinkingMode(val title: String, val detail: String, val symbol: String) {
+    Fast("快速", "更快响应\n适合简单问题", "⚡"),
+    Balanced("平衡", "效果与速度兼顾\n日常推荐", "⚖"),
+    Deep("深度", "更深入的思考\n适合复杂问题", "◉"),
 }
 
 enum class AiCapability(val title: String, val description: String, val symbol: String) {
@@ -50,7 +53,7 @@ data class AiBrainUiState(
     val thinkingMode: ThinkingMode = ThinkingMode.Balanced,
     val capabilities: Map<AiCapability, Boolean> = AiCapability.entries.associateWith { true },
     val connectionStatus: ConnectionStatus = ConnectionStatus.Connected,
-    val statusMessage: String = "当前大脑已连接",
+    val statusMessage: String = "",
 ) {
     val selectedProvider: AiProvider
         get() = providers.firstOrNull { it.id == config.providerId } ?: providers.first()
@@ -79,6 +82,25 @@ data class AiBrainUiState(
             statusMessage = "已选择 ${model.name}",
         )
     }
+
+    /**
+     * 按当前供应商刷新模型列表。
+     *
+     * Alpha 阶段没有真实网络层，这里重新读取本地目录并给出提示；
+     * 接入服务端后只需替换这一处实现。
+     */
+    fun fetchModels(): AiBrainUiState {
+        val provider = selectedProvider
+        val ready = config.baseUrl.startsWith("http") && provider.models.isNotEmpty()
+        return copy(
+            connectionStatus = if (ready) ConnectionStatus.Connected else ConnectionStatus.Invalid,
+            statusMessage = if (ready) {
+                "已获取 ${provider.models.size} 个模型（本地目录）"
+            } else {
+                "请先填写有效的 API 地址"
+            },
+        )
+    }
 }
 
 class AiBrainViewModel : ViewModel() {
@@ -94,6 +116,8 @@ class AiBrainViewModel : ViewModel() {
     fun updateBaseUrl(value: String) { uiState = uiState.copy(config = uiState.config.copy(baseUrl = value)) }
     fun updateApiKey(value: String) { uiState = uiState.copy(config = uiState.config.copy(apiKey = value)) }
     fun updateModel(value: String) { uiState = uiState.copy(config = uiState.config.copy(modelId = value)) }
+
+    fun fetchModels() { uiState = uiState.fetchModels() }
 
     /** 当前 Alpha 只做必填项格式校验；真实网络探测由后续服务层接入。 */
     fun saveAndValidate() {
@@ -113,10 +137,17 @@ val defaultAiProviders = listOf(
         symbol = "DS",
         defaultBaseUrl = "https://api.deepseek.com/v1",
         models = listOf(
-            AiModel("deepseek-v4-pro", "DeepSeek-V4-Pro", "最强大的推理与创作能力", true, listOf("深度思考", "中文友好", "高性价比")),
-            AiModel("deepseek-flash", "DeepSeek-Flash", "更快的响应速度，适合日常对话"),
-            AiModel("deepseek-v3", "DeepSeek-V3", "稳定可靠，适合通用场景"),
-            AiModel("custom", "自定义", "使用自定义模型名称接入"),
+            AiModel(
+                id = "deepseek-v4-pro",
+                name = "DeepSeek-V4-Pro",
+                description = "最强大的推理与创作能力\n适合复杂任务",
+                recommended = true,
+                tags = listOf("深度思考", "中文友好", "高性价比"),
+                summary = "强大、快速、擅长中文的推理模型",
+            ),
+            AiModel("deepseek-flash", "DeepSeek-Flash", "更快的响应速度\n适合日常对话"),
+            AiModel("deepseek-v3", "DeepSeek-V3", "稳定可靠\n适合通用场景"),
+            AiModel("custom", "自定义", "使用自定义模型\n通过 OpenAI 格式接入"),
         ),
     ),
     AiProvider(
