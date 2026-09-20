@@ -229,7 +229,12 @@ class ExpressionLibraryTest {
         assertEquals(EyeShape.CHEVRON_LEFT, FaceExpression.NAUGHTY.params().rightEye.shape)
         assertEquals(EyeShape.CHEVRON_RIGHT, FaceExpression.STRETCHING.params().leftEye.shape)
         assertEquals(EyeShape.CHEVRON_LEFT, FaceExpression.STRETCHING.params().rightEye.shape)
-        assertEquals(EyeShape.HALF_LID, FaceExpression.WHISPERING.params().leftEye.shape)
+        assertEquals(EyeShape.CHEVRON_RIGHT, FaceExpression.EAGER.params().leftEye.shape)
+        assertEquals(EyeShape.CHEVRON_LEFT, FaceExpression.EAGER.params().rightEye.shape)
+        assertEquals(EyeShape.GLIMMER, FaceExpression.MISSING_YOU.params().leftEye.shape)
+        assertEquals(EyeShape.SIDE_EYE, FaceExpression.WHISPERING.params().leftEye.shape)
+        assertEquals(EyeShape.DROOPY, FaceExpression.TROUBLED.params().leftEye.shape)
+        assertEquals(EyeShape.PLEADING, FaceExpression.CLINGY.params().leftEye.shape)
         assertEquals(EyeShape.CLOSED, FaceExpression.SPEECHLESS.params().leftEye.shape)
 
         assertEquals(MouthShape.OPEN_O, FaceExpression.STRETCHING.params().mouth.shape)
@@ -239,15 +244,33 @@ class ExpressionLibraryTest {
         assertTrue(FaceMark.MUSIC_NOTE in FaceExpression.HUMMING.markSet(), "哼唱需要音符")
         assertTrue(FaceMark.BATTERY_FULL in FaceExpression.FULLY_CHARGED.markSet(), "满电需要电池图标")
         assertTrue(FaceMark.SUN in FaceExpression.NEW_DAY.markSet(), "迎接新的一天需要太阳")
+        assertTrue(FaceMark.THUMB_UP in FaceExpression.HELPFUL.markSet(), "乐于助人需要点赞手势")
 
-        // 设计图里“舒适 / 安心 / 哼唱”用的是下垂闭眼 ︶，不是眯眼弧 ∩
-        assertEquals(EyeShape.CALM_ARC, FaceExpression.COZY.params().leftEye.shape)
+        // 舒适用眯眼弧 ∩；安心 / 哼唱用下垂闭眼 ︶
+        assertEquals(EyeShape.HAPPY_ARC, FaceExpression.COZY.params().leftEye.shape)
         assertEquals(EyeShape.CALM_ARC, FaceExpression.REASSURED.params().leftEye.shape)
         assertEquals(EyeShape.CALM_ARC, FaceExpression.HUMMING.params().leftEye.shape)
 
         // 舒适：两颊各一组红色斜线
         val cozyLines = ExpressionLibrary.paramsFor(FaceExpression.COZY).marks.count { it.mark == FaceMark.SPARK_LINES }
         assertEquals(2, cozyLines, "舒适需要两颊红色斜线")
+
+        // 设计稿中的普通圆环眼没有实心白瞳
+        listOf(
+            FaceExpression.ACKNOWLEDGING,
+            FaceExpression.NAUGHTY,
+            FaceExpression.FAITHFUL_WAITING,
+            FaceExpression.ATTENTIVE,
+            FaceExpression.NEW_DAY,
+        ).forEach { expression ->
+            val params = expression.params()
+            if (params.leftEye.shape == EyeShape.OPEN || params.leftEye.shape == EyeShape.WIDE) {
+                assertEquals(0f, params.leftEye.pupilAlpha, "${expression.cnName} 左眼应是空心圆环")
+            }
+            if (params.rightEye.shape == EyeShape.OPEN || params.rightEye.shape == EyeShape.WIDE) {
+                assertEquals(0f, params.rightEye.pupilAlpha, "${expression.cnName} 右眼应是空心圆环")
+            }
+        }
     }
 
     @Test

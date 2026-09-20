@@ -428,8 +428,139 @@ private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetri
                     style = Stroke(width = strokeWidth * 0.6f, join = StrokeJoin.Round),
                 )
             }
+
+            EyeShape.GLIMMER -> drawGlimmerEye(center, radius, eye, strokeWidth, color, glow, diffuse)
+            EyeShape.SIDE_EYE -> drawSideEye(center, radius, eye, color)
+            EyeShape.DROOPY -> drawDroopyEye(center, radius, strokeWidth, color)
+            EyeShape.PLEADING -> drawPleadingEye(center, radius, eye, strokeWidth, color)
         }
     }
+}
+
+/** 环形大眼里放一大一小两颗高光，避免普通 pupil 画成实心白点。 */
+private fun DrawScope.drawGlimmerEye(
+    center: Offset,
+    radius: Float,
+    eye: EyeParams,
+    strokeWidth: Float,
+    color: Color,
+    glow: Float,
+    diffuse: Float,
+) {
+    drawRingEye(center, radius, eye.copy(pupilAlpha = 0f), strokeWidth, color, glow, diffuse)
+    val direction = if (eye.pupilOffsetX < 0f) -1f else 1f
+    drawCircle(
+        color = color,
+        radius = radius * 0.23f,
+        center = center + Offset(-direction * radius * 0.22f, radius * 0.2f),
+    )
+    drawCircle(
+        color = color,
+        radius = radius * 0.1f,
+        center = center + Offset(direction * radius * 0.2f, -radius * 0.28f),
+    )
+    drawLine(
+        color = color,
+        start = center + Offset(direction * radius * 0.55f, -radius * 0.78f),
+        end = center + Offset(direction * radius * 0.78f, -radius * 1.02f),
+        strokeWidth = strokeWidth * 0.55f,
+        cap = StrokeCap.Round,
+    )
+}
+
+/** 白色杏仁形眼白 + 暗瞳；pupilOffsetX 控制视线方向。 */
+private fun DrawScope.drawSideEye(
+    center: Offset,
+    radius: Float,
+    eye: EyeParams,
+    color: Color,
+) {
+    val path = Path().apply {
+        moveTo(center.x - radius, center.y)
+        quadraticTo(center.x, center.y - radius * 0.78f, center.x + radius, center.y - radius * 0.08f)
+        quadraticTo(center.x, center.y + radius * 0.78f, center.x - radius, center.y)
+        close()
+    }
+    drawPath(path, color.copy(alpha = 0.16f))
+    drawPath(path, color)
+    val pupilCenter = center + Offset(
+        x = eye.pupilOffsetX.coerceIn(-1f, 1f) * radius * 0.5f,
+        y = eye.pupilOffsetY.coerceIn(-1f, 1f) * radius * 0.25f,
+    )
+    drawCircle(
+        color = Color.Black.copy(alpha = 0.82f),
+        radius = radius * 0.38f,
+        center = pupilCenter,
+    )
+    drawCircle(
+        color = color.copy(alpha = 0.55f),
+        radius = radius * 0.1f,
+        center = pupilCenter + Offset(-radius * 0.1f, -radius * 0.12f),
+    )
+}
+
+/** 忧愁时下坠的闭合眼线。 */
+private fun DrawScope.drawDroopyEye(
+    center: Offset,
+    radius: Float,
+    strokeWidth: Float,
+    color: Color,
+) {
+    val path = Path().apply {
+        moveTo(center.x - radius * 0.9f, center.y - radius * 0.3f)
+        cubicTo(
+            center.x - radius * 0.45f, center.y + radius * 0.75f,
+            center.x + radius * 0.35f, center.y + radius * 0.78f,
+            center.x + radius * 0.85f, center.y - radius * 0.25f,
+        )
+        cubicTo(
+            center.x + radius * 0.2f, center.y + radius * 0.28f,
+            center.x - radius * 0.2f, center.y + radius * 0.28f,
+            center.x - radius * 0.9f, center.y - radius * 0.3f,
+        )
+    }
+    drawPath(path, color.copy(alpha = 0.2f), style = Stroke(width = strokeWidth * 1.6f, cap = StrokeCap.Round))
+    drawPath(path, color, style = Stroke(width = strokeWidth * 0.65f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+}
+
+/** 水滴状大眼，内部暗瞳略向下，外侧顶部带一根短睫毛。 */
+private fun DrawScope.drawPleadingEye(
+    center: Offset,
+    radius: Float,
+    eye: EyeParams,
+    strokeWidth: Float,
+    color: Color,
+) {
+    val direction = if (eye.pupilOffsetX < 0f) -1f else 1f
+    val path = Path().apply {
+        moveTo(center.x - radius * 0.78f, center.y - radius * 0.35f)
+        quadraticTo(center.x, center.y - radius * 0.95f, center.x + radius * 0.78f, center.y - radius * 0.35f)
+        cubicTo(
+            center.x + radius * 0.82f, center.y + radius * 0.55f,
+            center.x + radius * 0.32f, center.y + radius * 0.92f,
+            center.x, center.y + radius * 0.82f,
+        )
+        cubicTo(
+            center.x - radius * 0.5f, center.y + radius * 0.72f,
+            center.x - radius * 0.88f, center.y + radius * 0.35f,
+            center.x - radius * 0.78f, center.y - radius * 0.35f,
+        )
+        close()
+    }
+    drawPath(path, color.copy(alpha = 0.2f), style = Stroke(width = strokeWidth * 1.7f, join = StrokeJoin.Round))
+    drawPath(path, color, style = Stroke(width = strokeWidth * 0.75f, join = StrokeJoin.Round))
+    drawCircle(
+        color = Color.Black.copy(alpha = 0.8f),
+        radius = radius * 0.32f,
+        center = center + Offset(eye.pupilOffsetX * radius * 0.25f, radius * 0.12f),
+    )
+    drawLine(
+        color = color,
+        start = center + Offset(direction * radius * 0.45f, -radius * 0.72f),
+        end = center + Offset(direction * radius * 0.68f, -radius * 1.0f),
+        strokeWidth = strokeWidth * 0.55f,
+        cap = StrokeCap.Round,
+    )
 }
 
 /** 用力闭眼 / 眨眼的折线眼：两条直线在顶点相接，顶点朝内（设计图 79、88）。 */
@@ -609,8 +740,9 @@ private fun DrawScope.drawMouth(metrics: FaceMetrics, mouth: MouthParams, diffus
         MouthShape.SMALL_O -> {
             drawOval(
                 color = color,
-                topLeft = Offset(center.x - halfWidth * 0.3f, center.y - halfWidth * 0.36f),
-                size = Size(halfWidth * 0.6f, halfWidth * 0.72f),
+                topLeft = Offset(center.x - halfWidth * 0.4f, center.y - halfWidth * 0.275f),
+                size = Size(halfWidth * 0.8f, halfWidth * 0.55f),
+                style = Stroke(width = strokeWidth * 0.75f, cap = StrokeCap.Round),
             )
         }
 
@@ -642,8 +774,8 @@ private fun DrawScope.drawMouth(metrics: FaceMetrics, mouth: MouthParams, diffus
             )
             drawOval(
                 color = FacePalette.Tongue.copy(alpha = 0.95f),
-                topLeft = Offset(center.x - halfWidth * 0.3f, center.y + halfWidth * 0.15f),
-                size = Size(halfWidth * 0.6f, halfWidth * 0.7f),
+                topLeft = Offset(center.x - halfWidth * 0.38f, center.y + halfWidth * 0.08f),
+                size = Size(halfWidth * 0.76f, halfWidth * 1.02f),
             )
         }
 
@@ -851,31 +983,36 @@ private fun DrawScope.drawMark(metrics: FaceMetrics, mark: MarkParams) {
                 )
             }
 
-            FaceMark.THUMB_UP -> {
-                val fistWidth = size * 0.62f
-                val fistHeight = size * 0.46f
-                drawRoundRect(
-                    color = color,
-                    topLeft = Offset(center.x - fistWidth * 0.5f, center.y + size * 0.04f),
-                    size = Size(fistWidth, fistHeight),
-                    cornerRadius = CornerRadius(size * 0.16f),
-                    style = Stroke(width = strokeWidth * 1.1f, join = StrokeJoin.Round),
-                )
-                // 竖起来的拇指
-                drawRoundRect(
-                    color = color,
-                    topLeft = Offset(center.x + fistWidth * 0.02f, center.y - size * 0.62f),
-                    size = Size(fistWidth * 0.44f, size * 0.7f),
-                    cornerRadius = CornerRadius(fistWidth * 0.22f),
-                    style = Stroke(width = strokeWidth * 1.1f, join = StrokeJoin.Round),
-                )
+        FaceMark.THUMB_UP -> {
+                val hand = Path().apply {
+                    moveTo(center.x - size * 0.45f, center.y + size * 0.48f)
+                    lineTo(center.x + size * 0.28f, center.y + size * 0.48f)
+                    quadraticTo(
+                        center.x + size * 0.55f, center.y + size * 0.42f,
+                        center.x + size * 0.5f, center.y + size * 0.12f,
+                    )
+                    lineTo(center.x + size * 0.4f, center.y - size * 0.02f)
+                    lineTo(center.x + size * 0.14f, center.y - size * 0.02f)
+                    lineTo(center.x + size * 0.14f, center.y - size * 0.62f)
+                    quadraticTo(
+                        center.x + size * 0.05f, center.y - size * 0.82f,
+                        center.x - size * 0.1f, center.y - size * 0.62f,
+                    )
+                    lineTo(center.x - size * 0.38f, center.y - size * 0.05f)
+                    quadraticTo(
+                        center.x - size * 0.5f, center.y + size * 0.08f,
+                        center.x - size * 0.45f, center.y + size * 0.48f,
+                    )
+                    close()
+                }
+                drawPath(hand, color)
                 repeat(2) { index ->
-                    val y = center.y + size * 0.04f + fistHeight * (0.36f + index * 0.32f)
+                    val y = center.y + size * (0.17f + index * 0.16f)
                     drawLine(
-                        color = color.copy(alpha = color.alpha * 0.65f),
-                        start = Offset(center.x - fistWidth * 0.3f, y),
-                        end = Offset(center.x - fistWidth * 0.02f, y),
-                        strokeWidth = strokeWidth * 0.8f,
+                        color = Color.Black.copy(alpha = 0.24f),
+                        start = Offset(center.x - size * 0.3f, y),
+                        end = Offset(center.x + size * 0.22f, y),
+                        strokeWidth = strokeWidth * 0.48f,
                         cap = StrokeCap.Round,
                     )
                 }
@@ -883,6 +1020,14 @@ private fun DrawScope.drawMark(metrics: FaceMetrics, mark: MarkParams) {
 
             FaceMark.PAW -> {
                 val padRadius = size * 0.3f
+                if (mark.scale >= 1.5f) {
+                    drawRoundRect(
+                        color = color,
+                        topLeft = Offset(center.x - size * 0.34f, center.y + size * 0.12f),
+                        size = Size(size * 0.68f, size * 0.58f),
+                        cornerRadius = CornerRadius(size * 0.3f),
+                    )
+                }
                 drawCircle(
                     color = color,
                     radius = padRadius,

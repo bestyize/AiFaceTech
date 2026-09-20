@@ -987,10 +987,10 @@ object ExpressionLibrary {
         FaceExpression.WELCOME_BACK -> FaceParams(
             scale = 1.02f,
             tiltDegrees = 2f,
-            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 1f),
-            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 1f),
-            mouth = MouthParams(shape = MouthShape.OPEN_SMILE, scale = 1.1f, showTongue = true),
-            blushAlpha = 0.55f,
+            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.9f),
+            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.9f),
+            mouth = MouthParams(shape = MouthShape.TONGUE, scale = 1.4f, showTongue = true),
+            blushAlpha = 0.28f,
             earGlow = 1.25f,
             marks = listOf(
                 MarkParams(
@@ -1004,23 +1004,13 @@ object ExpressionLibrary {
             ),
         )
 
-        // 77 迫不及待：圆眼向上看 + 张嘴吐舌 + 右上强调线
+        // 77 迫不及待：＞＜ 折线眼 + 张嘴吐舌 + 右上强调线
         FaceExpression.EAGER -> FaceParams(
             scale = 1.03f,
-            leftEye = EyeParams(
-                shape = EyeShape.OPEN,
-                radius = 1.05f,
-                pupilAlpha = 0.9f,
-                pupilOffsetY = -0.3f,
-            ),
-            rightEye = EyeParams(
-                shape = EyeShape.OPEN,
-                radius = 1.05f,
-                pupilAlpha = 0.9f,
-                pupilOffsetY = -0.3f,
-            ),
-            mouth = MouthParams(shape = MouthShape.OPEN_SMILE, scale = 1.15f, showTongue = true),
-            blushAlpha = 0.5f,
+            leftEye = EyeParams(shape = EyeShape.CHEVRON_RIGHT, radius = 0.95f),
+            rightEye = EyeParams(shape = EyeShape.CHEVRON_LEFT, radius = 0.95f),
+            mouth = MouthParams(shape = MouthShape.TONGUE, scale = 1.8f, showTongue = true),
+            blushAlpha = 0f,
             earGlow = 1.3f,
             marks = listOf(
                 MarkParams(
@@ -1034,53 +1024,54 @@ object ExpressionLibrary {
             ),
         )
 
-        // 78 认可：一只圆眼一只星星眼 + 猫嘴，表示“收到，可以”
+        // 78 认可：一只圆环眼 + 一只环内星星眼 + 右上四角星
         FaceExpression.ACKNOWLEDGING -> FaceParams(
-            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 1f, pupilAlpha = 0.9f),
-            rightEye = EyeParams(shape = EyeShape.STAR, radius = 0.85f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.8f),
-            blushAlpha = 0.2f,
+            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 0.9f),
+            rightEye = EyeParams(shape = EyeShape.STAR_RING, radius = 0.9f),
+            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.7f),
+            blushAlpha = 0f,
             earGlow = 1.15f,
+            marks = listOf(
+                MarkParams(FaceMark.SPARKLE, offsetX = 0.34f, offsetY = -0.3f, scale = 0.72f, tint = MarkTint.AMBER),
+            ),
         )
 
         // 79 淘气：一只圆眼一只尖角挤眼 ＜ + 吐舌
         FaceExpression.NAUGHTY -> FaceParams(
             tiltDegrees = -3f,
-            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 1.05f, pupilAlpha = 0.9f),
-            rightEye = EyeParams(shape = EyeShape.CHEVRON_LEFT, radius = 1f),
-            mouth = MouthParams(shape = MouthShape.TONGUE, scale = 1.05f),
-            blushAlpha = 0.4f,
+            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 0.95f),
+            rightEye = EyeParams(shape = EyeShape.CHEVRON_LEFT, radius = 0.88f),
+            mouth = MouthParams(shape = MouthShape.TONGUE, scale = 1.4f),
+            blushAlpha = 0f,
             earGlow = 1.2f,
         )
 
         // 80 安心：下垂闭眼 ︶ + 猫嘴 + 心形
         FaceExpression.REASSURED -> FaceParams(
-            leftEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.98f),
-            rightEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.98f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.9f),
-            blushAlpha = 0.35f,
+            leftEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.82f),
+            rightEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.82f),
+            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.75f),
+            blushAlpha = 0f,
             earGlow = 1.15f,
             marks = listOf(
                 MarkParams(FaceMark.HEART, offsetX = 0.34f, offsetY = -0.28f, scale = 0.85f, tint = MarkTint.PINK),
             ),
         )
 
-        // 81 想念：亮晶晶的大眼睛 + 小撇嘴 + 两颊红色斜线
+        // 81 想念：一大一小高光的大眼睛 + 小撇嘴 + 两颊红色斜线
         FaceExpression.MISSING_YOU -> FaceParams(
             leftEye = EyeParams(
-                shape = EyeShape.OPEN,
-                radius = 1.05f,
-                pupilAlpha = 0.95f,
-                pupilOffsetX = -0.15f,
+                shape = EyeShape.GLIMMER,
+                radius = 0.9f,
+                pupilOffsetX = -0.2f,
             ),
             rightEye = EyeParams(
-                shape = EyeShape.OPEN,
-                radius = 1.05f,
-                pupilAlpha = 0.95f,
-                pupilOffsetX = 0.15f,
+                shape = EyeShape.GLIMMER,
+                radius = 0.9f,
+                pupilOffsetX = 0.2f,
             ),
             mouth = MouthParams(shape = MouthShape.FROWN, scale = 0.5f),
-            blushAlpha = 0.4f,
+            blushAlpha = 0f,
             earGlow = 0.95f,
             marks = listOf(
                 MarkParams(
@@ -1104,23 +1095,23 @@ object ExpressionLibrary {
 
         // 82 守候：圆眼 + 猫嘴 + 时钟
         FaceExpression.FAITHFUL_WAITING -> FaceParams(
-            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 1.05f, pupilAlpha = 0.85f, pupilOffsetY = -0.1f),
-            rightEye = EyeParams(shape = EyeShape.OPEN, radius = 1.05f, pupilAlpha = 0.85f, pupilOffsetY = -0.1f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.85f),
-            blushAlpha = 0.2f,
+            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 0.92f),
+            rightEye = EyeParams(shape = EyeShape.OPEN, radius = 0.92f),
+            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.75f),
+            blushAlpha = 0f,
             earGlow = 1.1f,
             marks = listOf(
-                MarkParams(FaceMark.CLOCK, offsetX = 0.33f, offsetY = -0.28f, scale = 0.8f, tint = MarkTint.AMBER),
+                MarkParams(FaceMark.CLOCK, offsetX = 0.33f, offsetY = -0.28f, scale = 1.05f, tint = MarkTint.AMBER),
             ),
         )
 
         // 83 求表扬：眯眼笑 + 张嘴吐舌 + 右上琥珀斜线 + 两颊红色斜线
         FaceExpression.WANT_PRAISE -> FaceParams(
             scale = 1.02f,
-            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 1f),
-            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 1f),
-            mouth = MouthParams(shape = MouthShape.OPEN_SMILE, scale = 1.15f, showTongue = true),
-            blushAlpha = 0.6f,
+            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.88f),
+            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.88f),
+            mouth = MouthParams(shape = MouthShape.TONGUE, scale = 1.55f, showTongue = true),
+            blushAlpha = 0f,
             earGlow = 1.35f,
             marks = listOf(
                 MarkParams(
@@ -1153,10 +1144,10 @@ object ExpressionLibrary {
         // 84 被奖励：白环套金色五角星的眼睛 + 张嘴吐舌 + 两颊红斜线
         FaceExpression.REWARDED -> FaceParams(
             scale = 1.03f,
-            leftEye = EyeParams(shape = EyeShape.STAR_RING, radius = 1.05f),
-            rightEye = EyeParams(shape = EyeShape.STAR_RING, radius = 1.05f),
-            mouth = MouthParams(shape = MouthShape.OPEN_SMILE, scale = 1.15f, showTongue = true),
-            blushAlpha = 0.55f,
+            leftEye = EyeParams(shape = EyeShape.STAR_RING, radius = 0.9f),
+            rightEye = EyeParams(shape = EyeShape.STAR_RING, radius = 0.9f),
+            mouth = MouthParams(shape = MouthShape.TONGUE, scale = 1.55f, showTongue = true),
+            blushAlpha = 0f,
             earGlow = 1.35f,
             marks = listOf(
                 MarkParams(
@@ -1181,10 +1172,10 @@ object ExpressionLibrary {
         // 85 被夸奖：眯眼弧 + 小圆嘴 + 左右两颗爱心 + 两颊红斜线
         FaceExpression.FLATTERED -> FaceParams(
             scale = 1.02f,
-            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.95f),
-            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.95f),
-            mouth = MouthParams(shape = MouthShape.SMALL_O, scale = 0.5f),
-            blushAlpha = 0.5f,
+            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.85f),
+            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.85f),
+            mouth = MouthParams(shape = MouthShape.SMALL_O, scale = 0.9f),
+            blushAlpha = 0f,
             earGlow = 1.3f,
             marks = listOf(
                 MarkParams(FaceMark.HEART, offsetX = -0.34f, offsetY = -0.3f, scale = 0.8f, tint = MarkTint.PINK),
@@ -1208,12 +1199,12 @@ object ExpressionLibrary {
             ),
         )
 
-        // 86 专心倾听：两只圆眼看向同侧 + 小圆嘴 + 强调线
+        // 86 专心倾听：两只圆环眼 + 小撇嘴 + 强调线
         FaceExpression.ATTENTIVE -> FaceParams(
-            leftEye = EyeParams(shape = EyeShape.WIDE, radius = 1.1f, pupilAlpha = 0.9f, pupilOffsetX = 0.3f),
-            rightEye = EyeParams(shape = EyeShape.WIDE, radius = 1.1f, pupilAlpha = 0.9f, pupilOffsetX = 0.3f),
-            mouth = MouthParams(shape = MouthShape.SMALL_O, scale = 0.65f),
-            blushAlpha = 0.1f,
+            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 0.92f),
+            rightEye = EyeParams(shape = EyeShape.OPEN, radius = 0.92f),
+            mouth = MouthParams(shape = MouthShape.FROWN, scale = 0.48f),
+            blushAlpha = 0f,
             earGlow = 1.2f,
             marks = listOf(
                 MarkParams(
@@ -1227,16 +1218,16 @@ object ExpressionLibrary {
             ),
         )
 
-        // 87 小声说：半睁垂眼 + 大手掌挡在嘴前 + 右颊红斜线
+        // 87 小声说：侧视眼 + 大手掌挡在嘴前 + 右颊红斜线
         FaceExpression.WHISPERING -> FaceParams(
             tiltDegrees = -2f,
-            leftEye = EyeParams(shape = EyeShape.HALF_LID, radius = 1f, tiltDegrees = -10f),
-            rightEye = EyeParams(shape = EyeShape.HALF_LID, radius = 1f, tiltDegrees = 10f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.55f, offsetY = -0.07f),
-            blushAlpha = 0.3f,
+            leftEye = EyeParams(shape = EyeShape.SIDE_EYE, radius = 1.05f, pupilOffsetX = 0.42f, tiltDegrees = -4f),
+            rightEye = EyeParams(shape = EyeShape.SIDE_EYE, radius = 1.05f, pupilOffsetX = 0.42f, tiltDegrees = 4f),
+            mouth = MouthParams(shape = MouthShape.FROWN, scale = 0.42f, offsetY = -0.05f),
+            blushAlpha = 0f,
             earGlow = 1f,
             marks = listOf(
-                MarkParams(FaceMark.PAW, offsetX = 0f, offsetY = 0.17f, scale = 1.05f),
+                MarkParams(FaceMark.PAW, offsetX = 0f, offsetY = 0.24f, scale = 3f),
                 MarkParams(
                     FaceMark.SPARK_LINES,
                     offsetX = 0.36f,
@@ -1254,20 +1245,20 @@ object ExpressionLibrary {
             leftEye = EyeParams(shape = EyeShape.CHEVRON_RIGHT, radius = 1f),
             rightEye = EyeParams(shape = EyeShape.CHEVRON_LEFT, radius = 1f),
             mouth = MouthParams(shape = MouthShape.OPEN_O, scale = 1.1f, showTongue = true),
-            blushAlpha = 0.35f,
+            blushAlpha = 0f,
             earGlow = 1.2f,
             marks = listOf(
-                MarkParams(FaceMark.PAW, offsetX = -0.42f, offsetY = 0.2f, scale = 0.9f),
-                MarkParams(FaceMark.PAW, offsetX = 0.42f, offsetY = 0.2f, scale = 0.9f),
+                MarkParams(FaceMark.PAW, offsetX = -0.4f, offsetY = 0.23f, scale = 2.5f),
+                MarkParams(FaceMark.PAW, offsetX = 0.4f, offsetY = 0.23f, scale = 2.5f),
             ),
         )
 
-        // 89 舒适：下垂闭眼 ︶ + 猫嘴 + 两颊红色斜线
+        // 89 舒适：眯眼弧 ∩ + 猫嘴 + 两颊红色斜线
         FaceExpression.COZY -> FaceParams(
-            leftEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.92f),
-            rightEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.92f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.9f),
-            blushAlpha = 0.35f,
+            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.84f),
+            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.84f),
+            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.76f),
+            blushAlpha = 0f,
             earGlow = 1.2f,
             marks = listOf(
                 MarkParams(
@@ -1289,13 +1280,13 @@ object ExpressionLibrary {
             ),
         )
 
-        // 90 害羞笑：眯眼 + 吐舌 + 左颊红色斜线
+        // 90 害羞笑：眯眼 + 猫嘴 + 两颊红线 + 右侧遮脸爪子
         FaceExpression.BASHFUL_SMILE -> FaceParams(
             tiltDegrees = 3f,
-            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.95f),
-            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.95f),
-            mouth = MouthParams(shape = MouthShape.TONGUE, scale = 0.9f),
-            blushAlpha = 1f,
+            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.85f),
+            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.85f),
+            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.75f),
+            blushAlpha = 0f,
             earGlow = 1.1f,
             marks = listOf(
                 MarkParams(
@@ -1306,88 +1297,93 @@ object ExpressionLibrary {
                     tint = MarkTint.RED,
                     tiltDegrees = 60f,
                 ),
+                MarkParams(
+                    FaceMark.SPARK_LINES,
+                    offsetX = 0.34f,
+                    offsetY = 0.14f,
+                    scale = 0.6f,
+                    tint = MarkTint.RED,
+                    tiltDegrees = 60f,
+                ),
+                MarkParams(FaceMark.PAW, offsetX = 0.4f, offsetY = 0.22f, scale = 2.8f),
             ),
         )
 
         // 91 无语：两条平线眼 + 一条平线嘴 + 省略号
         FaceExpression.SPEECHLESS -> FaceParams(
-            leftEye = EyeParams(shape = EyeShape.CLOSED, radius = 0.9f, glow = 0.9f),
-            rightEye = EyeParams(shape = EyeShape.CLOSED, radius = 0.9f, glow = 0.9f),
-            mouth = MouthParams(shape = MouthShape.FLAT, scale = 0.75f),
+            leftEye = EyeParams(shape = EyeShape.CLOSED, radius = 0.8f, glow = 0.9f),
+            rightEye = EyeParams(shape = EyeShape.CLOSED, radius = 0.8f, glow = 0.9f),
+            mouth = MouthParams(shape = MouthShape.FLAT, scale = 0.5f),
             earGlow = 0.8f,
             marks = listOf(
-                MarkParams(FaceMark.DOTS, offsetX = 0.3f, offsetY = -0.3f, scale = 0.8f),
+                MarkParams(FaceMark.DOTS, offsetX = 0.28f, offsetY = -0.3f, scale = 0.65f),
             ),
         )
 
-        // 92 烦恼：垂眼 + 波浪嘴 + 玫瑰花
+        // 92 烦恼：下垂泪滴眼 + 小撇嘴 + 乱线团
         FaceExpression.TROUBLED -> FaceParams(
             tiltDegrees = -3f,
-            leftEye = EyeParams(shape = EyeShape.HALF_LID, radius = 0.98f, tiltDegrees = -14f),
-            rightEye = EyeParams(shape = EyeShape.HALF_LID, radius = 0.98f, tiltDegrees = 14f),
-            mouth = MouthParams(shape = MouthShape.WAVY, scale = 0.75f),
-            blushAlpha = 0.25f,
+            leftEye = EyeParams(shape = EyeShape.DROOPY, radius = 1.08f, tiltDegrees = -7f),
+            rightEye = EyeParams(shape = EyeShape.DROOPY, radius = 1.08f, tiltDegrees = 7f),
+            mouth = MouthParams(shape = MouthShape.FROWN, scale = 0.48f),
+            blushAlpha = 0f,
             earGlow = 0.85f,
             marks = listOf(
-                MarkParams(FaceMark.ROSE, offsetX = 0.32f, offsetY = -0.28f, scale = 0.9f, tint = MarkTint.AMBER),
+                MarkParams(FaceMark.ROSE, offsetX = 0.32f, offsetY = -0.28f, scale = 1.35f, tint = MarkTint.AMBER),
             ),
         )
 
         // 93 手足无措：螺旋眼 + 小圆嘴 + 冷汗
         FaceExpression.FLUSTERED -> FaceParams(
             tiltDegrees = 4f,
-            leftEye = EyeParams(shape = EyeShape.SPIRAL, radius = 0.95f),
-            rightEye = EyeParams(shape = EyeShape.SPIRAL, radius = 0.95f),
-            mouth = MouthParams(shape = MouthShape.SMALL_O, scale = 0.6f),
-            blushAlpha = 0.5f,
+            leftEye = EyeParams(shape = EyeShape.SPIRAL, radius = 0.78f, glow = 0.85f),
+            rightEye = EyeParams(shape = EyeShape.SPIRAL, radius = 0.78f, glow = 0.85f),
+            mouth = MouthParams(shape = MouthShape.FROWN, scale = 0.48f),
+            blushAlpha = 0f,
             earGlow = 1f,
             marks = listOf(
                 MarkParams(FaceMark.SWEAT, offsetX = 0.34f, offsetY = -0.3f, scale = 1f, tint = MarkTint.BLUE),
+                MarkParams(FaceMark.SWEAT, offsetX = 0.43f, offsetY = -0.12f, scale = 0.72f, tint = MarkTint.BLUE),
             ),
         )
 
-        // 94 依赖：一双圆眼 + 猫嘴 + 心形 + 两只爪子托在下巴
+        // 94 依赖：一双下垂大眼 + 撇嘴 + 心形 + 两只爪子托在下巴
         FaceExpression.CLINGY -> FaceParams(
             tiltDegrees = -3f,
-            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 1.05f, pupilAlpha = 0.9f, pupilOffsetY = 0.12f),
-            rightEye = EyeParams(shape = EyeShape.OPEN, radius = 1.05f, pupilAlpha = 0.9f, pupilOffsetY = 0.12f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.8f),
-            blushAlpha = 0.6f,
+            leftEye = EyeParams(shape = EyeShape.PLEADING, radius = 0.92f, pupilOffsetX = -0.2f),
+            rightEye = EyeParams(shape = EyeShape.PLEADING, radius = 0.92f, pupilOffsetX = 0.2f),
+            mouth = MouthParams(shape = MouthShape.FROWN, scale = 0.5f),
+            blushAlpha = 0f,
             earGlow = 1.15f,
             marks = listOf(
                 MarkParams(FaceMark.HEART, offsetX = 0.34f, offsetY = -0.3f, scale = 0.8f, tint = MarkTint.PINK),
-                MarkParams(FaceMark.PAW, offsetX = -0.34f, offsetY = 0.24f, scale = 0.9f),
-                MarkParams(FaceMark.PAW, offsetX = 0.34f, offsetY = 0.24f, scale = 0.9f),
+                MarkParams(FaceMark.PAW, offsetX = -0.34f, offsetY = 0.27f, scale = 2.8f),
+                MarkParams(FaceMark.PAW, offsetX = 0.34f, offsetY = 0.27f, scale = 2.8f),
             ),
         )
 
-        // 95 偷看：一只圆眼斜看一只闭眼 + 强调线
+        // 95 偷看：两只侧视眼 + 小撇嘴 + 强调线
         FaceExpression.SNEAKING_A_PEEK -> FaceParams(
             tiltDegrees = -4f,
-            leftEye = EyeParams(
-                shape = EyeShape.OPEN,
-                radius = 1.05f,
-                pupilAlpha = 0.9f,
-                pupilOffsetX = -0.35f,
-            ),
-            rightEye = EyeParams(shape = EyeShape.CLOSED, radius = 0.9f, tiltDegrees = -8f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.7f),
-            blushAlpha = 0.3f,
+            leftEye = EyeParams(shape = EyeShape.SIDE_EYE, radius = 1.08f, pupilOffsetX = 0.42f, tiltDegrees = -4f),
+            rightEye = EyeParams(shape = EyeShape.SIDE_EYE, radius = 1.08f, pupilOffsetX = 0.42f, tiltDegrees = 4f),
+            mouth = MouthParams(shape = MouthShape.FROWN, scale = 0.46f),
+            blushAlpha = 0f,
             earGlow = 1f,
             marks = listOf(
-                MarkParams(FaceMark.SPARK_LINES, offsetX = 0.33f, offsetY = -0.3f, scale = 0.7f),
+                MarkParams(FaceMark.SPARK_LINES, offsetX = 0.33f, offsetY = -0.3f, scale = 0.78f, tint = MarkTint.AMBER),
             ),
         )
 
-        // 96 乐于助人：眯眼笑 + 小圆嘴 + 爪子 + 右上琥珀斜线
+        // 96 乐于助人：眯眼笑 + 小圆嘴 + 点赞 + 右上琥珀斜线
         FaceExpression.HELPFUL -> FaceParams(
-            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.95f),
-            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.95f),
-            mouth = MouthParams(shape = MouthShape.SMALL_O, scale = 0.5f),
-            blushAlpha = 0.45f,
+            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.85f),
+            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.85f),
+            mouth = MouthParams(shape = MouthShape.SMALL_O, scale = 0.9f),
+            blushAlpha = 0f,
             earGlow = 1.25f,
             marks = listOf(
-                MarkParams(FaceMark.PAW, offsetX = -0.38f, offsetY = 0.22f, scale = 0.9f),
+                MarkParams(FaceMark.THUMB_UP, offsetX = -0.36f, offsetY = 0.2f, scale = 2.4f),
                 MarkParams(
                     FaceMark.SPARK_LINES,
                     offsetX = 0.33f,
@@ -1402,27 +1398,27 @@ object ExpressionLibrary {
         // 97 哼唱：下垂闭眼 ︶ + 猫嘴 + 一粉一琥珀两个音符
         FaceExpression.HUMMING -> FaceParams(
             tiltDegrees = 2f,
-            leftEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.92f),
-            rightEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.92f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.9f),
-            blushAlpha = 0.4f,
+            leftEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.84f),
+            rightEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.84f),
+            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.76f),
+            blushAlpha = 0f,
             earGlow = 1.2f,
             marks = listOf(
-                MarkParams(FaceMark.MUSIC_NOTE, offsetX = 0.3f, offsetY = -0.32f, scale = 0.75f, tint = MarkTint.PINK),
-                MarkParams(FaceMark.MUSIC_NOTE, offsetX = 0.42f, offsetY = -0.2f, scale = 0.6f, tint = MarkTint.AMBER),
+                MarkParams(FaceMark.MUSIC_NOTE, offsetX = 0.28f, offsetY = -0.32f, scale = 1f, tint = MarkTint.PINK),
+                MarkParams(FaceMark.MUSIC_NOTE, offsetX = 0.42f, offsetY = -0.18f, scale = 0.78f, tint = MarkTint.AMBER),
             ),
         )
 
         // 98 满电：眯眼 + 张嘴吐舌 + 绿色满格电池
         FaceExpression.FULLY_CHARGED -> FaceParams(
             scale = 1.02f,
-            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 1f),
-            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 1f),
-            mouth = MouthParams(shape = MouthShape.OPEN_SMILE, scale = 1.05f, showTongue = true),
-            blushAlpha = 0.45f,
+            leftEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.86f),
+            rightEye = EyeParams(shape = EyeShape.HAPPY_ARC, radius = 0.86f),
+            mouth = MouthParams(shape = MouthShape.TONGUE, scale = 1.45f, showTongue = true),
+            blushAlpha = 0f,
             earGlow = 1.35f,
             marks = listOf(
-                MarkParams(FaceMark.BATTERY_FULL, offsetX = 0.31f, offsetY = -0.3f, scale = 0.85f, tint = MarkTint.GREEN),
+                MarkParams(FaceMark.BATTERY_FULL, offsetX = 0.31f, offsetY = -0.3f, scale = 1.35f, tint = MarkTint.GREEN),
             ),
         )
 
@@ -1430,27 +1426,27 @@ object ExpressionLibrary {
         FaceExpression.GOOD_NIGHT -> FaceParams(
             scale = 0.99f,
             offsetY = 0.01f,
-            leftEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.95f),
-            rightEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.95f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.8f),
-            blushAlpha = 0.35f,
+            leftEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.82f),
+            rightEye = EyeParams(shape = EyeShape.CALM_ARC, radius = 0.82f),
+            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.72f),
+            blushAlpha = 0f,
             panelDim = 0.35f,
             earGlow = 0.35f,
             marks = listOf(
-                MarkParams(FaceMark.ZZZ, offsetX = 0.3f, offsetY = -0.26f, scale = 0.95f, tint = MarkTint.PINK),
+                MarkParams(FaceMark.ZZZ, offsetX = 0.3f, offsetY = -0.28f, scale = 0.82f, tint = MarkTint.BLUE),
             ),
         )
 
         // 100 迎接新的一天：圆眼 + 猫嘴 + 太阳
         FaceExpression.NEW_DAY -> FaceParams(
             scale = 1.03f,
-            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 1.1f, pupilAlpha = 0.9f),
-            rightEye = EyeParams(shape = EyeShape.OPEN, radius = 1.1f, pupilAlpha = 0.9f),
-            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.85f),
-            blushAlpha = 0.25f,
+            leftEye = EyeParams(shape = EyeShape.OPEN, radius = 0.95f),
+            rightEye = EyeParams(shape = EyeShape.OPEN, radius = 0.95f),
+            mouth = MouthParams(shape = MouthShape.CAT_W, scale = 0.75f),
+            blushAlpha = 0f,
             earGlow = 1.3f,
             marks = listOf(
-                MarkParams(FaceMark.SUN, offsetX = 0.34f, offsetY = -0.31f, scale = 0.95f, tint = MarkTint.AMBER),
+                MarkParams(FaceMark.SUN, offsetX = 0.34f, offsetY = -0.3f, scale = 1.2f, tint = MarkTint.AMBER),
             ),
         )
     }
