@@ -225,16 +225,29 @@ class ExpressionLibraryTest {
         fun FaceExpression.markSet() = params().marks.map { it.mark }.toSet()
 
         assertEquals(EyeShape.SPIRAL, FaceExpression.FLUSTERED.params().leftEye.shape)
-        assertEquals(EyeShape.STAR, FaceExpression.REWARDED.params().leftEye.shape)
-        assertEquals(EyeShape.HEART, FaceExpression.FLATTERED.params().leftEye.shape)
+        assertEquals(EyeShape.STAR_RING, FaceExpression.REWARDED.params().leftEye.shape)
+        assertEquals(EyeShape.CHEVRON_LEFT, FaceExpression.NAUGHTY.params().rightEye.shape)
+        assertEquals(EyeShape.CHEVRON_RIGHT, FaceExpression.STRETCHING.params().leftEye.shape)
+        assertEquals(EyeShape.CHEVRON_LEFT, FaceExpression.STRETCHING.params().rightEye.shape)
+        assertEquals(EyeShape.HALF_LID, FaceExpression.WHISPERING.params().leftEye.shape)
         assertEquals(EyeShape.CLOSED, FaceExpression.SPEECHLESS.params().leftEye.shape)
+
+        assertEquals(MouthShape.OPEN_O, FaceExpression.STRETCHING.params().mouth.shape)
 
         assertTrue(FaceMark.CLOCK in FaceExpression.FAITHFUL_WAITING.markSet(), "守候需要时钟")
         assertTrue(FaceMark.ROSE in FaceExpression.TROUBLED.markSet(), "烦恼需要玫瑰花")
         assertTrue(FaceMark.MUSIC_NOTE in FaceExpression.HUMMING.markSet(), "哼唱需要音符")
-        assertTrue(FaceMark.MUSIC_NOTE in FaceExpression.COZY.markSet(), "舒适需要音符")
         assertTrue(FaceMark.BATTERY_FULL in FaceExpression.FULLY_CHARGED.markSet(), "满电需要电池图标")
         assertTrue(FaceMark.SUN in FaceExpression.NEW_DAY.markSet(), "迎接新的一天需要太阳")
+
+        // 设计图里“舒适 / 安心 / 哼唱”用的是下垂闭眼 ︶，不是眯眼弧 ∩
+        assertEquals(EyeShape.CALM_ARC, FaceExpression.COZY.params().leftEye.shape)
+        assertEquals(EyeShape.CALM_ARC, FaceExpression.REASSURED.params().leftEye.shape)
+        assertEquals(EyeShape.CALM_ARC, FaceExpression.HUMMING.params().leftEye.shape)
+
+        // 舒适：两颊各一组红色斜线
+        val cozyLines = ExpressionLibrary.paramsFor(FaceExpression.COZY).marks.count { it.mark == FaceMark.SPARK_LINES }
+        assertEquals(2, cozyLines, "舒适需要两颊红色斜线")
     }
 
     @Test

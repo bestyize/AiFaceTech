@@ -415,8 +415,47 @@ private fun DrawScope.drawEye(center: Offset, eye: EyeParams, metrics: FaceMetri
                     cap = StrokeCap.Round,
                 )
             }
+
+            EyeShape.CHEVRON_RIGHT -> drawChevronEye(center, radius, strokeWidth, color, vertexRight = true)
+            EyeShape.CHEVRON_LEFT -> drawChevronEye(center, radius, strokeWidth, color, vertexRight = false)
+
+            EyeShape.STAR_RING -> {
+                // 白描边圆环里放一颗金色五角星（设计图 84）
+                drawRingEye(center, radius, eye, strokeWidth, color, glow, diffuse)
+                drawPath(
+                    path = fivePointStarPath(center, radius * 0.48f),
+                    color = FacePalette.EarGlow.copy(alpha = glow.coerceIn(0f, 1f)),
+                    style = Stroke(width = strokeWidth * 0.6f, join = StrokeJoin.Round),
+                )
+            }
         }
     }
+}
+
+/** 用力闭眼 / 眨眼的折线眼：两条直线在顶点相接，顶点朝内（设计图 79、88）。 */
+private fun DrawScope.drawChevronEye(
+    center: Offset,
+    radius: Float,
+    strokeWidth: Float,
+    color: Color,
+    vertexRight: Boolean,
+) {
+    val direction = if (vertexRight) 1f else -1f
+    val vertex = Offset(center.x + direction * radius * 0.6f, center.y)
+    drawLine(
+        color = color,
+        start = Offset(center.x - direction * radius * 0.75f, center.y - radius * 0.75f),
+        end = vertex,
+        strokeWidth = strokeWidth,
+        cap = StrokeCap.Round,
+    )
+    drawLine(
+        color = color,
+        start = Offset(center.x - direction * radius * 0.75f, center.y + radius * 0.75f),
+        end = vertex,
+        strokeWidth = strokeWidth,
+        cap = StrokeCap.Round,
+    )
 }
 
 private fun DrawScope.drawRingEye(
@@ -613,6 +652,25 @@ private fun DrawScope.drawMouth(metrics: FaceMetrics, mouth: MouthParams, diffus
             color = color,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
+
+        MouthShape.OPEN_O -> {
+            // 张大嘴：白描边椭圆 + 里面的舌头色（设计图 88 伸懒腰）
+            val radiusX = halfWidth * 1.05f
+            val radiusY = halfWidth * 1.45f
+            if (mouth.showTongue) {
+                drawOval(
+                    color = FacePalette.Tongue.copy(alpha = 0.95f),
+                    topLeft = Offset(center.x - radiusX * 0.62f, center.y - radiusY * 0.42f),
+                    size = Size(radiusX * 1.24f, radiusY * 0.9f),
+                )
+            }
+            drawOval(
+                color = color,
+                topLeft = Offset(center.x - radiusX, center.y - radiusY),
+                size = Size(radiusX * 2f, radiusY * 2f),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+            )
+        }
     }
 }
 

@@ -137,3 +137,20 @@ internal fun shieldPath(center: Offset, halfHeight: Float): Path {
         close()
     }
 }
+
+/** 五角星，被奖励的星星眼（设计图 84 的环内星星）。 */
+internal fun fivePointStarPath(center: Offset, radius: Float, innerRatio: Float = 0.46f): Path {
+    val points = 5
+    val step = PI.toFloat() / points
+
+    return Path().apply {
+        repeat(points * 2) { index ->
+            val currentRadius = if (index % 2 == 0) radius else radius * innerRatio
+            val angle = -PI.toFloat() / 2f + index * step
+            val x = center.x + cos(angle) * currentRadius
+            val y = center.y + sin(angle) * currentRadius
+            if (index == 0) moveTo(x, y) else lineTo(x, y)
+        }
+        close()
+    }
+}
