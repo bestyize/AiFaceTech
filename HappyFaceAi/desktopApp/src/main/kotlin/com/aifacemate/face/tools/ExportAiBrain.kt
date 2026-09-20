@@ -27,8 +27,9 @@ fun main(args: Array<String>) {
                     onCapabilityToggled = {},
                     onBaseUrlChanged = {},
                     onApiKeyChanged = {},
-                    onModelChanged = {},
                     onFetchModels = {},
+                    onCustomModelAdded = {},
+                    onDismissApiKeyPrompt = {},
                 )
             }
         }

@@ -15,6 +15,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -41,6 +43,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,8 +73,9 @@ fun AiBrainRoute(onBack: () -> Unit, viewModel: AiBrainViewModel = viewModel()) 
         onCapabilityToggled = viewModel::toggleCapability,
         onBaseUrlChanged = viewModel::updateBaseUrl,
         onApiKeyChanged = viewModel::updateApiKey,
-        onModelChanged = viewModel::updateModel,
         onFetchModels = viewModel::fetchModels,
+        onCustomModelAdded = viewModel::addCustomModel,
+        onDismissApiKeyPrompt = viewModel::dismissApiKeyPrompt,
     )
 }
 
@@ -91,8 +95,9 @@ fun AiBrainScreen(
     onCapabilityToggled: (AiCapability) -> Unit,
     onBaseUrlChanged: (String) -> Unit,
     onApiKeyChanged: (String) -> Unit,
-    onModelChanged: (String) -> Unit,
     onFetchModels: () -> Unit,
+    onCustomModelAdded: (String) -> Unit,
+    onDismissApiKeyPrompt: () -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize().background(LifeColors.Background).safeDrawingPadding()) {
         val wide = maxWidth >= 720.dp && maxWidth > maxHeight * 1.2f
@@ -122,8 +127,8 @@ fun AiBrainScreen(
                         verticalArrangement = Arrangement.spacedBy(gap),
                     ) {
                         ProviderSection(state, compact, onProviderSelected)
-                        SecretConfigSection(state, compact, onBaseUrlChanged, onApiKeyChanged, onModelChanged)
-                        ModelSection(state, compact, onModelSelected, onFetchModels)
+                        SecretConfigSection(state, compact, onBaseUrlChanged, onApiKeyChanged)
+                        ModelSection(state, compact, onModelSelected, onFetchModels, onCustomModelAdded)
                         CapabilitySection(state, compact, onCapabilityToggled)
                     }
                 }
@@ -138,12 +143,29 @@ fun AiBrainScreen(
                         CurrentBrainCard(state, compact = false)
                         ThinkingModeCard(state.thinkingMode, compact = false, onThinkingModeSelected)
                         ProviderSection(state, compact = false, onProviderSelected)
-                        SecretConfigSection(state, false, onBaseUrlChanged, onApiKeyChanged, onModelChanged)
-                        ModelSection(state, compact = false, onModelSelected, onFetchModels)
+                        SecretConfigSection(state, false, onBaseUrlChanged, onApiKeyChanged)
+                        ModelSection(state, compact = false, onModelSelected, onFetchModels, onCustomModelAdded)
                         CapabilitySection(state, compact = false, onCapabilityToggled)
                     }
                 }
             }
+        }
+
+        if (state.apiKeyPromptVisible) {
+            AlertDialog(
+                onDismissRequest = onDismissApiKeyPrompt,
+                title = { Text("需要 API Key", color = Color.White) },
+                text = {
+                    Text(
+                        "请先在上方「密钥配置」里填写 API Key，再点「获取模型列表」。",
+                        color = LifeColors.Secondary,
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = onDismissApiKeyPrompt) { Text("知道了", color = LifeColors.Amber) }
+                },
+                containerColor = CardTop,
+            )
         }
     }
 }
@@ -202,7 +224,6 @@ private fun SecretConfigSection(
     compact: Boolean,
     onBaseUrlChanged: (String) -> Unit,
     onApiKeyChanged: (String) -> Unit,
-    onModelChanged: (String) -> Unit,
 ) {
     var keyVisible by remember { mutableStateOf(false) }
     BrainCard(compact) {
@@ -213,7 +234,6 @@ private fun SecretConfigSection(
                 "key", "API Key", state.config.apiKey, onApiKeyChanged, compact,
                 secret = !keyVisible, onToggleSecret = { keyVisible = !keyVisible },
             )
-            ConfigRow("model", "Model", state.config.modelId, onModelChanged, compact)
         } else {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ConfigRow("link", "API Base URL", state.config.baseUrl, onBaseUrlChanged, compact, Modifier.weight(1f))
@@ -222,19 +242,6 @@ private fun SecretConfigSection(
                     secret = !keyVisible, onToggleSecret = { keyVisible = !keyVisible },
                 )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ConfigRow("model", "Model", state.config.modelId, onModelChanged, compact, Modifier.weight(1f))
-                Spacer(Modifier.weight(1f))
-            }
-        }
-        if (state.statusMessage.isNotEmpty()) {
-            Text(
-                state.statusMessage,
-                color = if (state.connectionStatus == ConnectionStatus.Invalid) LifeColors.Pink else LifeColors.Secondary,
-                fontSize = if (compact) 9.sp else 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -246,7 +253,9 @@ private fun ModelSection(
     compact: Boolean,
     onSelected: (String) -> Unit,
     onFetchModels: () -> Unit,
+    onCustomModelAdded: (String) -> Unit,
 ) {
+    var customDialogVisible by remember { mutableStateOf(false) }
     BrainCard(compact) {
         Row(
             Modifier.fillMaxWidth(),
@@ -256,7 +265,7 @@ private fun ModelSection(
             Text("▤", color = LifeColors.Amber, fontSize = if (compact) 16.sp else 21.sp, maxLines = 1)
             Text("模型选择", color = Color.White, fontWeight = FontWeight.Bold, fontSize = if (compact) 15.sp else 19.sp, maxLines = 1)
             Text(
-                "根据所选提供商动态更新，最多显示 5 个（左右滑动查看更多）",
+                "从供应商实时拉取模型列表（左右滑动查看更多）",
                 Modifier.weight(1f),
                 color = LifeColors.Secondary,
                 fontSize = if (compact) 9.sp else 12.sp,
@@ -265,15 +274,34 @@ private fun ModelSection(
             )
             OutlinedButton(
                 onClick = onFetchModels,
+                enabled = state.fetchStatus != FetchStatus.Loading,
                 modifier = Modifier.height(if (compact) 30.dp else 38.dp),
                 border = BorderStroke(1.dp, LifeColors.Amber.copy(alpha = .7f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = LifeColors.Amber),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = LifeColors.Amber,
+                    disabledContentColor = LifeColors.Secondary,
+                ),
                 contentPadding = PaddingValues(horizontal = if (compact) 10.dp else 16.dp),
-            ) { Text("⟳  获取模型列表", fontSize = if (compact) 10.sp else 13.sp, maxLines = 1) }
+            ) {
+                Text(
+                    if (state.fetchStatus == FetchStatus.Loading) "获取中…" else "⟳  获取模型列表",
+                    fontSize = if (compact) 10.sp else 13.sp,
+                    maxLines = 1,
+                )
+            }
         }
-        val models = state.selectedProvider.models.take(5)
+        if (state.statusMessage.isNotEmpty()) {
+            Text(
+                state.statusMessage,
+                color = if (state.fetchStatus == FetchStatus.Failure) LifeColors.Pink else LifeColors.Secondary,
+                fontSize = if (compact) 9.sp else 11.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        val models = state.visibleModels
         Carousel(
-            count = models.size,
+            count = models.size + 1,
             compact = compact,
             stepWidth = if (compact) 180.dp else 236.dp,
         ) { listState ->
@@ -282,7 +310,7 @@ private fun ModelSection(
                     val selected = model.id == state.config.modelId
                     SelectionTile(
                         selected = selected,
-                        modifier = Modifier.width(if (compact) 172.dp else 224.dp).height(if (compact) 62.dp else 84.dp),
+                        modifier = Modifier.width(if (compact) 172.dp else 224.dp).height(if (compact) 74.dp else 84.dp),
                         compact = compact,
                         alignStart = true,
                         onClick = { onSelected(model.id) },
@@ -318,13 +346,73 @@ private fun ModelSection(
                             horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp),
                         ) {
                             Spacer(Modifier.width(radioWidth))
-                            model.capabilities.take(3).forEach { capability -> SmallTag(capability, compact) }
+                            ModelCapabilities.of(model.id).forEach { capability -> SmallTag(capability, compact) }
                         }
+                    }
+                }
+                item(key = "add-custom-model") {
+                    SelectionTile(
+                        selected = false,
+                        modifier = Modifier.width(if (compact) 96.dp else 118.dp).height(if (compact) 62.dp else 84.dp),
+                        compact = compact,
+                        onClick = { customDialogVisible = true },
+                    ) {
+                        Text("＋", color = LifeColors.Amber, fontSize = if (compact) 18.sp else 24.sp, maxLines = 1)
+                        Text("自定义模型", color = LifeColors.Secondary, fontSize = if (compact) 9.sp else 11.sp, maxLines = 1)
                     }
                 }
             }
         }
     }
+    if (customDialogVisible) {
+        CustomModelDialog(
+            onDismiss = { customDialogVisible = false },
+            onConfirm = { name ->
+                customDialogVisible = false
+                onCustomModelAdded(name)
+            },
+        )
+    }
+}
+
+/** 自定义模型弹窗：填写供应商控制台里的模型 ID。 */
+@Composable
+private fun CustomModelDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("添加自定义模型", color = Color.White) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("填写供应商控制台里的模型 ID，例如 deepseek-chat。", color = LifeColors.Secondary, fontSize = 12.sp)
+                val shape = RoundedCornerShape(10.dp)
+                BasicTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                        .clip(shape)
+                        .background(FieldFill)
+                        .border(1.dp, LifeColors.Border, shape)
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    singleLine = true,
+                    // 横屏时软键盘会盖住弹窗按钮，所以键盘上的「完成」等同「添加」。
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (name.isNotBlank()) onConfirm(name) }),
+                    textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 13.sp),
+                    cursorBrush = SolidColor(LifeColors.Amber),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) {
+                Text("添加", color = if (name.isNotBlank()) LifeColors.Amber else LifeColors.Secondary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消", color = LifeColors.Secondary) }
+        },
+        containerColor = CardTop,
+    )
 }
 
 /** 模型接入：联网搜索 / 长期记忆 / 工具调用 / 日程与提醒。 */
@@ -873,7 +961,9 @@ private fun CurrentBrainCard(state: AiBrainUiState, compact: Boolean) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    state.selectedModel.summary.ifEmpty { state.selectedModel.description },
+                    state.selectedModel.summary
+                        .ifEmpty { state.selectedModel.description }
+                        .ifEmpty { "来自 ${state.selectedProvider.name} 的可用模型" },
                     color = LifeColors.Secondary,
                     fontSize = if (compact) 10.sp else 13.sp,
                     maxLines = 1,

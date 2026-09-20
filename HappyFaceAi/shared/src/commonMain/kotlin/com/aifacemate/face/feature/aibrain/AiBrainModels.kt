@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 
 data class AiModel(
     val id: String,
@@ -13,8 +15,6 @@ data class AiModel(
     val tags: List<String> = emptyList(),
     /** 「当前大脑」卡片里的一句话概括；留空时回退到 [description]。 */
     val summary: String = "",
-    /** 模型卡片上展示的能力标签，例如「文本」「图片」「工具」。 */
-    val capabilities: List<String> = emptyList(),
 )
 
 data class AiProvider(
@@ -49,6 +49,9 @@ enum class AiCapability(val title: String, val description: String, val symbol: 
 
 enum class ConnectionStatus { Connected, NotConfigured, Invalid }
 
+/** 「获取模型列表」的运行状态。 */
+enum class FetchStatus { Idle, Loading, Success, Failure }
+
 data class AiBrainUiState(
     val providers: List<AiProvider> = defaultAiProviders,
     val config: BrainConfig = BrainConfig(),
@@ -56,51 +59,93 @@ data class AiBrainUiState(
     val capabilities: Map<AiCapability, Boolean> = AiCapability.entries.associateWith { true },
     val connectionStatus: ConnectionStatus = ConnectionStatus.Connected,
     val statusMessage: String = "",
+    /** 从供应商 `/models` 拉回来的模型；为空时回退到内置目录。 */
+    val fetchedModels: List<AiModel> = emptyList(),
+    /** 用户自己添加的模型名，按供应商分开保存。 */
+    val customModels: Map<String, List<String>> = emptyMap(),
+    val fetchStatus: FetchStatus = FetchStatus.Idle,
+    /** 没有 API Key 就点「获取模型列表」时，弹窗提示去填写。 */
+    val apiKeyPromptVisible: Boolean = false,
 ) {
     val selectedProvider: AiProvider
         get() = providers.firstOrNull { it.id == config.providerId } ?: providers.first()
 
+    /** 模型选择里展示的列表：拉取结果优先，其次是内置目录，最后是用户自定义。 */
+    val visibleModels: List<AiModel>
+        get() {
+            val base = if (fetchedModels.isNotEmpty()) fetchedModels else selectedProvider.models
+            val custom = customModels[config.providerId].orEmpty().map { name ->
+                AiModel(id = name, name = name, description = "自定义模型")
+            }
+            return base + custom
+        }
+
     val selectedModel: AiModel
-        get() = selectedProvider.models.firstOrNull { it.id == config.modelId } ?: selectedProvider.models.first()
+        get() = visibleModels.firstOrNull { it.id == config.modelId }
+            ?: visibleModels.firstOrNull()
+            ?: AiModel(id = config.modelId, name = config.modelId, description = "")
 
     fun selectProvider(providerId: String): AiBrainUiState {
         val provider = providers.firstOrNull { it.id == providerId } ?: return this
-        val model = provider.models.firstOrNull { it.recommended } ?: provider.models.first()
+        val custom = customModels[provider.id].orEmpty()
+        val model = provider.models.firstOrNull { it.recommended }
+            ?: provider.models.firstOrNull()
+            ?: custom.firstOrNull()?.let { name -> AiModel(id = name, name = name, description = "自定义模型") }
+            ?: AiModel(id = "", name = "", description = "")
         return copy(
             config = config.copy(
                 providerId = provider.id,
                 modelId = model.id,
                 baseUrl = provider.defaultBaseUrl,
             ),
+            fetchedModels = emptyList(),
+            fetchStatus = FetchStatus.Idle,
+            apiKeyPromptVisible = false,
             connectionStatus = if (provider.id == "custom") ConnectionStatus.NotConfigured else ConnectionStatus.Connected,
             statusMessage = if (provider.id == "custom") "请填写自己的 AI 服务" else "已切换到 ${provider.name}",
         )
     }
 
     fun selectModel(modelId: String): AiBrainUiState {
-        val model = selectedProvider.models.firstOrNull { it.id == modelId } ?: return this
+        val model = visibleModels.firstOrNull { it.id == modelId } ?: return this
         return copy(
             config = config.copy(modelId = model.id),
             statusMessage = "已选择 ${model.name}",
         )
     }
 
-    /**
-     * 按当前供应商刷新模型列表。
-     *
-     * Alpha 阶段没有真实网络层，这里重新读取本地目录并给出提示；
-     * 接入服务端后只需替换这一处实现。
-     */
-    fun fetchModels(): AiBrainUiState {
-        val provider = selectedProvider
-        val ready = config.baseUrl.startsWith("http") && provider.models.isNotEmpty()
+    /** 拉取成功：用服务端返回的模型覆盖列表，并默认选中当前模型（若还在）。 */
+    fun withFetchedModels(models: List<RemoteModel>): AiBrainUiState {
+        val mapped = models.map { remote ->
+            AiModel(id = remote.id, name = remote.id, description = remote.ownedBy?.let { "由 $it 提供" }.orEmpty())
+        }
+        val stillThere = mapped.any { it.id == config.modelId }
         return copy(
-            connectionStatus = if (ready) ConnectionStatus.Connected else ConnectionStatus.Invalid,
-            statusMessage = if (ready) {
-                "已获取 ${provider.models.size} 个模型（本地目录）"
-            } else {
-                "请先填写有效的 API 地址"
-            },
+            fetchedModels = mapped,
+            config = if (stillThere || mapped.isEmpty()) config else config.copy(modelId = mapped.first().id),
+            fetchStatus = FetchStatus.Success,
+            apiKeyPromptVisible = false,
+            connectionStatus = ConnectionStatus.Connected,
+            statusMessage = "已获取 ${mapped.size} 个模型",
+        )
+    }
+
+    fun withFetchFailure(message: String): AiBrainUiState = copy(
+        fetchStatus = FetchStatus.Failure,
+        connectionStatus = ConnectionStatus.Invalid,
+        statusMessage = message,
+    )
+
+    fun addCustomModel(name: String): AiBrainUiState {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return this
+        val providerId = config.providerId
+        val existing = customModels[providerId].orEmpty()
+        val updated = if (trimmed in existing) existing else existing + trimmed
+        return copy(
+            customModels = customModels + (providerId to updated),
+            config = config.copy(modelId = trimmed),
+            statusMessage = "已添加自定义模型 $trimmed",
         )
     }
 }
@@ -117,17 +162,39 @@ class AiBrainViewModel : ViewModel() {
     }
     fun updateBaseUrl(value: String) { uiState = uiState.copy(config = uiState.config.copy(baseUrl = value)) }
     fun updateApiKey(value: String) { uiState = uiState.copy(config = uiState.config.copy(apiKey = value)) }
-    fun updateModel(value: String) { uiState = uiState.copy(config = uiState.config.copy(modelId = value)) }
 
-    fun fetchModels() { uiState = uiState.fetchModels() }
+    fun dismissApiKeyPrompt() { uiState = uiState.copy(apiKeyPromptVisible = false) }
 
-    /** 当前 Alpha 只做必填项格式校验；真实网络探测由后续服务层接入。 */
-    fun saveAndValidate() {
-        val valid = uiState.config.baseUrl.startsWith("http") && uiState.config.modelId.isNotBlank()
-        uiState = uiState.copy(
-            connectionStatus = if (valid) ConnectionStatus.Connected else ConnectionStatus.Invalid,
-            statusMessage = if (valid) "配置已保存，本地格式校验通过" else "请填写有效的 API 地址和模型名称",
+    fun addCustomModel(name: String) { uiState = uiState.addCustomModel(name) }
+
+    /**
+     * 真实拉取供应商的模型列表。
+     *
+     * 没填 API Key 时不发请求，直接弹窗让用户去「密钥配置」补上。
+     */
+    fun fetchModels() {
+        val current = uiState
+        if (current.config.apiKey.isBlank()) {
+            uiState = current.copy(
+                apiKeyPromptVisible = true,
+                fetchStatus = FetchStatus.Idle,
+                statusMessage = "请先在「密钥配置」里填写 API Key",
+            )
+            return
+        }
+        uiState = current.copy(
+            fetchStatus = FetchStatus.Loading,
+            apiKeyPromptVisible = false,
+            statusMessage = "正在获取模型列表…",
         )
+        viewModelScope.launch {
+            val baseUrl = uiState.config.baseUrl
+            val apiKey = uiState.config.apiKey
+            when (val result = fetchProviderModels(baseUrl, apiKey)) {
+                is ModelFetchResult.Success -> uiState = uiState.withFetchedModels(result.models)
+                is ModelFetchResult.Failure -> uiState = uiState.withFetchFailure(result.message)
+            }
+        }
     }
 }
 
@@ -146,19 +213,12 @@ val defaultAiProviders = listOf(
                 recommended = true,
                 tags = listOf("深度思考", "中文友好", "高性价比"),
                 summary = "强大、快速、擅长中文的推理模型",
-                capabilities = listOf("文本", "推理", "工具"),
             ),
             AiModel(
                 "deepseek-flash", "DeepSeek-Flash", "更快的响应速度\n适合日常对话",
-                capabilities = listOf("文本", "推理"),
             ),
             AiModel(
                 "deepseek-v3", "DeepSeek-V3", "稳定可靠\n适合通用场景",
-                capabilities = listOf("文本", "工具"),
-            ),
-            AiModel(
-                "custom", "自定义", "使用自定义模型\n通过 OpenAI 格式接入",
-                capabilities = listOf("文本"),
             ),
         ),
     ),
@@ -171,13 +231,10 @@ val defaultAiProviders = listOf(
         models = listOf(
             AiModel(
                 "glm-4.5", "GLM-4.5", "通用推理与工具使用", true, listOf("中文友好", "工具调用"),
-                capabilities = listOf("文本", "图片", "工具"),
             ),
             AiModel(
                 "glm-4.5-air", "GLM-4.5-Air", "轻量、快速的日常模型",
-                capabilities = listOf("文本", "图片"),
             ),
-            AiModel("custom", "自定义", "使用自定义模型名称接入", capabilities = listOf("文本")),
         ),
     ),
     AiProvider(
@@ -189,13 +246,10 @@ val defaultAiProviders = listOf(
         models = listOf(
             AiModel(
                 "kimi-k2.5", "Kimi-K2.5", "长文本理解与复杂任务", true, listOf("长上下文", "中文友好"),
-                capabilities = listOf("文本", "长文", "工具"),
             ),
             AiModel(
                 "kimi-k2-turbo", "Kimi-K2-Turbo", "更快速的长文本对话",
-                capabilities = listOf("文本", "长文"),
             ),
-            AiModel("custom", "自定义", "使用自定义模型名称接入", capabilities = listOf("文本")),
         ),
     ),
     AiProvider(
@@ -207,13 +261,10 @@ val defaultAiProviders = listOf(
         models = listOf(
             AiModel(
                 "minimax-m2.5", "MiniMax-M2.5", "综合能力与自然表达", true, listOf("自然对话", "高性价比"),
-                capabilities = listOf("文本", "图片", "工具"),
             ),
             AiModel(
                 "minimax-m2.1", "MiniMax-M2.1", "稳定的通用模型",
-                capabilities = listOf("文本", "图片"),
             ),
-            AiModel("custom", "自定义", "使用自定义模型名称接入", capabilities = listOf("文本")),
         ),
     ),
     AiProvider(
@@ -222,6 +273,6 @@ val defaultAiProviders = listOf(
         subtitle = "OpenAI Compatible",
         symbol = "+",
         defaultBaseUrl = "",
-        models = listOf(AiModel("custom", "自定义", "通过 OpenAI Compatible 格式接入", true, listOf("私有服务"))),
+        models = emptyList(),
     ),
 )

@@ -42,6 +42,13 @@ kotlin {
     }
     
     sourceSets {
+        // androidMain 与 jvmMain 都是 JVM 平台，HTTP 实现放在中间源集里共用，避免复制两份。
+        val jvmSharedMain by creating {
+            dependsOn(commonMain.get())
+        }
+        jvmMain.get().dependsOn(jvmSharedMain)
+        androidMain.get().dependsOn(jvmSharedMain)
+
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)
