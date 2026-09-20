@@ -40,12 +40,23 @@ Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-mu
 - 生命中心包含角色卡、八个能力入口和本次运行中的表情变化记录。
 - 顶栏按设计稿收窄（常规 44dp / 小横屏 36dp）：返回是矢量箭头加「返回」两字的胶囊按钮；竖屏放在标题左侧，横屏收到右上角；待接入详情页共用这一套顶栏。
 - 「表情与外观」复用原有调试台，右上角保留「返回上一页」胶囊，本身没有整行标题栏，因此不加返回图标顶栏。
-- 其余能力目前为明确标注的待接入详情页，不包含模型、TTS、长期记忆或硬件服务。
-- Android 支持屏幕方向跟随；宽屏双栏、窄屏纵向滚动，小横屏保留双栏。
+- 「AI 大脑」已实现独立配置页；声音、人格、记忆、能力、生活节律和设备系统仍为待接入详情页。
+- Android 仅允许左右横屏（`sensorLandscape`）；宽屏双栏、窄屏纵向滚动，小横屏保留双栏。
 - 当前角色资料为默认本地资料，变化记录不持久化，不展示虚构的陪伴天数。
 
 共享页面位于 `shared/src/commonMain/kotlin/com/aifacemate/face/feature/lifecenter/`。
-运行 `bash ./gradlew :desktopApp:exportLifeCenter` 可渲染宽屏、小横屏和手机窄屏，用于视觉检查。
+运行 `./gradlew :desktopApp:exportLifeCenter` 可渲染宽屏、小横屏和手机窄屏，用于视觉检查。
+
+### AI 大脑
+
+- 左侧展示当前供应商、模型、特点标签、小星表情和快速 / 平衡 / 深度三种思考模式。
+- 右侧提供可横滑的供应商与模型卡片、联网搜索 / 长期记忆 / 工具调用 / 日程提醒开关，以及 OpenAI Compatible 密钥配置。
+- 供应商与模型来自独立 catalog 数据层；切换供应商会选择推荐模型并刷新 Base URL，最后一个模型固定为「自定义」。
+- 配置状态由 `AiBrainViewModel` 管理，UI 不直接持有供应商、模型或能力开关状态。
+- 当前「保存并校验」只做本地必填项与 URL 格式检查，真实网络连接测试留给后续服务层。
+
+共享页面位于 `shared/src/commonMain/kotlin/com/aifacemate/face/feature/aibrain/`。
+运行 `./gradlew :desktopApp:exportAiBrain` 可导出 1440×900 宽屏和 817×375 实机横屏走查图。
 
 本次验证：Android Debug 构建、shared 与 lib_face JVM 测试通过；宽屏、小横屏、手机窄屏三个尺寸离屏渲染通过，
 确认竖屏「‹ 返回」在标题左侧、小横屏收到右上角。

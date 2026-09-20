@@ -14,6 +14,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import com.aifacemate.face.feature.aibrain.AiBrainRoute
 import com.aifacemate.face.feature.lifecenter.*
 import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.ui.*
@@ -70,6 +71,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                 )
             }
             LifeRoute.LifeCenter -> LifeCenterRoute(LifeCenterUiState(recentChanges = changes.toList()), expression, diffuseGlow, navigate)
+            LifeRoute.Brain -> AiBrainRoute(onBack = { navigate(LifeRoute.LifeCenter) })
             LifeRoute.Appearance -> Column(Modifier.fillMaxSize().background(LifeColors.Background).safeDrawingPadding()) {
                 FacePreviewScreen(
                     modifier = Modifier.weight(1f), expression = expression,

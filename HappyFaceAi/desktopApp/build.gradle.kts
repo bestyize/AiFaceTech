@@ -48,3 +48,11 @@ tasks.register<JavaExec>("exportLifeCenter") {
     classpath = sourceSets["main"].runtimeClasspath
     args = listOf(layout.buildDirectory.dir("life-center").get().asFile.absolutePath)
 }
+
+// Visual QA for the AI brain page at desktop and real-device landscape sizes.
+tasks.register<JavaExec>("exportAiBrain") {
+    group = "verification"
+    mainClass.set("com.aifacemate.face.tools.ExportAiBrainKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args = listOf(layout.buildDirectory.dir("ai-brain").get().asFile.absolutePath)
+}

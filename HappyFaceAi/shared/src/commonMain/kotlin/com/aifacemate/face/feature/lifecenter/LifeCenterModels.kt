@@ -17,7 +17,7 @@ object LifeColors {
     val Secondary = Color(0xFFA7A9B4)
 }
 val defaultFeatures = listOf(
-    LifeCenterFeature(LifeRoute.Brain, "AI 大脑", "模型与对话 · 待接入", "◎"),
+    LifeCenterFeature(LifeRoute.Brain, "AI 大脑", "模型、思考与能力配置", "◎"),
     LifeCenterFeature(LifeRoute.Voice, "声音", "音色与语音 · 待接入", "♫"),
     LifeCenterFeature(LifeRoute.Personality, "人格", "探索它的性格 · 待开放", "♡", LifeColors.Pink),
     LifeCenterFeature(LifeRoute.Memory, "记忆", "记录相处的点滴 · 待接入", "▤"),
