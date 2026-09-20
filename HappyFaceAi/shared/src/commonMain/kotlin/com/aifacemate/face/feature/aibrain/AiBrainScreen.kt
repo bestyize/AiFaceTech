@@ -14,9 +14,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -43,9 +40,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -53,7 +48,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aifacemate.face.feature.lifecenter.LifeColors
 import com.aifacemate.face.model.FaceExpression
+import com.aifacemate.face.ui.AppDialog
 import com.aifacemate.face.ui.FaceStage
+import com.aifacemate.face.ui.AppInputDialog
 import kotlinx.coroutines.launch
 
 private val CardTop = Color(0xFF171C25)
@@ -61,6 +58,9 @@ private val CardBottom = Color(0xFF11161E)
 private val FieldFill = Color(0xFF12161E)
 private val SelectedFill = Color(0xFF292315)
 private val ConnectedGreen = Color(0xFF38E66B)
+
+/** 密钥配置里可以编辑的两项。 */
+private enum class SecretEdit { BaseUrl, ApiKey }
 
 @Composable
 fun AiBrainRoute(onBack: () -> Unit, viewModel: AiBrainViewModel = viewModel()) {
@@ -99,6 +99,17 @@ fun AiBrainScreen(
     onCustomModelAdded: (String) -> Unit,
     onDismissApiKeyPrompt: () -> Unit,
 ) {
+    // 页面上的输入项都只做展示，点一行才弹输入弹窗，草稿在这里暂存。
+    var editingSecret by remember { mutableStateOf<SecretEdit?>(null) }
+    var secretDraft by remember { mutableStateOf("") }
+    fun openSecretEditor(field: SecretEdit) {
+        secretDraft = when (field) {
+            SecretEdit.BaseUrl -> state.config.baseUrl
+            SecretEdit.ApiKey -> state.config.apiKey
+        }
+        editingSecret = field
+    }
+
     BoxWithConstraints(Modifier.fillMaxSize().background(LifeColors.Background).safeDrawingPadding()) {
         val wide = maxWidth >= 720.dp && maxWidth > maxHeight * 1.2f
         val compact = wide && maxHeight < 560.dp
@@ -127,7 +138,12 @@ fun AiBrainScreen(
                         verticalArrangement = Arrangement.spacedBy(gap),
                     ) {
                         ProviderSection(state, compact, onProviderSelected)
-                        SecretConfigSection(state, compact, onBaseUrlChanged, onApiKeyChanged)
+                        SecretConfigSection(
+                            state = state,
+                            compact = compact,
+                            onEditBaseUrl = { openSecretEditor(SecretEdit.BaseUrl) },
+                            onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
+                        )
                         ModelSection(state, compact, onModelSelected, onFetchModels, onCustomModelAdded)
                         CapabilitySection(state, compact, onCapabilityToggled)
                     }
@@ -143,7 +159,12 @@ fun AiBrainScreen(
                         CurrentBrainCard(state, compact = false)
                         ThinkingModeCard(state.thinkingMode, compact = false, onThinkingModeSelected)
                         ProviderSection(state, compact = false, onProviderSelected)
-                        SecretConfigSection(state, false, onBaseUrlChanged, onApiKeyChanged)
+                        SecretConfigSection(
+                            state = state,
+                            compact = false,
+                            onEditBaseUrl = { openSecretEditor(SecretEdit.BaseUrl) },
+                            onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
+                        )
                         ModelSection(state, compact = false, onModelSelected, onFetchModels, onCustomModelAdded)
                         CapabilitySection(state, compact = false, onCapabilityToggled)
                     }
@@ -151,20 +172,56 @@ fun AiBrainScreen(
             }
         }
 
+        when (editingSecret) {
+            SecretEdit.BaseUrl -> AppInputDialog(
+                title = "API Base URL",
+                description = "OpenAI Compatible 地址填到 /v1 即可，请求模型列表时会自动补 /models。",
+                label = "接口地址",
+                value = secretDraft,
+                onValueChange = { secretDraft = it },
+                placeholder = "https://api.deepseek.com/v1",
+                hint = "换供应商时这里会自动切成对应的默认地址。",
+                symbol = "⇄",
+                keyboardType = KeyboardType.Uri,
+                onDismiss = { editingSecret = null },
+                onConfirm = {
+                    onBaseUrlChanged(secretDraft.trim())
+                    editingSecret = null
+                },
+            )
+
+            SecretEdit.ApiKey -> AppInputDialog(
+                title = "API Key",
+                description = "只保存在这台设备上，用来向你选择的模型服务发起请求。",
+                label = "密钥",
+                value = secretDraft,
+                onValueChange = { secretDraft = it },
+                placeholder = "sk-xxxxxxxxxxxxxxxx",
+                hint = "在供应商控制台创建，页面上只会显示成 sk-xxx••••1234。",
+                symbol = "✧",
+                secret = true,
+                onDismiss = { editingSecret = null },
+                onConfirm = {
+                    onApiKeyChanged(secretDraft.trim())
+                    editingSecret = null
+                },
+            )
+
+            null -> Unit
+        }
+
         if (state.apiKeyPromptVisible) {
-            AlertDialog(
-                onDismissRequest = onDismissApiKeyPrompt,
-                title = { Text("需要 API Key", color = Color.White) },
-                text = {
-                    Text(
-                        "请先在上方「密钥配置」里填写 API Key，再点「获取模型列表」。",
-                        color = LifeColors.Secondary,
-                    )
+            AppDialog(
+                title = "还没有填 API Key",
+                symbol = "✦",
+                description = "获取模型列表需要先连上供应商的接口，填一个 API Key 就能拉取了。",
+                confirmText = "去填写",
+                dismissText = "稍后再说",
+                onConfirm = {
+                    onDismissApiKeyPrompt()
+                    openSecretEditor(SecretEdit.ApiKey)
                 },
-                confirmButton = {
-                    TextButton(onClick = onDismissApiKeyPrompt) { Text("知道了", color = LifeColors.Amber) }
-                },
-                containerColor = CardTop,
+                onDismiss = onDismissApiKeyPrompt,
             )
         }
     }
@@ -217,33 +274,35 @@ private fun ProviderSection(state: AiBrainUiState, compact: Boolean, onSelected:
     }
 }
 
-/** 密钥配置：图标 + 标签 + 可编辑值 + 后缀，走 OpenAI Compatible 格式。 */
+/**
+ * 密钥配置：页面只做展示，点任意一行弹输入弹窗改值，走 OpenAI Compatible 格式。
+ */
 @Composable
 private fun SecretConfigSection(
     state: AiBrainUiState,
     compact: Boolean,
-    onBaseUrlChanged: (String) -> Unit,
-    onApiKeyChanged: (String) -> Unit,
+    onEditBaseUrl: () -> Unit,
+    onEditApiKey: () -> Unit,
 ) {
-    var keyVisible by remember { mutableStateOf(false) }
     BrainCard(compact) {
         SectionHeader("⚙", "密钥配置", "使用 OpenAI Compatible 格式配置，兼容大多数模型服务", compact)
         if (compact) {
-            ConfigRow("link", "API Base URL", state.config.baseUrl, onBaseUrlChanged, compact)
-            ConfigRow(
-                "key", "API Key", state.config.apiKey, onApiKeyChanged, compact,
-                secret = !keyVisible, onToggleSecret = { keyVisible = !keyVisible },
-            )
+            ConfigFieldRow("link", "API Base URL", state.config.baseUrl, compact, onEditBaseUrl)
+            ConfigFieldRow("key", "API Key", maskSecret(state.config.apiKey), compact, onEditApiKey)
         } else {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ConfigRow("link", "API Base URL", state.config.baseUrl, onBaseUrlChanged, compact, Modifier.weight(1f))
-                ConfigRow(
-                    "key", "API Key", state.config.apiKey, onApiKeyChanged, compact, Modifier.weight(1f),
-                    secret = !keyVisible, onToggleSecret = { keyVisible = !keyVisible },
-                )
+                ConfigFieldRow("link", "API Base URL", state.config.baseUrl, compact, onEditBaseUrl, Modifier.weight(1f))
+                ConfigFieldRow("key", "API Key", maskSecret(state.config.apiKey), compact, onEditApiKey, Modifier.weight(1f))
             }
         }
     }
+}
+
+/** API Key 在页面上只露出头尾，避免整串明文一直挂在屏幕上。 */
+private fun maskSecret(value: String): String = when {
+    value.isEmpty() -> ""
+    value.length <= 8 -> "•".repeat(value.length)
+    else -> value.take(5) + "•".repeat(6) + value.takeLast(4)
 }
 
 /** 模型选择：按供应商动态刷新，最多展示 5 个，标题行右侧提供「获取模型列表」。 */
@@ -310,7 +369,7 @@ private fun ModelSection(
                     val selected = model.id == state.config.modelId
                     SelectionTile(
                         selected = selected,
-                        modifier = Modifier.width(if (compact) 172.dp else 224.dp).height(if (compact) 74.dp else 84.dp),
+                        modifier = Modifier.width(if (compact) 172.dp else 224.dp).height(if (compact) 66.dp else 84.dp),
                         compact = compact,
                         alignStart = true,
                         onClick = { onSelected(model.id) },
@@ -379,39 +438,18 @@ private fun ModelSection(
 @Composable
 private fun CustomModelDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("添加自定义模型", color = Color.White) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("填写供应商控制台里的模型 ID，例如 deepseek-chat。", color = LifeColors.Secondary, fontSize = 12.sp)
-                val shape = RoundedCornerShape(10.dp)
-                BasicTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    modifier = Modifier.fillMaxWidth().height(42.dp)
-                        .clip(shape)
-                        .background(FieldFill)
-                        .border(1.dp, LifeColors.Border, shape)
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                    singleLine = true,
-                    // 横屏时软键盘会盖住弹窗按钮，所以键盘上的「完成」等同「添加」。
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { if (name.isNotBlank()) onConfirm(name) }),
-                    textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 13.sp),
-                    cursorBrush = SolidColor(LifeColors.Amber),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) {
-                Text("添加", color = if (name.isNotBlank()) LifeColors.Amber else LifeColors.Secondary)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = LifeColors.Secondary) }
-        },
-        containerColor = CardTop,
+    AppInputDialog(
+        title = "添加自定义模型",
+        description = "填供应商控制台里的模型 ID，模型列表里没列出来的也能直接加。",
+        label = "模型 ID",
+        value = name,
+        onValueChange = { name = it },
+        placeholder = "deepseek-chat",
+        hint = "例如 deepseek-chat、glm-4.5-air；添加后会立刻选中它。",
+        symbol = "＋",
+        confirmText = "添加",
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(name.trim()) },
     )
 }
 
@@ -520,15 +558,13 @@ private fun SectionHeader(symbol: String, title: String, description: String, co
 
 /** 密钥配置的一行：图标 + 标签 + 可编辑值 + 后缀。 */
 @Composable
-private fun ConfigRow(
+private fun ConfigFieldRow(
     icon: String,
     label: String,
     value: String,
-    onValueChanged: (String) -> Unit,
     compact: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier.fillMaxWidth(),
-    secret: Boolean = false,
-    onToggleSecret: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(if (compact) 9.dp else 12.dp)
     Row(
@@ -536,6 +572,7 @@ private fun ConfigRow(
             .clip(shape)
             .background(FieldFill)
             .border(1.dp, LifeColors.Border, shape)
+            .clickable { onClick() }
             .padding(horizontal = if (compact) 9.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp),
@@ -548,30 +585,19 @@ private fun ConfigRow(
             maxLines = 1,
             modifier = Modifier.width(if (compact) 74.dp else 104.dp),
         )
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChanged,
-            modifier = Modifier.weight(1f),
-            singleLine = true,
-            textStyle = LocalTextStyle.current.copy(
-                color = Color.White,
-                fontSize = if (compact) 10.sp else 13.sp,
-                lineHeight = if (compact) 13.sp else 17.sp,
-            ),
-            visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
-            cursorBrush = SolidColor(LifeColors.Amber),
+        Text(
+            value.ifEmpty { "未填写" },
+            Modifier.weight(1f),
+            color = if (value.isEmpty()) LifeColors.Secondary.copy(alpha = .6f) else Color.White,
+            fontSize = if (compact) 10.sp else 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        if (onToggleSecret != null) {
-            Box(
-                Modifier.size(if (compact) 20.dp else 26.dp).clickable { onToggleSecret() },
-                contentAlignment = Alignment.Center,
-            ) { EyeIcon(secret, if (compact) 13.dp else 17.dp) }
-        }
-        Text("›", color = LifeColors.Secondary, fontSize = if (compact) 13.sp else 17.sp, maxLines = 1)
+        Text("✎", color = LifeColors.Amber, fontSize = if (compact) 11.sp else 13.sp, maxLines = 1)
     }
 }
 
-/** 密钥字段的矢量小图标：链接 / 钥匙 / 模型方块。 */
+/** 配置项的矢量小图标：链接 / 钥匙 / 模型方块。 */
 @Composable
 private fun FieldIcon(kind: String, size: Dp) {
     Canvas(Modifier.size(size)) {
@@ -618,49 +644,6 @@ private fun FieldIcon(kind: String, size: Dp) {
                 }
                 drawPath(cube, LifeColors.Amber, style = stroke)
             }
-        }
-    }
-}
-
-/** 密码可见性图标：睁眼 / 闭眼。 */
-@Composable
-private fun EyeIcon(secret: Boolean, size: Dp) {
-    Canvas(Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        val stroke = Stroke(width = this.size.minDimension * .12f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        val color = LifeColors.Secondary
-        if (secret) {
-            drawArc(
-                color = color,
-                startAngle = 200f,
-                sweepAngle = 140f,
-                useCenter = false,
-                topLeft = Offset(w * .05f, h * .2f),
-                size = Size(w * .9f, h * .6f),
-                style = stroke,
-            )
-            drawLine(color, Offset(w * .15f, h * .9f), Offset(w * .85f, h * .1f), stroke.width, StrokeCap.Round)
-        } else {
-            drawArc(
-                color = LifeColors.Amber,
-                startAngle = 200f,
-                sweepAngle = 140f,
-                useCenter = false,
-                topLeft = Offset(w * .05f, h * .2f),
-                size = Size(w * .9f, h * .6f),
-                style = stroke,
-            )
-            drawArc(
-                color = LifeColors.Amber,
-                startAngle = 20f,
-                sweepAngle = 140f,
-                useCenter = false,
-                topLeft = Offset(w * .05f, h * .2f),
-                size = Size(w * .9f, h * .6f),
-                style = stroke,
-            )
-            drawCircle(LifeColors.Amber, this.size.minDimension * .16f, Offset(w * .5f, h * .5f))
         }
     }
 }
@@ -783,9 +766,11 @@ private fun SmallTag(text: String, compact: Boolean) {
     Text(
         text,
         modifier = Modifier.background(LifeColors.Amber.copy(alpha = .1f), RoundedCornerShape(50))
-            .padding(horizontal = if (compact) 6.dp else 8.dp, vertical = 2.dp),
+            .padding(horizontal = if (compact) 7.dp else 9.dp, vertical = if (compact) 1.dp else 2.dp),
         color = LifeColors.Amber,
         fontSize = if (compact) 8.sp else 10.sp,
+        // 收紧行高：默认行盒比字高出不少，胶囊会显得又厚又空。
+        lineHeight = if (compact) 10.sp else 12.sp,
         maxLines = 1,
     )
 }

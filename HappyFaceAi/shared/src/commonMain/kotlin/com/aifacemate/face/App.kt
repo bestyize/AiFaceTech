@@ -63,11 +63,11 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     TextButton(onClick = { petting = true; hud = false }) { Text("抚摸") }
                     TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }
                 }
-                if (conversationNotice) AlertDialog(
-                    onDismissRequest = { conversationNotice = false },
-                    title = { Text("还在学习说话") },
-                    text = { Text("语音与 AI 对话尚未接入。现在可以轻点「抚摸」，看看小星的回应。") },
-                    confirmButton = { TextButton(onClick = { conversationNotice = false }) { Text("知道了") } },
+                if (conversationNotice) AppDialog(
+                    title = "还在学习说话",
+                    symbol = "♫",
+                    description = "语音与 AI 对话还没有接入。现在可以先轻点「抚摸」，看看小星的回应。",
+                    onDismiss = { conversationNotice = false },
                 )
             }
             LifeRoute.LifeCenter -> LifeCenterRoute(LifeCenterUiState(recentChanges = changes.toList()), expression, diffuseGlow, navigate)
