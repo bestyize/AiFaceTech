@@ -111,7 +111,8 @@ fun AiBrainScreen(
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(LifeColors.Background).safeDrawingPadding()) {
-        val wide = maxWidth >= 720.dp && maxWidth > maxHeight * 1.2f
+        // 横屏就用左右两栏：门槛放到小型手机横屏（480dp 级）也走两栏，只有竖屏/超窄屏才退回单栏。
+        val wide = maxWidth >= 480.dp && maxWidth > maxHeight * 1.2f
         val compact = wide && maxHeight < 560.dp
         val gap = if (compact) 8.dp else 14.dp
         val screenPadding = if (compact) 10.dp else 24.dp
@@ -164,6 +165,7 @@ fun AiBrainScreen(
                             compact = false,
                             onEditBaseUrl = { openSecretEditor(SecretEdit.BaseUrl) },
                             onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
+                            stacked = true,
                         )
                         ModelSection(state, compact = false, onModelSelected, onFetchModels, onCustomModelAdded)
                         CapabilitySection(state, compact = false, onCapabilityToggled)
@@ -283,10 +285,12 @@ private fun SecretConfigSection(
     compact: Boolean,
     onEditBaseUrl: () -> Unit,
     onEditApiKey: () -> Unit,
+    stacked: Boolean = compact,
 ) {
     BrainCard(compact) {
         SectionHeader("⚙", "密钥配置", "使用 OpenAI Compatible 格式配置，兼容大多数模型服务", compact)
-        if (compact) {
+        // 窄屏（非宽屏布局、或横屏矮窗口）两行并排只剩一点宽度，地址和密钥都会被截断，改成上下两行。
+        if (stacked) {
             ConfigFieldRow("link", "API Base URL", state.config.baseUrl, compact, onEditBaseUrl)
             ConfigFieldRow("key", "API Key", maskSecret(state.config.apiKey), compact, onEditApiKey)
         } else {

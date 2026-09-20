@@ -28,7 +28,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,8 +71,12 @@ import kotlinx.coroutines.delay
  *
  * 和生命中心 / AI 大脑同一套视觉：深色渐变卡片、暖金描边与强调色、大圆角、柔和阴影。
  * 点击遮罩、按系统返回键、点次要按钮都走 [onDismiss]。
- * 横屏时键盘会顶起来，所以外层用 [imePadding] 把卡片抬到键盘之上。
+ * 横屏时键盘会顶起来，所以外层用 [imePadding] 把卡片抬到键盘之上；键盘把可用高度压到
+ * [LocalAppDialogCramped] 判定为极窄时，卡片会切成「标题 + 输入框 + 按钮」并排的一行布局。
  */
+/** 键盘几乎吃掉整个横屏时置为 true，内容需要按一行排布。 */
+val LocalAppDialogCramped = compositionLocalOf { false }
+
 // BackHandler 在 CMP 1.12 标记为弃用（建议改用 NavigationEventHandler），
 // 但 NavigationEventHandler 需要额外引入 navigation-event 依赖；这里只用「返回键关弹窗」这一件事，
 // 先沿用 ui-backhandler 里的实现。
@@ -112,57 +118,103 @@ fun AppDialog(
             tight -> 10.dp
             else -> 14.dp
         }
-        Column(
-            Modifier.padding(horizontal = if (tight) 12.dp else 20.dp, vertical = if (cramped) 4.dp else if (tight) 6.dp else 12.dp)
-                .widthIn(max = 460.dp)
-                .fillMaxWidth()
-                .heightIn(max = cardMaxHeight)
-                .shadow(26.dp, shape, clip = false)
-                .clip(shape)
-                .background(Brush.verticalGradient(listOf(AppDialogColors.CardTop, AppDialogColors.CardBottom)))
-                .border(1.dp, LifeColors.Amber.copy(alpha = .26f), shape)
-                // 吸收卡片上的点击，避免误触遮罩把弹窗关掉
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-                .padding(horizontal = if (tight) 18.dp else 22.dp, vertical = if (cramped) 12.dp else if (tight) 14.dp else 20.dp),
-            verticalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(symbol, color = LifeColors.Amber, fontSize = 17.sp, maxLines = 1)
-                Text(
-                    title,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            // 正文可滚动：空间不够时先让说明文字让位，标题和按钮不动。
+        CompositionLocalProvider(LocalAppDialogCramped provides cramped) {
             Column(
-                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                Modifier.padding(horizontal = if (tight) 12.dp else 20.dp, vertical = if (cramped) 4.dp else if (tight) 6.dp else 12.dp)
+                    .widthIn(max = 460.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = cardMaxHeight)
+                    .shadow(26.dp, shape, clip = false)
+                    .clip(shape)
+                    .background(Brush.verticalGradient(listOf(AppDialogColors.CardTop, AppDialogColors.CardBottom)))
+                    .border(1.dp, LifeColors.Amber.copy(alpha = .26f), shape)
+                    // 吸收卡片上的点击，避免误触遮罩把弹窗关掉
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+                    .padding(horizontal = if (tight) 18.dp else 22.dp, vertical = if (cramped) 12.dp else if (tight) 14.dp else 20.dp),
                 verticalArrangement = Arrangement.spacedBy(gap),
             ) {
-                if (description != null) {
-                    Text(description, color = LifeColors.Secondary, fontSize = 12.sp, lineHeight = 18.sp)
+                if (cramped) {
+                    // 横屏 + 键盘只剩 100dp 出头，标题、输入框、按钮并成一行才放得下。
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            AppDialogTitle(symbol, title, compact = true)
+                            content()
+                        }
+                        AppDialogActions(
+                            dismissText = dismissText,
+                            confirmText = confirmText,
+                            confirmEnabled = confirmEnabled,
+                            onDismiss = onDismiss,
+                            onConfirm = onConfirm,
+                        )
+                    }
+                } else {
+                    AppDialogTitle(symbol, title, compact = false)
+                    // 说明和输入区放在中间并允许滚动：空间不够时先让说明文字让位，标题和按钮不动。
+                    Column(
+                        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        if (description != null) {
+                            Text(description, color = LifeColors.Secondary, fontSize = 12.sp, lineHeight = 18.sp)
+                        }
+                        content()
+                    }
+                    AppDialogActions(
+                        dismissText = dismissText,
+                        confirmText = confirmText,
+                        confirmEnabled = confirmEnabled,
+                        onDismiss = onDismiss,
+                        onConfirm = onConfirm,
+                    )
                 }
-                content()
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (onConfirm != null) AppDialogGhostButton(dismissText, onDismiss)
-                AppDialogPrimaryButton(
-                    text = if (onConfirm != null) confirmText else dismissText,
-                    enabled = confirmEnabled,
-                    onClick = onConfirm ?: onDismiss,
-                )
             }
         }
+    }
+}
+
+/** 弹窗标题行：符号 + 标题。 */
+@Composable
+private fun AppDialogTitle(symbol: String, title: String, compact: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
+    ) {
+        Text(symbol, color = LifeColors.Amber, fontSize = if (compact) 15.sp else 17.sp, maxLines = 1)
+        Text(
+            title,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = if (compact) 15.sp else 17.sp,
+            maxLines = if (compact) 1 else 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** 弹窗按钮行：有确认动作时是「次要在左、主按钮在右」，否则只有一颗主按钮。 */
+@Composable
+private fun AppDialogActions(
+    dismissText: String,
+    confirmText: String,
+    confirmEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (() -> Unit)?,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onConfirm != null) AppDialogGhostButton(dismissText, onDismiss)
+        AppDialogPrimaryButton(
+            text = if (onConfirm != null) confirmText else dismissText,
+            enabled = confirmEnabled,
+            onClick = onConfirm ?: onDismiss,
+        )
     }
 }
 
@@ -198,17 +250,21 @@ fun AppInputDialog(
         onConfirm = onConfirm,
         confirmEnabled = allowEmpty || value.isNotBlank(),
     ) {
+        // 内容在弹窗内部组合，才读得到「键盘把空间挤到极窄」的标记：
+        // 这时标题和输入框并排，标签、说明、提示文字都让位给输入框。
+        val cramped = LocalAppDialogCramped.current
         AppDialogTextField(
             value = value,
             onValueChange = onValueChange,
-            label = label,
+            label = label.takeUnless { cramped },
             placeholder = placeholder,
             secret = secret && !revealed,
             onToggleReveal = if (secret) ({ revealed = !revealed }) else null,
             keyboardType = keyboardType,
+            compact = cramped,
             onImeAction = { if (allowEmpty || value.isNotBlank()) onConfirm() },
         )
-        if (hint != null) {
+        if (hint != null && !cramped) {
             Text(hint, color = LifeColors.Secondary, fontSize = 11.sp, lineHeight = 16.sp)
         }
     }
@@ -227,6 +283,7 @@ fun AppDialogTextField(
     imeAction: ImeAction = ImeAction.Done,
     onImeAction: () -> Unit = {},
     autoFocus: Boolean = true,
+    compact: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
@@ -259,11 +316,11 @@ fun AppDialogTextField(
         }
         Row(
             Modifier.fillMaxWidth()
-                .height(46.dp)
+                .height(if (compact) 38.dp else 46.dp)
                 .clip(shape)
                 .background(AppDialogColors.FieldFill)
                 .border(1.dp, if (focused) LifeColors.Amber.copy(alpha = .8f) else LifeColors.Border, shape)
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = if (compact) 11.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {

@@ -107,6 +107,22 @@ fun main(args: Array<String>) {
                 onConfirm = {},
             )
         }),
+        // 横屏 + 键盘弹起时可用高度只剩 100dp 出头：用矮画布逼近那个状态，走查一行式紧凑布局。
+        Shot("dialog-cramped", 817, 130, overPage {
+            AppInputDialog(
+                title = "API Key",
+                description = "只保存在这台设备上，用来向你选择的模型服务发起请求。",
+                label = "密钥",
+                value = "sk-e2a1234567890abcdef3228",
+                onValueChange = {},
+                placeholder = "sk-xxxxxxxxxxxxxxxx",
+                hint = "在供应商控制台创建，页面上只会显示成 sk-xxx••••1234。",
+                symbol = "✧",
+                secret = true,
+                onDismiss = {},
+                onConfirm = {},
+            )
+        }),
         Shot("dialog-notice", 817, 375, overPage {
             AppDialog(
                 title = "还没有填 API Key",
