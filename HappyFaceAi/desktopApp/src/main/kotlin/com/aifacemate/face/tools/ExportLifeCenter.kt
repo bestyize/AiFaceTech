@@ -14,7 +14,13 @@ import java.io.File
 @OptIn(ExperimentalComposeUiApi::class)
 fun main(args: Array<String>) {
     val output = File(args.firstOrNull() ?: "build/life-center").apply { mkdirs() }
-    listOf(Triple("wide", 1440, 900), Triple("compact-landscape", 800, 450), Triple("phone", 390, 844)).forEach { (name, width, height) ->
+    listOf(
+        Triple("wide", 1440, 900),
+        Triple("compact-landscape", 800, 450),
+        // 480x800@240dpi 的小型横屏（模拟器）：533x320dp，用来看这一档的排版
+        Triple("small-landscape", 533, 320),
+        Triple("phone", 390, 844),
+    ).forEach { (name, width, height) ->
         val scene = ImageComposeScene(width, height, Density(1f)) {
             MaterialTheme(colorScheme = darkColorScheme(primary = LifeColors.Amber)) {
                 LifeCenterScreen(LifeCenterUiState(), FaceExpression.HAPPY, 1f) {}

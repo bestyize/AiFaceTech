@@ -116,6 +116,9 @@ fun AiBrainScreen(
         val compact = wide && maxHeight < 560.dp
         val gap = if (compact) 8.dp else 14.dp
         val screenPadding = if (compact) 10.dp else 24.dp
+        // 左栏只放「当前大脑 + 思考模式」，按设计稿 0.34 / 0.66；矮窗口用 0.35 / 0.65。
+        // 不给小型横屏再加宽左栏：右栏的 API Base URL 是功能性信息（别处看不到），模型名在下方模型卡里还有完整显示。
+        val leftWeight = if (compact) .35f else .34f
 
         Column(
             Modifier.fillMaxSize().padding(horizontal = screenPadding, vertical = if (compact) 4.dp else 12.dp),
@@ -123,7 +126,7 @@ fun AiBrainScreen(
         ) {
             if (wide) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    Column(Modifier.weight(if (compact) .35f else .34f).fillMaxHeight()) {
+                    Column(Modifier.weight(leftWeight).fillMaxHeight()) {
                         AiBrainTitleRow(compact, onBack)
                         Spacer(Modifier.height(gap))
                         Column(
@@ -135,7 +138,7 @@ fun AiBrainScreen(
                         }
                     }
                     Column(
-                        Modifier.weight(if (compact) .65f else .66f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                        Modifier.weight(1f - leftWeight).fillMaxHeight().verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(gap),
                     ) {
                         ProviderSection(state, compact, onProviderSelected)

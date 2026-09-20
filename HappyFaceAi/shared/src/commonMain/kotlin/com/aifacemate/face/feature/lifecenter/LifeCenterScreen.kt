@@ -34,7 +34,8 @@ fun LifeCenterRoute(state: LifeCenterUiState, expression: FaceExpression, diffus
 @Composable
 fun LifeCenterScreen(state: LifeCenterUiState, expression: FaceExpression, diffuseGlow: Float, onNavigate: (LifeRoute) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize().background(LifeColors.Background).safeDrawingPadding()) {
-        val wide = maxWidth >= 840.dp || (maxWidth >= 720.dp && maxWidth > maxHeight * 1.4f)
+        val wide = maxWidth >= 840.dp || (maxWidth >= 720.dp && maxWidth > maxHeight * 1.4f) ||
+            (maxWidth >= 480.dp && maxWidth > maxHeight * 1.2f)
         val compact = wide && maxHeight < 540.dp
         val landscape = maxWidth > maxHeight
         val portraitHeight = if (wide) (maxHeight * .42f).coerceIn(140.dp, 360.dp) else 200.dp

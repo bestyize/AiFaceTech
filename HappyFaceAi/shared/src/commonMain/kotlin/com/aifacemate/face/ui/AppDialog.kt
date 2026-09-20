@@ -72,7 +72,8 @@ import kotlinx.coroutines.delay
  * 和生命中心 / AI 大脑同一套视觉：深色渐变卡片、暖金描边与强调色、大圆角、柔和阴影。
  * 点击遮罩、按系统返回键、点次要按钮都走 [onDismiss]。
  * 横屏时键盘会顶起来，所以外层用 [imePadding] 把卡片抬到键盘之上；键盘把可用高度压到
- * [LocalAppDialogCramped] 判定为极窄时，卡片会切成「标题 + 输入框 + 按钮」并排的一行布局。
+ * [LocalAppDialogCramped] 判定为极窄时，[fieldOnlyWhenCramped] 的弹窗（输入框类）只留一条输入框贴在键盘上方，
+ * 其余弹窗切成「标题 + 内容 + 按钮」并排的一行布局。
  */
 /** 键盘几乎吃掉整个横屏时置为 true，内容需要按一行排布。 */
 val LocalAppDialogCramped = compositionLocalOf { false }
@@ -92,6 +93,7 @@ fun AppDialog(
     onConfirm: (() -> Unit)? = null,
     confirmEnabled: Boolean = true,
     dismissText: String = "取消",
+    fieldOnlyWhenCramped: Boolean = false,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     BackHandler(enabled = true, onBack = onDismiss)
@@ -118,52 +120,46 @@ fun AppDialog(
             tight -> 10.dp
             else -> 14.dp
         }
+        // 键盘几乎占满横屏时，输入类弹窗只留一条贴键盘的输入框（跟聊天输入框一样）：
+        // 确认走键盘上的「完成」键，取消走点遮罩或系统返回键。
+        val bar = cramped && fieldOnlyWhenCramped
+        // 换布局只换外壳，content() 始终挂在同一个调用点上。否则切到输入条时输入框会被重建、
+        // 连带丢掉焦点：键盘收起 -> 高度恢复 -> 又切回卡片 -> 再弹键盘，来回死循环。
+        val frame = if (bar) {
+            Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                // 输入条周围的一圈也算弹窗，别点一下就关掉
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+        } else {
+            Modifier.padding(horizontal = if (tight) 12.dp else 20.dp, vertical = if (cramped) 4.dp else if (tight) 6.dp else 12.dp)
+                .shadow(26.dp, shape, clip = false)
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(AppDialogColors.CardTop, AppDialogColors.CardBottom)))
+                .border(1.dp, LifeColors.Amber.copy(alpha = .26f), shape)
+                // 吸收卡片上的点击，避免误触遮罩把弹窗关掉
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+                .padding(horizontal = if (tight) 18.dp else 22.dp, vertical = if (cramped) 12.dp else if (tight) 14.dp else 20.dp)
+        }
         CompositionLocalProvider(LocalAppDialogCramped provides cramped) {
             Column(
-                Modifier.padding(horizontal = if (tight) 12.dp else 20.dp, vertical = if (cramped) 4.dp else if (tight) 6.dp else 12.dp)
+                Modifier.align(if (bar) Alignment.BottomCenter else Alignment.Center)
                     .widthIn(max = 460.dp)
                     .fillMaxWidth()
                     .heightIn(max = cardMaxHeight)
-                    .shadow(26.dp, shape, clip = false)
-                    .clip(shape)
-                    .background(Brush.verticalGradient(listOf(AppDialogColors.CardTop, AppDialogColors.CardBottom)))
-                    .border(1.dp, LifeColors.Amber.copy(alpha = .26f), shape)
-                    // 吸收卡片上的点击，避免误触遮罩把弹窗关掉
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-                    .padding(horizontal = if (tight) 18.dp else 22.dp, vertical = if (cramped) 12.dp else if (tight) 14.dp else 20.dp),
+                    .then(frame),
                 verticalArrangement = Arrangement.spacedBy(gap),
             ) {
-                if (cramped) {
-                    // 横屏 + 键盘只剩 100dp 出头，标题、输入框、按钮并成一行才放得下。
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            AppDialogTitle(symbol, title, compact = true)
-                            content()
-                        }
-                        AppDialogActions(
-                            dismissText = dismissText,
-                            confirmText = confirmText,
-                            confirmEnabled = confirmEnabled,
-                            onDismiss = onDismiss,
-                            onConfirm = onConfirm,
-                        )
+                if (!bar) AppDialogTitle(symbol, title, compact = cramped)
+                // 说明和输入区放在中间并允许滚动：空间不够时先让说明文字让位，标题和按钮不动。
+                Column(
+                    modifier = if (bar) Modifier else Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    if (!bar && description != null) {
+                        Text(description, color = LifeColors.Secondary, fontSize = 12.sp, lineHeight = 18.sp)
                     }
-                } else {
-                    AppDialogTitle(symbol, title, compact = false)
-                    // 说明和输入区放在中间并允许滚动：空间不够时先让说明文字让位，标题和按钮不动。
-                    Column(
-                        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(gap),
-                    ) {
-                        if (description != null) {
-                            Text(description, color = LifeColors.Secondary, fontSize = 12.sp, lineHeight = 18.sp)
-                        }
-                        content()
-                    }
+                    content()
+                }
+                if (!bar) {
                     AppDialogActions(
                         dismissText = dismissText,
                         confirmText = confirmText,
@@ -249,6 +245,7 @@ fun AppInputDialog(
         confirmText = confirmText,
         onConfirm = onConfirm,
         confirmEnabled = allowEmpty || value.isNotBlank(),
+        fieldOnlyWhenCramped = true,
     ) {
         // 内容在弹窗内部组合，才读得到「键盘把空间挤到极窄」的标记：
         // 这时标题和输入框并排，标签、说明、提示文字都让位给输入框。
@@ -262,6 +259,8 @@ fun AppInputDialog(
             onToggleReveal = if (secret) ({ revealed = !revealed }) else null,
             keyboardType = keyboardType,
             compact = cramped,
+            // 贴键盘的那一条按聊天输入框的样式走：整条胶囊。
+            chatBar = cramped,
             onImeAction = { if (allowEmpty || value.isNotBlank()) onConfirm() },
         )
         if (hint != null && !cramped) {
@@ -284,6 +283,7 @@ fun AppDialogTextField(
     onImeAction: () -> Unit = {},
     autoFocus: Boolean = true,
     compact: Boolean = false,
+    chatBar: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
@@ -309,18 +309,18 @@ fun AppDialogTextField(
         }
     }
 
-    val shape = RoundedCornerShape(14.dp)
+    val shape = if (chatBar) RoundedCornerShape(50) else RoundedCornerShape(14.dp)
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         if (label != null) {
             Text(label, color = LifeColors.Secondary, fontSize = 11.sp, maxLines = 1)
         }
         Row(
             Modifier.fillMaxWidth()
-                .height(if (compact) 38.dp else 46.dp)
+                .height(if (chatBar) 44.dp else if (compact) 38.dp else 46.dp)
                 .clip(shape)
                 .background(AppDialogColors.FieldFill)
                 .border(1.dp, if (focused) LifeColors.Amber.copy(alpha = .8f) else LifeColors.Border, shape)
-                .padding(horizontal = if (compact) 11.dp else 14.dp),
+                .padding(horizontal = if (chatBar) 18.dp else if (compact) 11.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {

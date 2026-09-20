@@ -60,6 +60,8 @@ fun main(args: Array<String>) {
     val shots = listOf(
         Shot("wide", 1440, 900, aiBrain()),
         Shot("device-landscape", 817, 375, aiBrain()),
+        // 模拟器那档小型横屏：480x800@240dpi = 533x320dp
+        Shot("small-landscape", 533, 320, aiBrain()),
         // 「自定义」提供商没有内置模型，用来走查空态文案。
         Shot("device-landscape-custom-provider", 817, 375, aiBrain(AiBrainUiState().selectProvider("custom"))),
         Shot("dialog-base-url", 817, 375, overPage {
