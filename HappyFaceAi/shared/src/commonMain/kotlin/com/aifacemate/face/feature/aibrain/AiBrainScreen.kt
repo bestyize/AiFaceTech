@@ -38,6 +38,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -102,15 +104,18 @@ fun AiBrainScreen(
             Modifier.fillMaxSize().padding(horizontal = screenPadding, vertical = if (compact) 4.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
-            AiBrainTopBar(compact, onBack)
             if (wide) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    Column(
-                        Modifier.weight(if (compact) .35f else .34f).fillMaxHeight().verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(gap),
-                    ) {
-                        CurrentBrainCard(state, compact)
-                        ThinkingModeCard(state.thinkingMode, compact, onThinkingModeSelected)
+                    Column(Modifier.weight(if (compact) .35f else .34f).fillMaxHeight()) {
+                        AiBrainTitleRow(compact, onBack)
+                        Spacer(Modifier.height(gap))
+                        Column(
+                            Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(gap),
+                        ) {
+                            CurrentBrainCard(state, compact)
+                            ThinkingModeCard(state.thinkingMode, compact, onThinkingModeSelected)
+                        }
                     }
                     Column(
                         Modifier.weight(if (compact) .65f else .66f).fillMaxHeight().verticalScroll(rememberScrollState()),
@@ -123,16 +128,20 @@ fun AiBrainScreen(
                     }
                 }
             } else {
-                Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(gap),
-                ) {
-                    CurrentBrainCard(state, compact = false)
-                    ThinkingModeCard(state.thinkingMode, compact = false, onThinkingModeSelected)
-                    ProviderSection(state, compact = false, onProviderSelected)
-                    SecretConfigSection(state, false, onBaseUrlChanged, onApiKeyChanged, onModelChanged)
-                    ModelSection(state, compact = false, onModelSelected, onFetchModels)
-                    CapabilitySection(state, compact = false, onCapabilityToggled)
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    AiBrainTitleRow(false, onBack)
+                    Spacer(Modifier.height(gap))
+                    Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        CurrentBrainCard(state, compact = false)
+                        ThinkingModeCard(state.thinkingMode, compact = false, onThinkingModeSelected)
+                        ProviderSection(state, compact = false, onProviderSelected)
+                        SecretConfigSection(state, false, onBaseUrlChanged, onApiKeyChanged, onModelChanged)
+                        ModelSection(state, compact = false, onModelSelected, onFetchModels)
+                        CapabilitySection(state, compact = false, onCapabilityToggled)
+                    }
                 }
             }
         }
@@ -811,29 +820,47 @@ private fun brandBackground(providerId: String): Color = when (providerId) {
     else -> Color(0xFF1B2029)
 }
 
+/**
+ * 标题区：设计稿里没有整条顶栏，标题连同返回箭头属于左栏顶部，且不随卡片滚动。
+ */
 @Composable
-private fun AiBrainTopBar(compact: Boolean, onBack: () -> Unit) {
+private fun AiBrainTitleRow(compact: Boolean, onBack: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(if (compact) 40.dp else 52.dp),
+        Modifier.fillMaxWidth().height(if (compact) 34.dp else 46.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
     ) {
-        Text("AI 大脑", color = Color.White, fontSize = if (compact) 20.sp else 28.sp, fontWeight = FontWeight.Bold)
+        Box(
+            Modifier.size(if (compact) 26.dp else 34.dp)
+                .clip(CircleShape)
+                .clickable { onBack() }
+                .semantics { contentDescription = "返回生命中心" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.size(if (compact) 12.dp else 16.dp)) {
+                val chevron = Path().apply {
+                    moveTo(size.width * .78f, 0f)
+                    lineTo(size.width * .22f, size.height * .5f)
+                    lineTo(size.width * .78f, size.height)
+                }
+                drawPath(
+                    chevron,
+                    Color.White.copy(alpha = .9f),
+                    style = Stroke(
+                        width = size.minDimension * .17f,
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round,
+                    ),
+                )
+            }
+        }
         Text(
-            "为小星选择与配置思考核心",
-            Modifier.weight(1f),
-            color = LifeColors.Secondary,
-            fontSize = if (compact) 11.sp else 14.sp,
+            "AI 大脑",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = if (compact) 19.sp else 26.sp,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
-        OutlinedButton(
-            onClick = onBack,
-            modifier = Modifier.height(if (compact) 32.dp else 40.dp),
-            border = BorderStroke(1.dp, LifeColors.Amber.copy(alpha = .7f)),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = LifeColors.Amber),
-            contentPadding = PaddingValues(horizontal = if (compact) 12.dp else 18.dp),
-        ) { Text("返回生命中心", fontSize = if (compact) 11.sp else 14.sp, maxLines = 1) }
     }
 }
 
