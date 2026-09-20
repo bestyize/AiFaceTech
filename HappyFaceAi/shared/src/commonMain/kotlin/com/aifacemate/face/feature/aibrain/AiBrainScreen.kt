@@ -165,7 +165,7 @@ private fun ProviderSection(state: AiBrainUiState, compact: Boolean, onSelected:
                     val selected = provider.id == state.config.providerId
                     SelectionTile(
                         selected = selected,
-                        modifier = Modifier.width(if (compact) 124.dp else 168.dp).height(if (compact) 58.dp else 74.dp),
+                        modifier = Modifier.width(if (compact) 124.dp else 168.dp).height(if (compact) 52.dp else 66.dp),
                         compact = compact,
                         onClick = { onSelected(provider.id) },
                     ) {
@@ -175,26 +175,17 @@ private fun ProviderSection(state: AiBrainUiState, compact: Boolean, onSelected:
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             ProviderMark(provider.id, if (compact) 26.dp else 34.dp)
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(
-                                        provider.name,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = if (compact) 11.sp else 14.sp,
-                                        maxLines = 1,
-                                    )
-                                    if (selected) {
-                                        Box(Modifier.size(if (compact) 5.dp else 7.dp).clip(CircleShape).background(LifeColors.Amber))
-                                    }
-                                }
-                                Text(
-                                    provider.subtitle,
-                                    color = LifeColors.Secondary,
-                                    fontSize = if (compact) 8.sp else 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                            Text(
+                                provider.name,
+                                Modifier.weight(1f, fill = false),
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = if (compact) 11.sp else 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (selected) {
+                                Box(Modifier.size(if (compact) 5.dp else 7.dp).clip(CircleShape).background(LifeColors.Amber))
                             }
                         }
                     }
@@ -291,21 +282,25 @@ private fun ModelSection(
                     val selected = model.id == state.config.modelId
                     SelectionTile(
                         selected = selected,
-                        modifier = Modifier.width(if (compact) 172.dp else 224.dp).height(if (compact) 70.dp else 96.dp),
+                        modifier = Modifier.width(if (compact) 172.dp else 224.dp).height(if (compact) 62.dp else 84.dp),
                         compact = compact,
+                        alignStart = true,
                         onClick = { onSelected(model.id) },
                     ) {
+                        val radioWidth = if (compact) 10.dp else 13.dp
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Text(
-                                if (selected) "●" else "○",
-                                color = if (selected) LifeColors.Amber else LifeColors.Secondary,
-                                fontSize = if (compact) 10.sp else 13.sp,
-                                maxLines = 1,
-                            )
+                            Box(Modifier.width(radioWidth), contentAlignment = Alignment.Center) {
+                                Text(
+                                    if (selected) "●" else "○",
+                                    color = if (selected) LifeColors.Amber else LifeColors.Secondary,
+                                    fontSize = if (compact) 10.sp else 13.sp,
+                                    maxLines = 1,
+                                )
+                            }
                             Text(
                                 model.name,
                                 Modifier.weight(1f),
@@ -317,14 +312,14 @@ private fun ModelSection(
                             )
                             if (model.recommended) SmallTag("推荐", compact)
                         }
-                        Text(
-                            model.description,
-                            color = LifeColors.Secondary,
-                            fontSize = if (compact) 9.sp else 12.sp,
-                            lineHeight = if (compact) 11.sp else 16.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp),
+                        ) {
+                            Spacer(Modifier.width(radioWidth))
+                            model.capabilities.take(3).forEach { capability -> SmallTag(capability, compact) }
+                        }
                     }
                 }
             }
@@ -392,7 +387,6 @@ private fun Carousel(
             scope.launch { listState.animateScrollBy(stepPx) }
         }
     }
-    CarouselDots(count = count, activeIndex = listState.firstVisibleItemIndex, compact = compact)
 }
 
 @Composable
@@ -410,25 +404,6 @@ private fun CarouselArrow(symbol: String, compact: Boolean, enabled: Boolean, on
                 color = if (enabled) LifeColors.Secondary else LifeColors.Border,
                 fontSize = if (compact) 15.sp else 20.sp,
                 maxLines = 1,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CarouselDots(count: Int, activeIndex: Int, compact: Boolean) {
-    if (count <= 1) return
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        repeat(count) { index ->
-            Box(
-                Modifier.padding(horizontal = 3.dp)
-                    .size(if (compact) 4.dp else 6.dp)
-                    .clip(CircleShape)
-                    .background(if (index == activeIndex.coerceIn(0, count - 1)) LifeColors.Amber else LifeColors.Border),
             )
         }
     }
@@ -695,6 +670,7 @@ private fun SelectionTile(
     modifier: Modifier,
     compact: Boolean,
     onClick: () -> Unit,
+    alignStart: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(if (compact) 10.dp else 14.dp)
@@ -708,7 +684,7 @@ private fun SelectionTile(
         Column(
             Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalAlignment = if (alignStart) Alignment.Start else Alignment.CenterHorizontally,
             content = content,
         )
     }

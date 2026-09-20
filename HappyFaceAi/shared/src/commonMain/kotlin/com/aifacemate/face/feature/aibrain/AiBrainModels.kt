@@ -13,6 +13,8 @@ data class AiModel(
     val tags: List<String> = emptyList(),
     /** 「当前大脑」卡片里的一句话概括；留空时回退到 [description]。 */
     val summary: String = "",
+    /** 模型卡片上展示的能力标签，例如「文本」「图片」「工具」。 */
+    val capabilities: List<String> = emptyList(),
 )
 
 data class AiProvider(
@@ -144,10 +146,20 @@ val defaultAiProviders = listOf(
                 recommended = true,
                 tags = listOf("深度思考", "中文友好", "高性价比"),
                 summary = "强大、快速、擅长中文的推理模型",
+                capabilities = listOf("文本", "推理", "工具"),
             ),
-            AiModel("deepseek-flash", "DeepSeek-Flash", "更快的响应速度\n适合日常对话"),
-            AiModel("deepseek-v3", "DeepSeek-V3", "稳定可靠\n适合通用场景"),
-            AiModel("custom", "自定义", "使用自定义模型\n通过 OpenAI 格式接入"),
+            AiModel(
+                "deepseek-flash", "DeepSeek-Flash", "更快的响应速度\n适合日常对话",
+                capabilities = listOf("文本", "推理"),
+            ),
+            AiModel(
+                "deepseek-v3", "DeepSeek-V3", "稳定可靠\n适合通用场景",
+                capabilities = listOf("文本", "工具"),
+            ),
+            AiModel(
+                "custom", "自定义", "使用自定义模型\n通过 OpenAI 格式接入",
+                capabilities = listOf("文本"),
+            ),
         ),
     ),
     AiProvider(
@@ -157,9 +169,15 @@ val defaultAiProviders = listOf(
         symbol = "ZP",
         defaultBaseUrl = "https://open.bigmodel.cn/api/paas/v4",
         models = listOf(
-            AiModel("glm-4.5", "GLM-4.5", "通用推理与工具使用", true, listOf("中文友好", "工具调用")),
-            AiModel("glm-4.5-air", "GLM-4.5-Air", "轻量、快速的日常模型"),
-            AiModel("custom", "自定义", "使用自定义模型名称接入"),
+            AiModel(
+                "glm-4.5", "GLM-4.5", "通用推理与工具使用", true, listOf("中文友好", "工具调用"),
+                capabilities = listOf("文本", "图片", "工具"),
+            ),
+            AiModel(
+                "glm-4.5-air", "GLM-4.5-Air", "轻量、快速的日常模型",
+                capabilities = listOf("文本", "图片"),
+            ),
+            AiModel("custom", "自定义", "使用自定义模型名称接入", capabilities = listOf("文本")),
         ),
     ),
     AiProvider(
@@ -169,9 +187,15 @@ val defaultAiProviders = listOf(
         symbol = "K",
         defaultBaseUrl = "https://api.moonshot.cn/v1",
         models = listOf(
-            AiModel("kimi-k2.5", "Kimi-K2.5", "长文本理解与复杂任务", true, listOf("长上下文", "中文友好")),
-            AiModel("kimi-k2-turbo", "Kimi-K2-Turbo", "更快速的长文本对话"),
-            AiModel("custom", "自定义", "使用自定义模型名称接入"),
+            AiModel(
+                "kimi-k2.5", "Kimi-K2.5", "长文本理解与复杂任务", true, listOf("长上下文", "中文友好"),
+                capabilities = listOf("文本", "长文", "工具"),
+            ),
+            AiModel(
+                "kimi-k2-turbo", "Kimi-K2-Turbo", "更快速的长文本对话",
+                capabilities = listOf("文本", "长文"),
+            ),
+            AiModel("custom", "自定义", "使用自定义模型名称接入", capabilities = listOf("文本")),
         ),
     ),
     AiProvider(
@@ -181,9 +205,15 @@ val defaultAiProviders = listOf(
         symbol = "MM",
         defaultBaseUrl = "https://api.minimax.chat/v1",
         models = listOf(
-            AiModel("minimax-m2.5", "MiniMax-M2.5", "综合能力与自然表达", true, listOf("自然对话", "高性价比")),
-            AiModel("minimax-m2.1", "MiniMax-M2.1", "稳定的通用模型"),
-            AiModel("custom", "自定义", "使用自定义模型名称接入"),
+            AiModel(
+                "minimax-m2.5", "MiniMax-M2.5", "综合能力与自然表达", true, listOf("自然对话", "高性价比"),
+                capabilities = listOf("文本", "图片", "工具"),
+            ),
+            AiModel(
+                "minimax-m2.1", "MiniMax-M2.1", "稳定的通用模型",
+                capabilities = listOf("文本", "图片"),
+            ),
+            AiModel("custom", "自定义", "使用自定义模型名称接入", capabilities = listOf("文本")),
         ),
     ),
     AiProvider(
