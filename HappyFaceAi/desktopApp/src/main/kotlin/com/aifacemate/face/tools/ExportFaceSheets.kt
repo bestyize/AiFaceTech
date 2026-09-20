@@ -87,7 +87,7 @@ fun main(args: Array<String>) {
         ) {
             FacePreviewScreen(
                 modifier = Modifier.fillMaxSize(),
-                onExitToDisplay = {},
+                onBack = {},
             )
         }
     }
@@ -107,7 +107,7 @@ fun main(args: Array<String>) {
         ) {
             FacePreviewScreen(
                 modifier = Modifier.fillMaxSize(),
-                onExitToDisplay = {},
+                onBack = {},
             )
         }
     }

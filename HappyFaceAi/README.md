@@ -33,3 +33,23 @@ Use the run button in your IDE's editor gutter, or run tests using Gradle tasks:
 ---
 
 Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+### 生命中心
+
+- 首页轻点显示临时操作层，3.5 秒后自动收起；长按进入生命中心。
+- 抚摸会短暂切换开心表情；对话入口明确提示语音尚未接入。
+- 生命中心包含角色卡、八个能力入口和本次运行中的表情变化记录。
+- 顶栏按设计稿收窄（常规 44dp / 小横屏 36dp）：返回是矢量箭头加「返回」两字的胶囊按钮；竖屏放在标题左侧，横屏收到右上角；待接入详情页共用这一套顶栏。
+- 「表情与外观」复用原有调试台，右上角保留「返回上一页」胶囊，本身没有整行标题栏，因此不加返回图标顶栏。
+- 其余能力目前为明确标注的待接入详情页，不包含模型、TTS、长期记忆或硬件服务。
+- Android 支持屏幕方向跟随；宽屏双栏、窄屏纵向滚动，小横屏保留双栏。
+- 当前角色资料为默认本地资料，变化记录不持久化，不展示虚构的陪伴天数。
+
+共享页面位于 `shared/src/commonMain/kotlin/com/aifacemate/face/feature/lifecenter/`。
+运行 `bash ./gradlew :desktopApp:exportLifeCenter` 可渲染宽屏、小横屏和手机窄屏，用于视觉检查。
+
+本次验证：Android Debug 构建、shared 与 lib_face JVM 测试通过；宽屏、小横屏、手机窄屏三个尺寸离屏渲染通过，
+确认竖屏「‹ 返回」在标题左侧、小横屏收到右上角。
+真机补充验证（M2012K11AC）：安装启动、长按进入生命中心、AI 大脑详情与系统返回、表情页切换开心表情并返回均正常。
+横屏下生命中心与 AI 大脑详情的顶栏都是矮顶栏，「‹ 返回」胶囊在右上角，点它能回到上一级；
+横屏紧凑布局下左侧资料和操作按钮完整可见，八个能力入口同屏显示。
+尚未覆盖所有机型、字体放大和完整旋转状态恢复测试。

@@ -1,6 +1,7 @@
 package com.aifacemate.face
 
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,7 +24,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            App()
+            App { enabled, onBack -> BackHandler(enabled = enabled, onBack = onBack) }
         }
     }
 }

@@ -1,71 +1,91 @@
 package com.aifacemate.face
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.dp
+import com.aifacemate.face.feature.lifecenter.*
 import com.aifacemate.face.model.FaceExpression
-import com.aifacemate.face.model.next
-import com.aifacemate.face.ui.DEFAULT_DIFFUSE_GLOW
-import com.aifacemate.face.ui.FaceDisplay
-import com.aifacemate.face.ui.FacePreviewScreen
+import com.aifacemate.face.ui.*
+import kotlinx.coroutines.delay
 
-/**
- * 实机入口。
- *
- * 默认就是一块只显示表情的屏（4.0 英寸 16:9 铺满）。
- *
- * - 单击屏幕：切到下一个表情（原型阶段用来在真机屏上逐个走查）
- * - 长按屏幕：进入内部预览页，用来切换表情、走查 100 个表情位
- *
- * 表情与「扩散光晕」开关的状态都提升到这里，预览页与实机全屏共用同一份，
- * 所以在调试台里关掉的扩散光晕，回到全屏依然是关的，切来切去也不会丢。
- */
 @Composable
-@Preview
-fun App() {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Color(0xFFFFC46B),
-            surface = Color(0xFF121218),
-            background = Color(0xFF09090C),
-        ),
-    ) {
-        var showPreview by remember { mutableStateOf(false) }
-        var expression by remember { mutableStateOf(FaceExpression.IDLE) }
-        var diffuseGlow by remember { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
-
-        if (showPreview) {
-            FacePreviewScreen(
-                modifier = Modifier.fillMaxSize(),
-                expression = expression,
-                onExpressionChange = { expression = it },
-                diffuseGlow = diffuseGlow,
-                onDiffuseGlowChange = { diffuseGlow = it },
-                onExitToDisplay = { showPreview = false },
-            )
-        } else {
-            FaceDisplay(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
+fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) {
+    MaterialTheme(colorScheme = darkColorScheme(primary = LifeColors.Amber, background = LifeColors.Background, surface = LifeColors.Card)) {
+        var routeName by rememberSaveable { mutableStateOf(LifeRoute.Living.name) }
+        val route = LifeRoute.valueOf(routeName)
+        var expressionName by rememberSaveable { mutableStateOf(FaceExpression.IDLE.name) }
+        val expression = FaceExpression.valueOf(expressionName)
+        var diffuseGlow by rememberSaveable { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
+        var hud by remember { mutableStateOf(false) }
+        var petting by remember { mutableStateOf(false) }
+        var conversationNotice by remember { mutableStateOf(false) }
+        val changes = remember { mutableStateListOf<RecentChange>() }
+        val haptic = LocalHapticFeedback.current
+        val navigate: (LifeRoute) -> Unit = { routeName = it.name; hud = false; conversationNotice = false; petting = false }
+        onBackHandler(route != LifeRoute.Living || hud) {
+            if (hud) hud = false else navigate(if (route == LifeRoute.LifeCenter) LifeRoute.Living else LifeRoute.LifeCenter)
+        }
+        LaunchedEffect(hud) { if (hud) { delay(3500); hud = false } }
+        LaunchedEffect(petting) { if (petting) { delay(2400); petting = false } }
+        when (route) {
+            LifeRoute.Living -> Box(Modifier.fillMaxSize()) {
+                FaceDisplay(
+                    modifier = Modifier.fillMaxSize().pointerInput(Unit) {
                         detectTapGestures(
-                            onTap = { expression = expression.next() },
-                            onLongPress = { showPreview = true },
+                            onTap = { hud = !hud },
+                            onLongPress = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                navigate(LifeRoute.LifeCenter)
+                            },
                         )
                     },
-                expression = expression,
-                diffuseGlow = diffuseGlow,
-            )
+                    expression = if (petting) FaceExpression.HAPPY else expression,
+                    diffuseGlow = diffuseGlow,
+                )
+                if (hud) Row(
+                    Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(16.dp)
+                        .background(Color(0xEE191C24), RoundedCornerShape(28.dp)).padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(onClick = { conversationNotice = true; hud = false }) { Text("对话") }
+                    TextButton(onClick = { petting = true; hud = false }) { Text("抚摸") }
+                    TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }
+                }
+                if (conversationNotice) AlertDialog(
+                    onDismissRequest = { conversationNotice = false },
+                    title = { Text("还在学习说话") },
+                    text = { Text("语音与 AI 对话尚未接入。现在可以轻点「抚摸」，看看小星的回应。") },
+                    confirmButton = { TextButton(onClick = { conversationNotice = false }) { Text("知道了") } },
+                )
+            }
+            LifeRoute.LifeCenter -> LifeCenterRoute(LifeCenterUiState(recentChanges = changes.toList()), expression, diffuseGlow, navigate)
+            LifeRoute.Appearance -> Column(Modifier.fillMaxSize().background(LifeColors.Background).safeDrawingPadding()) {
+                FacePreviewScreen(
+                    modifier = Modifier.weight(1f), expression = expression,
+                    onExpressionChange = {
+                        if (it != expression) {
+                            expressionName = it.name
+                            changes.add(0, RecentChange("换上了新的表情", "${it.cnName} · 本次陪伴"))
+                            if (changes.size > 5) changes.removeAt(changes.lastIndex)
+                        }
+                    },
+                    diffuseGlow = diffuseGlow,
+                    onDiffuseGlowChange = { diffuseGlow = it },
+                    onBack = { navigate(LifeRoute.LifeCenter) },
+                )
+            }
+            else -> FeaturePlaceholder(defaultFeatures.first { it.route == route }) { navigate(LifeRoute.LifeCenter) }
         }
     }
 }

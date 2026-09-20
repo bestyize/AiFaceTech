@@ -56,7 +56,7 @@ private val SIDE_BY_SIDE_THRESHOLD = 720.dp
 /**
  * 表情调试台：左边是预览区，右边是操作区。
  *
- * 操作区刻意做得紧凑：标题左侧，「生命感」与「回到全屏」收纳到右上角，
+ * 操作区刻意做得紧凑：标题左侧，「生命感」与「返回上一页」收纳到右上角，
  * 渲染表面一行小胶囊，剩下的空间全部留给 100 个表情位（全部展开、可滚动）。
  *
  * 表情与「扩散光晕」开关都可以由外部托管：
@@ -71,7 +71,7 @@ fun FacePreviewScreen(
     onExpressionChange: ((FaceExpression) -> Unit)? = null,
     diffuseGlow: Float? = null,
     onDiffuseGlowChange: ((Float) -> Unit)? = null,
-    onExitToDisplay: (() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     // 外部托管表情时用外部的，否则自己管，方便单独预览这个页面
     var internalExpression by remember { mutableStateOf(FaceExpression.IDLE) }
@@ -115,7 +115,7 @@ fun FacePreviewScreen(
                     onSurfaceChange = { surface = it },
                     diffuseGlow = currentDiffuseGlow,
                     onDiffuseGlowChange = selectDiffuseGlow,
-                    onExitToDisplay = onExitToDisplay,
+                    onBack = onBack,
                     modifier = Modifier.width(controlWidth).fillMaxHeight(),
                 )
             }
@@ -137,7 +137,7 @@ fun FacePreviewScreen(
                     onSurfaceChange = { surface = it },
                     diffuseGlow = currentDiffuseGlow,
                     onDiffuseGlowChange = selectDiffuseGlow,
-                    onExitToDisplay = onExitToDisplay,
+                    onBack = onBack,
                     // 窄屏上下布局：预览占 55%、操作区占 45%，列表在操作区内滚动
                     modifier = Modifier.fillMaxWidth().weight(0.45f),
                 )
@@ -215,7 +215,7 @@ private fun ControlPane(
     onSurfaceChange: (FaceSurface) -> Unit,
     diffuseGlow: Float,
     onDiffuseGlowChange: (Float) -> Unit,
-    onExitToDisplay: (() -> Unit)?,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -223,7 +223,7 @@ private fun ControlPane(
             .background(PanelSurface)
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        // 紧凑标题行：左侧标题，右上角收纳「生命感」与「回到全屏」
+        // 紧凑标题行：左侧标题，右上角收纳「生命感」与「返回上一页」
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top,
@@ -267,10 +267,10 @@ private fun ControlPane(
                     selected = animate,
                     onClick = { onAnimateChange(!animate) },
                 )
-                if (onExitToDisplay != null) {
+                if (onBack != null) {
                     CompactActionButton(
-                        label = "回到全屏",
-                        onClick = onExitToDisplay,
+                        label = "返回上一页",
+                        onClick = onBack,
                     )
                 }
             }
@@ -370,7 +370,7 @@ private fun CompactChip(
     }
 }
 
-/** 右上角的主操作按钮：回到实机全屏。 */
+/** 右上角的主操作按钮：返回上一级页面。 */
 @Composable
 private fun CompactActionButton(
     label: String,

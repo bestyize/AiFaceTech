@@ -40,3 +40,11 @@ compose.desktop {
         }
     }
 }
+
+// Visual QA for the shared life center at three viewport sizes.
+tasks.register<JavaExec>("exportLifeCenter") {
+    group = "verification"
+    mainClass.set("com.aifacemate.face.tools.ExportLifeCenterKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args = listOf(layout.buildDirectory.dir("life-center").get().asFile.absolutePath)
+}
