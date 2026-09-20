@@ -53,10 +53,6 @@ const val DEFAULT_DIFFUSE_GLOW: Float = 1f
 /**
  * 一张会呼吸、会眨眼的猫脸。这是所有宿主界面（预览页、真机 Launcher）共用的入口。
  *
- * [earLight] 控制耳朵灯（耳朵与耳后的暖光晕）。关掉之后只有屏幕自发光，
- * 用来对比“机身灯效”与“纯屏幕内容”两种形态；实机屏幕上本来就不画耳朵，
- * 所以这个开关在 [FaceSurface.DEVICE_SCREEN] 下没有可见差别。
- *
  * [diffuseGlow] 控制屏幕内最外层的扩散光晕（大面积辉光 + 最宽柔边）。
  * 设成 0 时只保留贴着笔画的近边发光，眼睛和猫嘴的霓虹质感还在，但黑屏不会被铺灰。
  */
@@ -66,11 +62,9 @@ fun FaceStage(
     modifier: Modifier = Modifier,
     animate: Boolean = true,
     surface: FaceSurface = FaceSurface.PRODUCT_MOCKUP,
-    earLight: Boolean = true,
     diffuseGlow: Float = DEFAULT_DIFFUSE_GLOW,
 ) {
-    val animated = rememberAnimatedFace(expression, animate)
-    val params = if (earLight) animated else animated.copy(earGlow = 0f)
+    val params = rememberAnimatedFace(expression, animate)
 
     Box(modifier, contentAlignment = Alignment.Center) {
         CatFace(

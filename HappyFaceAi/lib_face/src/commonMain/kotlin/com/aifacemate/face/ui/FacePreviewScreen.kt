@@ -59,8 +59,10 @@ private val SIDE_BY_SIDE_THRESHOLD = 720.dp
  * 操作区刻意做得紧凑：标题左侧，「生命感」与「回到全屏」收纳到右上角，
  * 渲染表面一行小胶囊，剩下的空间全部留给 100 个表情位（全部展开、可滚动）。
  *
- * 表情与两个渲染开关（扩散光晕、耳朵灯）都可以由外部托管：
+ * 表情与「扩散光晕」开关都可以由外部托管：
  * 传进来就用外部的，不传就自己管，这样全屏页与调试台能共用同一份状态。
+ *
+ * 耳朵灯不做开关：走查时始终亮着，作为表情的背景光。
  */
 @Composable
 fun FacePreviewScreen(
@@ -69,8 +71,6 @@ fun FacePreviewScreen(
     onExpressionChange: ((FaceExpression) -> Unit)? = null,
     diffuseGlow: Float? = null,
     onDiffuseGlowChange: ((Float) -> Unit)? = null,
-    earLight: Boolean? = null,
-    onEarLightChange: ((Boolean) -> Unit)? = null,
     onExitToDisplay: (() -> Unit)? = null,
 ) {
     // 外部托管表情时用外部的，否则自己管，方便单独预览这个页面
@@ -88,12 +88,6 @@ fun FacePreviewScreen(
     val selectDiffuseGlow: (Float) -> Unit = { value ->
         if (onDiffuseGlowChange != null) onDiffuseGlowChange(value) else internalDiffuseGlow = value
     }
-    // 耳朵灯开关：关掉之后耳朵与耳后的暖光晕全部消失
-    var internalEarLight by remember { mutableStateOf(true) }
-    val currentEarLight = earLight ?: internalEarLight
-    val selectEarLight: (Boolean) -> Unit = { value ->
-        if (onEarLightChange != null) onEarLightChange(value) else internalEarLight = value
-    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -109,7 +103,6 @@ fun FacePreviewScreen(
                     expression = currentExpression,
                     animate = animate,
                     surface = surface,
-                    earLight = currentEarLight,
                     diffuseGlow = currentDiffuseGlow,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
@@ -120,8 +113,6 @@ fun FacePreviewScreen(
                     onAnimateChange = { animate = it },
                     surface = surface,
                     onSurfaceChange = { surface = it },
-                    earLight = currentEarLight,
-                    onEarLightChange = selectEarLight,
                     diffuseGlow = currentDiffuseGlow,
                     onDiffuseGlowChange = selectDiffuseGlow,
                     onExitToDisplay = onExitToDisplay,
@@ -134,7 +125,6 @@ fun FacePreviewScreen(
                     expression = currentExpression,
                     animate = animate,
                     surface = surface,
-                    earLight = currentEarLight,
                     diffuseGlow = currentDiffuseGlow,
                     modifier = Modifier.fillMaxWidth().weight(0.55f),
                 )
@@ -145,8 +135,6 @@ fun FacePreviewScreen(
                     onAnimateChange = { animate = it },
                     surface = surface,
                     onSurfaceChange = { surface = it },
-                    earLight = currentEarLight,
-                    onEarLightChange = selectEarLight,
                     diffuseGlow = currentDiffuseGlow,
                     onDiffuseGlowChange = selectDiffuseGlow,
                     onExitToDisplay = onExitToDisplay,
@@ -163,19 +151,15 @@ private fun PreviewPane(
     expression: FaceExpression,
     animate: Boolean,
     surface: FaceSurface,
-    earLight: Boolean,
     diffuseGlow: Float,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier.drawBehind {
-            // 背后的暖色环境光，让发光屏幕有“落在桌面上的光”；关掉耳朵灯时一起收掉
+            // 耳朵灯是表情的背景光，走查时始终亮着
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(
-                        Accent.copy(alpha = if (earLight) 0.16f else 0f),
-                        Color.Transparent,
-                    ),
+                    colors = listOf(Accent.copy(alpha = 0.16f), Color.Transparent),
                     center = Offset(size.width / 2f, size.height * 0.42f),
                     radius = size.minDimension * 0.75f,
                 ),
@@ -191,7 +175,6 @@ private fun PreviewPane(
                 animate = animate,
                 modifier = Modifier.fillMaxSize().padding(12.dp),
                 surface = FaceSurface.PRODUCT_MOCKUP,
-                earLight = earLight,
                 diffuseGlow = diffuseGlow,
             )
 
@@ -213,7 +196,6 @@ private fun PreviewPane(
                         animate = animate,
                         modifier = Modifier.fillMaxSize(),
                         surface = FaceSurface.DEVICE_SCREEN,
-                        earLight = earLight,
                         diffuseGlow = diffuseGlow,
                     )
                 }
@@ -231,8 +213,6 @@ private fun ControlPane(
     onAnimateChange: (Boolean) -> Unit,
     surface: FaceSurface,
     onSurfaceChange: (FaceSurface) -> Unit,
-    earLight: Boolean,
-    onEarLightChange: (Boolean) -> Unit,
     diffuseGlow: Float,
     onDiffuseGlowChange: (Float) -> Unit,
     onExitToDisplay: (() -> Unit)?,
@@ -315,11 +295,6 @@ private fun ControlPane(
                 label = "实机屏幕",
                 selected = surface == FaceSurface.DEVICE_SCREEN,
                 onClick = { onSurfaceChange(FaceSurface.DEVICE_SCREEN) },
-            )
-            CompactChip(
-                label = "耳朵灯",
-                selected = earLight,
-                onClick = { onEarLightChange(!earLight) },
             )
             CompactChip(
                 label = "扩散光晕",
@@ -421,13 +396,9 @@ private fun CompactActionButton(
 
 private data class ExpressionGroup(val title: String, val expressions: List<FaceExpression>)
 
-/** 按四张设计图 + Alpha 1 精修分组，便于走查时定位。 */
+/** 按四张设计图分组，每组 25 个表情位，便于走查时定位。 */
 private fun expressionGroups(): List<ExpressionGroup> = listOf(
-    ExpressionGroup("Alpha 1 精修", FaceExpression.alphaOne),
-    ExpressionGroup(
-        "基础 06-25",
-        FaceExpression.basic.filterNot { it in FaceExpression.alphaOne },
-    ),
+    ExpressionGroup("基础 01-25", FaceExpression.basic),
     ExpressionGroup("扩展 I 26-50", FaceExpression.extensionOne),
     ExpressionGroup("扩展 II 51-75", FaceExpression.extensionTwo),
     ExpressionGroup("扩展 III 76-100", FaceExpression.extensionThree),
