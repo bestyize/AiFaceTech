@@ -6,6 +6,10 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+val releaseVersion = providers.gradleProperty("releaseVersion")
+    .map { it.removePrefix("v") }
+    .orElse("1.0.0")
+
 dependencies {
     implementation(project(":shared"))
     implementation(project(":lib_face"))
@@ -36,7 +40,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "com.aifacemate.face"
-            packageVersion = "1.0.0"
+            packageVersion = releaseVersion.get()
         }
     }
 }

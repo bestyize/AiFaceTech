@@ -5,6 +5,15 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+val releaseVersion = providers.gradleProperty("releaseVersion")
+    .map { it.removePrefix("v") }
+    .orElse("1.0.0")
+val releaseVersionCode = providers.gradleProperty("releaseVersionCode")
+    .map(String::toInt)
+    .orElse(1)
+fun releaseSecret(name: String) = providers.gradleProperty(name)
+    .orElse(providers.environmentVariable(name))
+
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_11
@@ -29,8 +38,19 @@ android {
         applicationId = "com.aifacemate.face"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = releaseVersionCode.get()
+        versionName = releaseVersion.get()
+    }
+    signingConfigs {
+        create("release") {
+            val keystorePath = releaseSecret("ANDROID_KEYSTORE_PATH").orNull
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = releaseSecret("ANDROID_KEYSTORE_PASSWORD").orNull
+                keyAlias = releaseSecret("ANDROID_KEY_ALIAS").orNull
+                keyPassword = releaseSecret("ANDROID_KEY_PASSWORD").orNull
+            }
+        }
     }
     packaging {
         resources {
@@ -40,6 +60,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (!releaseSecret("ANDROID_KEYSTORE_PATH").orNull.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
