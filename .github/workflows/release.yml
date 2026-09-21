@@ -14,6 +14,10 @@ on:
         description: "Android versionCode（可选，默认按语义化版本自动换算）"
         required: false
         type: string
+      ios_bundle_id:
+        description: "iOS Bundle Identifier（例如 com.aifacemate.face.HappyFaceAi）"
+        required: false
+        type: string
       release_name:
         description: "Release 标题（可选）"
         required: false
@@ -177,7 +181,7 @@ jobs:
     runs-on: macos-latest
     env:
       IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
-      IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+      IOS_BUNDLE_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ios_bundle_id || secrets.IOS_BUNDLE_ID }}
       IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
       IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
       IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
@@ -245,16 +249,15 @@ jobs:
           ARCHIVE_PATH="${RUNNER_TEMP}/HappyFaceAi.xcarchive"
           EXPORT_PATH="${RUNNER_TEMP}/ios-export"
           DERIVED_DATA_PATH="${RUNNER_TEMP}/ios-derived-data"
-          BUNDLE_ID="${BUNDLE_ID:-com.aifacemate.face.HappyFaceAi}"
+          BUNDLE_ID="${BUNDLE_ID:-}"
 
           rm -rf "${ARCHIVE_PATH}" "${EXPORT_PATH}" "${DERIVED_DATA_PATH}"
+          if [[ -z "${BUNDLE_ID}" ]]; then
+            echo "IOS_BUNDLE_ID must be configured for iOS packaging." >&2
+            exit 1
+          fi
 
           if [[ -n "${KEYCHAIN_PATH}" && -n "${PROFILE_NAME}" ]]; then
-            if [[ -z "${BUNDLE_ID}" ]]; then
-              echo "IOS_BUNDLE_ID must be configured when iOS signing secrets are provided." >&2
-              exit 1
-            fi
-
             xcodebuild \
               -project iosApp/iosApp.xcodeproj \
               -scheme iosApp \
@@ -307,9 +310,15 @@ jobs:
             IPA_PATH="$(compgen -G "${EXPORT_PATH}/*.ipa" | head -n 1)"
           fi
           {
-            echo "package_path=${PACKAGE_PATH}"
-            echo "export_path=${EXPORT_PATH}"
-            echo "ipa_path=${IPA_PATH}"
+            echo "package_path<<EOF"
+            echo "${PACKAGE_PATH}"
+            echo "EOF"
+            echo "export_path<<EOF"
+            echo "${EXPORT_PATH}"
+            echo "EOF"
+            echo "ipa_path<<EOF"
+            echo "${IPA_PATH}"
+            echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
       - uses: actions/upload-artifact@v4
@@ -361,10 +370,18 @@ jobs:
         run: choco install wixtoolset --no-progress -y
 
       - name: Build desktop package
+        if: ${{ matrix.os != 'windows-latest' }}
         shell: bash
         run: |
           chmod +x gradlew
           ./gradlew :desktopApp:packageReleaseDistributionForCurrentOS \
+            -PreleaseVersion="${{ needs.metadata.outputs.version }}"
+
+      - name: Build desktop package
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          ./gradlew.bat :desktopApp:packageReleaseDistributionForCurrentOS `
             -PreleaseVersion="${{ needs.metadata.outputs.version }}"
 
       - uses: actions/upload-artifact@v4
