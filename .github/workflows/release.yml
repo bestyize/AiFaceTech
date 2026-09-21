@@ -10,6 +10,10 @@ on:
         description: "发布版本号，例如 1.0.0 或 v1.0.0"
         required: true
         type: string
+      version_code:
+        description: "Android versionCode（可选，默认按语义化版本自动换算）"
+        required: false
+        type: string
       release_name:
         description: "Release 标题（可选）"
         required: false
@@ -42,10 +46,12 @@ jobs:
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             raw_version="${{ github.event.inputs.version }}"
+            input_version_code="${{ github.event.inputs.version_code }}"
             prerelease="${{ github.event.inputs.prerelease }}"
             release_name="${{ github.event.inputs.release_name }}"
           else
             raw_version="${GITHUB_REF_NAME}"
+            input_version_code=""
             prerelease="false"
             release_name=""
           fi
@@ -63,9 +69,24 @@ jobs:
             release_name="HappyFaceAi ${version}"
           fi
 
+          if [[ -n "${input_version_code}" ]]; then
+            version_code="${input_version_code}"
+          else
+            version_core="${version%%[-+]*}"
+            IFS='.' read -r major minor patch extra <<< "${version_core}"
+            major="${major:-0}"
+            minor="${minor:-0}"
+            patch="${patch:-0}"
+            if [[ -n "${extra}" || ! "${major}" =~ ^[0-9]+$ || ! "${minor}" =~ ^[0-9]+$ || ! "${patch}" =~ ^[0-9]+$ ]]; then
+              echo "Version '${version}' must be semver-like (major.minor.patch) or provide version_code explicitly." >&2
+              exit 1
+            fi
+            version_code="$((10#${major} * 10000 + 10#${minor} * 100 + 10#${patch}))"
+          fi
+
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "version_code=${GITHUB_RUN_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "version_code=${version_code}" >> "${GITHUB_OUTPUT}"
           echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
           echo "prerelease=${prerelease}" >> "${GITHUB_OUTPUT}"
 

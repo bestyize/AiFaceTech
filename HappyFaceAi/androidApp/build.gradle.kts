@@ -1,3 +1,4 @@
+import org.gradle.api.GradleException
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -9,7 +10,10 @@ val releaseVersion = providers.gradleProperty("releaseVersion")
     .map { it.removePrefix("v") }
     .orElse("1.0.0")
 val releaseVersionCode = providers.gradleProperty("releaseVersionCode")
-    .map(String::toInt)
+    .map {
+        it.toIntOrNull()
+            ?: throw GradleException("releaseVersionCode must be an integer, but was '$it'.")
+    }
     .orElse(1)
 fun releaseSecret(name: String) = providers.gradleProperty(name)
     .orElse(providers.environmentVariable(name))
