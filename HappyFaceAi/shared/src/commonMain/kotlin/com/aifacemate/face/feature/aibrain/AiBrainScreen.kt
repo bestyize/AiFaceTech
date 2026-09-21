@@ -102,6 +102,8 @@ fun AiBrainScreen(
     // 页面上的输入项都只做展示，点一行才弹输入弹窗，草稿在这里暂存。
     var editingSecret by remember { mutableStateOf<SecretEdit?>(null) }
     var secretDraft by remember { mutableStateOf("") }
+    // 弹窗一律挂在页面根节点上：挂在滚动里的卡片内部时，遮罩和输入条只会盖住那张卡（看着像嵌在页面里）。
+    var customModelDialogVisible by remember { mutableStateOf(false) }
     fun openSecretEditor(field: SecretEdit) {
         secretDraft = when (field) {
             SecretEdit.BaseUrl -> state.config.baseUrl
@@ -147,7 +149,7 @@ fun AiBrainScreen(
                             onEditBaseUrl = { openSecretEditor(SecretEdit.BaseUrl) },
                             onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
                         )
-                        ModelSection(state, compact, onModelSelected, onFetchModels, onCustomModelAdded)
+                        ModelSection(state, compact, onModelSelected, onFetchModels) { customModelDialogVisible = true }
                         ThinkingModeCard(state.thinkingMode, compact, onThinkingModeSelected)
                         CapabilitySection(state, compact, onCapabilityToggled)
                     }
@@ -170,7 +172,7 @@ fun AiBrainScreen(
                             onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
                             stacked = true,
                         )
-                        ModelSection(state, compact = false, onModelSelected, onFetchModels, onCustomModelAdded)
+                        ModelSection(state, compact = false, onModelSelected, onFetchModels) { customModelDialogVisible = true }
                         CapabilitySection(state, compact = false, onCapabilityToggled)
                     }
                 }
@@ -219,6 +221,16 @@ fun AiBrainScreen(
                     openSecretEditor(SecretEdit.ApiKey)
                 },
                 onDismiss = onDismissApiKeyPrompt,
+            )
+        }
+
+        if (customModelDialogVisible) {
+            CustomModelDialog(
+                onDismiss = { customModelDialogVisible = false },
+                onConfirm = { name ->
+                    customModelDialogVisible = false
+                    onCustomModelAdded(name)
+                },
             )
         }
     }
@@ -311,9 +323,8 @@ private fun ModelSection(
     compact: Boolean,
     onSelected: (String) -> Unit,
     onFetchModels: () -> Unit,
-    onCustomModelAdded: (String) -> Unit,
+    onAddCustomModel: () -> Unit,
 ) {
-    var customDialogVisible by remember { mutableStateOf(false) }
     BrainCard(compact) {
         Row(
             Modifier.fillMaxWidth(),
@@ -420,7 +431,7 @@ private fun ModelSection(
                         selected = false,
                         modifier = Modifier.width(if (compact) 96.dp else 118.dp).height(if (compact) 56.dp else 72.dp),
                         compact = compact,
-                        onClick = { customDialogVisible = true },
+                        onClick = onAddCustomModel,
                     ) {
                         Text("＋", color = LifeColors.Amber, fontSize = if (compact) 16.sp else 20.sp, maxLines = 1)
                         Text("自定义模型", color = LifeColors.Secondary, fontSize = if (compact) 9.sp else 11.sp, maxLines = 1)
@@ -428,15 +439,6 @@ private fun ModelSection(
                 }
             }
         }
-    }
-    if (customDialogVisible) {
-        CustomModelDialog(
-            onDismiss = { customDialogVisible = false },
-            onConfirm = { name ->
-                customDialogVisible = false
-                onCustomModelAdded(name)
-            },
-        )
     }
 }
 
