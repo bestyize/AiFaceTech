@@ -182,6 +182,7 @@ jobs:
       IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
       IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
       IOS_CODE_SIGN_IDENTITY: ${{ secrets.IOS_CODE_SIGN_IDENTITY }}
+      IOS_EXPORT_METHOD: ${{ secrets.IOS_EXPORT_METHOD }}
     defaults:
       run:
         working-directory: HappyFaceAi
@@ -271,7 +272,7 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>development</string>
+            <string>${IOS_EXPORT_METHOD:-app-store}</string>
             <key>signingStyle</key>
             <string>manual</string>
             <key>signingCertificate</key>
@@ -309,17 +310,27 @@ jobs:
           fi
 
           ditto -c -k --sequesterRsrc --keepParent "${ARCHIVE_PATH}" "${RUNNER_TEMP}/HappyFaceAi-ios.xcarchive.zip"
+          IPA_PATH=""
+          if compgen -G "${EXPORT_PATH}/*.ipa" > /dev/null; then
+            IPA_PATH="$(compgen -G "${EXPORT_PATH}/*.ipa" | head -n 1)"
+          fi
           {
             echo "archive_zip=${RUNNER_TEMP}/HappyFaceAi-ios.xcarchive.zip"
             echo "export_path=${EXPORT_PATH}"
+            echo "ipa_path=${IPA_PATH}"
           } >> "${GITHUB_OUTPUT}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ios-release-assets
-          path: |
-            ${{ steps.build_ios.outputs.archive_zip }}
-            ${{ steps.build_ios.outputs.export_path }}/*.ipa
+          path: ${{ steps.build_ios.outputs.archive_zip }}
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ steps.build_ios.outputs.ipa_path != '' }}
+        with:
+          name: ios-ipa-release-assets
+          path: ${{ steps.build_ios.outputs.ipa_path }}
           if-no-files-found: error
 
   build-desktop:
