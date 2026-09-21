@@ -10,11 +10,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.aifacemate.face.data.AndroidAppContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        // 最先装：SettingsStore 要靠它才能落到 SharedPreferences，而 AI 大脑一构造就要读配置
+        AndroidAppContext.install(this)
 
         // 实机是一块 4.0 英寸 16:9 屏，表情要铺满整块屏幕，所以进入沉浸式全屏
         WindowCompat.setDecorFitsSystemWindows(window, false)

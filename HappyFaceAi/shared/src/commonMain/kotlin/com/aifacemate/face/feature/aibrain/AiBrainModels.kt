@@ -174,14 +174,28 @@ data class AiBrainUiState(
 }
 
 class AiBrainViewModel : ViewModel() {
-    var uiState by mutableStateOf(AiBrainUiState())
+    var uiState by mutableStateOf(restoreSettings(AiBrainUiState()))
         private set
 
-    fun selectProvider(id: String) { uiState = uiState.selectProvider(id) }
-    fun selectModel(id: String) { uiState = uiState.selectModel(id) }
-    fun selectThinkingMode(mode: ThinkingMode) { uiState = uiState.copy(thinkingMode = mode) }
+    fun selectProvider(id: String) {
+        uiState = uiState.selectProvider(id)
+        AiBrainSettings.saveSelection(uiState.config.providerId, uiState.config.modelId)
+    }
+
+    fun selectModel(id: String) {
+        uiState = uiState.selectModel(id)
+        AiBrainSettings.saveSelection(uiState.config.providerId, uiState.config.modelId)
+    }
+
+    fun selectThinkingMode(mode: ThinkingMode) {
+        uiState = uiState.copy(thinkingMode = mode)
+        AiBrainSettings.saveThinkingMode(mode)
+    }
+
     fun toggleCapability(capability: AiCapability) {
-        uiState = uiState.copy(capabilities = uiState.capabilities + (capability to !(uiState.capabilities[capability] ?: false)))
+        val enabled = !(uiState.capabilities[capability] ?: false)
+        uiState = uiState.copy(capabilities = uiState.capabilities + (capability to enabled))
+        AiBrainSettings.saveCapability(capability.name, enabled)
     }
     fun updateBaseUrl(value: String) { uiState = uiState.copy(config = uiState.config.copy(baseUrl = value)) }
     fun updateApiKey(value: String) {
@@ -194,7 +208,10 @@ class AiBrainViewModel : ViewModel() {
 
     fun dismissApiKeyPrompt() { uiState = uiState.copy(apiKeyPromptVisible = false) }
 
-    fun addCustomModel(name: String) { uiState = uiState.addCustomModel(name) }
+    fun addCustomModel(name: String) {
+        uiState = uiState.addCustomModel(name)
+        AiBrainSettings.saveCustomModels(uiState.config.providerId, uiState.customModels[uiState.config.providerId].orEmpty())
+    }
 
     /** 界面把 toast 展示完后清掉，避免重复弹。 */
     fun consumeToast() {
@@ -225,6 +242,8 @@ class AiBrainViewModel : ViewModel() {
                         savedSecrets = uiState.savedSecrets + (config.providerId to SavedSecret(config.baseUrl, apiKey)),
                         toastMessage = "API Key 校验通过，已保存",
                     )
+                    // 校验通过才落盘：写下去就等于"这家配过且有效"。
+                    .also { AiBrainSettings.saveSecret(config.providerId, SavedSecret(config.baseUrl, apiKey)) }
 
                 is ModelFetchResult.Failure -> uiState = uiState
                     .withFetchFailure(result.message)
@@ -262,6 +281,52 @@ class AiBrainViewModel : ViewModel() {
             }
         }
     }
+}
+
+/**
+ * 冷启动时把上次的配置读回来：选了哪家、哪家的哪个模型、思考模式、能力开关，
+ * 以及每家校验通过并保存过的 Key / Base URL 和自定义模型。
+ *
+ * 任何一项读不到都只是退回默认值，不该让页面起不来——所以这里不校验、不抛异常。
+ */
+internal fun restoreSettings(base: AiBrainUiState): AiBrainUiState {
+    val providerId = AiBrainSettings.providerId()
+        ?.takeIf { saved -> base.providers.any { it.id == saved } }
+        ?: base.config.providerId
+
+    val savedSecrets = base.providers
+        .mapNotNull { provider -> AiBrainSettings.savedSecret(provider.id)?.let { provider.id to it } }
+        .toMap()
+    val customModels = base.providers
+        .mapNotNull { provider -> AiBrainSettings.customModels(provider.id).takeIf { it.isNotEmpty() }?.let { provider.id to it } }
+        .toMap()
+
+    val restored = base.copy(
+        config = base.config.copy(providerId = providerId),
+        savedSecrets = savedSecrets,
+        customModels = customModels,
+        thinkingMode = AiBrainSettings.thinkingMode() ?: base.thinkingMode,
+        capabilities = base.capabilities.mapValues { (capability, default) ->
+            AiBrainSettings.capability(capability.name) ?: default
+        },
+    )
+
+    // 模型按供应商取：上次选的还在列表里就用它，否则退回这家的推荐模型。
+    val modelId = AiBrainSettings.modelId(providerId)
+        ?.takeIf { saved -> restored.visibleModels.any { it.id == saved } }
+        ?: restored.visibleModels.firstOrNull()?.id
+        ?: restored.config.modelId
+    val secret = savedSecrets[providerId]
+    val provider = restored.selectedProvider
+
+    return restored.copy(
+        config = restored.config.copy(
+            modelId = modelId,
+            baseUrl = secret?.baseUrl ?: provider.defaultBaseUrl,
+            apiKey = secret?.apiKey.orEmpty(),
+        ),
+        apiKeys = savedSecrets.mapValues { (_, saved) -> saved.apiKey },
+    )
 }
 
 val defaultAiProviders = listOf(
