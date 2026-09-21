@@ -23,6 +23,11 @@ on:
         required: false
         default: false
         type: boolean
+      publish:
+        description: "是否创建 GitHub Release 并上传产物"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -40,6 +45,7 @@ jobs:
       version_code: ${{ steps.meta.outputs.version_code }}
       release_name: ${{ steps.meta.outputs.release_name }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
+      publish: ${{ steps.meta.outputs.publish }}
       build_ref: ${{ steps.meta.outputs.build_ref }}
     steps:
       - uses: actions/checkout@v4
@@ -54,11 +60,13 @@ jobs:
             input_version_code="${{ github.event.inputs.version_code }}"
             prerelease="${{ github.event.inputs.prerelease }}"
             release_name="${{ github.event.inputs.release_name }}"
+            publish="${{ github.event.inputs.publish }}"
           else
             raw_version="${GITHUB_REF_NAME}"
             input_version_code=""
             prerelease="false"
             release_name=""
+            publish="true"
           fi
 
           raw_version="${raw_version#refs/tags/}"
@@ -101,6 +109,7 @@ jobs:
             echo "version_code=${version_code}"
             echo "release_name=${release_name}"
             echo "prerelease=${prerelease}"
+            echo "publish=${publish}"
             echo "build_ref=${build_ref}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -163,6 +172,156 @@ jobs:
             HappyFaceAi/androidApp/build/outputs/bundle/release/*.aab
           if-no-files-found: error
 
+  build-ios:
+    needs: metadata
+    runs-on: macos-latest
+    env:
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+      IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+      IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      IOS_CODE_SIGN_IDENTITY: ${{ secrets.IOS_CODE_SIGN_IDENTITY }}
+    defaults:
+      run:
+        working-directory: HappyFaceAi
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.build_ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "21"
+          cache: gradle
+
+      - name: Prepare iOS signing assets
+        if: ${{ env.IOS_TEAM_ID != '' && env.IOS_CERTIFICATE_BASE64 != '' && env.IOS_CERTIFICATE_PASSWORD != '' && env.IOS_PROVISIONING_PROFILE_BASE64 != '' }}
+        id: ios_signing
+        shell: bash
+        run: |
+          KEYCHAIN_PATH="${RUNNER_TEMP}/ios-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          CERT_PATH="${RUNNER_TEMP}/ios_distribution.p12"
+          PROFILE_PATH="${RUNNER_TEMP}/ios_profile.mobileprovision"
+          PROFILE_PLIST="${RUNNER_TEMP}/ios_profile.plist"
+
+          printf '%s' "${IOS_CERTIFICATE_BASE64}" | base64 --decode > "${CERT_PATH}"
+          printf '%s' "${IOS_PROVISIONING_PROFILE_BASE64}" | base64 --decode > "${PROFILE_PATH}"
+
+          mkdir -p "${HOME}/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "${PROFILE_PATH}" > "${PROFILE_PLIST}"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print UUID' "${PROFILE_PLIST}")"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print Name' "${PROFILE_PLIST}")"
+          cp "${PROFILE_PATH}" "${HOME}/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERT_PATH}" -P "${IOS_CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${KEYCHAIN_PATH}"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" login.keychain-db
+
+          {
+            echo "keychain_path=${KEYCHAIN_PATH}"
+            echo "profile_name=${PROFILE_NAME}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Build iOS archive
+        id: build_ios
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          RELEASE_VERSION_CODE: ${{ needs.metadata.outputs.version_code }}
+          KEYCHAIN_PATH: ${{ steps.ios_signing.outputs.keychain_path }}
+          PROFILE_NAME: ${{ steps.ios_signing.outputs.profile_name }}
+        run: |
+          chmod +x gradlew
+
+          ARCHIVE_PATH="${RUNNER_TEMP}/HappyFaceAi.xcarchive"
+          EXPORT_PATH="${RUNNER_TEMP}/ios-export"
+          DERIVED_DATA_PATH="${RUNNER_TEMP}/ios-derived-data"
+          BUNDLE_ID="${IOS_BUNDLE_ID:-com.aifacemate.face.HappyFaceAi${IOS_TEAM_ID}}"
+
+          rm -rf "${ARCHIVE_PATH}" "${EXPORT_PATH}" "${DERIVED_DATA_PATH}"
+
+          if [[ -n "${KEYCHAIN_PATH}" && -n "${PROFILE_NAME}" ]]; then
+            xcodebuild \
+              -project iosApp/iosApp.xcodeproj \
+              -scheme iosApp \
+              -configuration Release \
+              -archivePath "${ARCHIVE_PATH}" \
+              -derivedDataPath "${DERIVED_DATA_PATH}" \
+              -destination "generic/platform=iOS" \
+              TEAM_ID="${IOS_TEAM_ID}" \
+              DEVELOPMENT_TEAM="${IOS_TEAM_ID}" \
+              PRODUCT_BUNDLE_IDENTIFIER="${BUNDLE_ID}" \
+              MARKETING_VERSION="${RELEASE_VERSION}" \
+              CURRENT_PROJECT_VERSION="${RELEASE_VERSION_CODE}" \
+              CODE_SIGN_STYLE=Manual \
+              CODE_SIGN_IDENTITY="${IOS_CODE_SIGN_IDENTITY:-Apple Distribution}" \
+              PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+              OTHER_CODE_SIGN_FLAGS="--keychain ${KEYCHAIN_PATH}" \
+              archive
+
+            cat > "${RUNNER_TEMP}/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>${IOS_CODE_SIGN_IDENTITY:-Apple Distribution}</string>
+            <key>teamID</key>
+            <string>${IOS_TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+            xcodebuild -exportArchive \
+              -archivePath "${ARCHIVE_PATH}" \
+              -exportOptionsPlist "${RUNNER_TEMP}/ExportOptions.plist" \
+              -exportPath "${EXPORT_PATH}"
+          else
+            xcodebuild \
+              -project iosApp/iosApp.xcodeproj \
+              -scheme iosApp \
+              -configuration Release \
+              -archivePath "${ARCHIVE_PATH}" \
+              -derivedDataPath "${DERIVED_DATA_PATH}" \
+              -destination "generic/platform=iOS" \
+              PRODUCT_BUNDLE_IDENTIFIER="${BUNDLE_ID}" \
+              MARKETING_VERSION="${RELEASE_VERSION}" \
+              CURRENT_PROJECT_VERSION="${RELEASE_VERSION_CODE}" \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              archive
+          fi
+
+          ditto -c -k --sequesterRsrc --keepParent "${ARCHIVE_PATH}" "${RUNNER_TEMP}/HappyFaceAi-ios.xcarchive.zip"
+          {
+            echo "archive_zip=${RUNNER_TEMP}/HappyFaceAi-ios.xcarchive.zip"
+            echo "export_path=${EXPORT_PATH}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-assets
+          path: |
+            ${{ steps.build_ios.outputs.archive_zip }}
+            ${{ steps.build_ios.outputs.export_path }}/*.ipa
+          if-no-files-found: error
+
   build-desktop:
     needs: metadata
     strategy:
@@ -215,8 +374,10 @@ jobs:
     needs:
       - metadata
       - build-android
+      - build-ios
       - build-desktop
     runs-on: ubuntu-latest
+    if: ${{ needs.metadata.outputs.publish == 'true' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -269,4 +430,6 @@ jobs:
             release-assets/**/*.aab
             release-assets/**/*.deb
             release-assets/**/*.dmg
+            release-assets/**/*.ipa
             release-assets/**/*.msi
+            release-assets/**/*.xcarchive.zip
