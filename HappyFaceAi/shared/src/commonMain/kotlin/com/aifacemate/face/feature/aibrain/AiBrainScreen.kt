@@ -368,7 +368,9 @@ private fun ModelSection(
                     val selected = model.id == state.config.modelId
                     SelectionTile(
                         selected = selected,
-                        modifier = Modifier.width(if (compact) 172.dp else 224.dp).height(if (compact) 66.dp else 84.dp),
+                        // 两行文案的高度就够了：第一行模型名 + 右上角标签，第二行能力标签。
+                        // 56/72 是实测值：再矮一点安卓的字形行盒会把第二行胶囊和标题切掉。
+                        modifier = Modifier.width(if (compact) 172.dp else 224.dp).height(if (compact) 56.dp else 72.dp),
                         compact = compact,
                         alignStart = true,
                         onClick = { onSelected(model.id) },
@@ -416,11 +418,11 @@ private fun ModelSection(
                 item(key = "add-custom-model") {
                     SelectionTile(
                         selected = false,
-                        modifier = Modifier.width(if (compact) 96.dp else 118.dp).height(if (compact) 62.dp else 84.dp),
+                        modifier = Modifier.width(if (compact) 96.dp else 118.dp).height(if (compact) 56.dp else 72.dp),
                         compact = compact,
                         onClick = { customDialogVisible = true },
                     ) {
-                        Text("＋", color = LifeColors.Amber, fontSize = if (compact) 18.sp else 24.sp, maxLines = 1)
+                        Text("＋", color = LifeColors.Amber, fontSize = if (compact) 16.sp else 20.sp, maxLines = 1)
                         Text("自定义模型", color = LifeColors.Secondary, fontSize = if (compact) 9.sp else 11.sp, maxLines = 1)
                     }
                 }
@@ -1015,7 +1017,8 @@ private fun ThinkingModeCard(selected: ThinkingMode, compact: Boolean, onSelecte
             ThinkingMode.entries.forEach { mode ->
                 SelectionTile(
                     selected = mode == selected,
-                    modifier = Modifier.weight(1f).height(if (compact) 84.dp else 122.dp),
+                    // 只要图标 + 标题，下面的说明去掉后卡片自然矮下来。
+                    modifier = Modifier.weight(1f).height(if (compact) 56.dp else 72.dp),
                     compact = compact,
                     onClick = { onSelected(mode) },
                 ) {
@@ -1027,14 +1030,6 @@ private fun ThinkingModeCard(selected: ThinkingMode, compact: Boolean, onSelecte
                         maxLines = 1,
                     )
                     Text(mode.title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 11.sp else 14.sp, maxLines = 1)
-                    Text(
-                        mode.detail,
-                        color = LifeColors.Secondary,
-                        fontSize = if (compact) 8.sp else 11.sp,
-                        lineHeight = if (compact) 11.sp else 15.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
         }
