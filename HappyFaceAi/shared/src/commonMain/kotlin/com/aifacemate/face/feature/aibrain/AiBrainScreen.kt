@@ -372,7 +372,7 @@ private fun ModelSection(
         Carousel(
             count = models.size + 1,
             compact = compact,
-            stepWidth = if (compact) 180.dp else 236.dp,
+            stepWidth = if (compact) 194.dp else 236.dp,
         ) { listState ->
             LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
                 items(models, key = { model -> model.id }) { model ->
@@ -381,7 +381,9 @@ private fun ModelSection(
                         selected = selected,
                         // 两行文案的高度就够了：第一行模型名 + 右上角标签，第二行能力标签。
                         // 56/72 是实测值：再矮一点安卓的字形行盒会把第二行胶囊和标题切掉。
-                        modifier = Modifier.width(if (compact) 172.dp else 224.dp).height(if (compact) 56.dp else 72.dp),
+                        // 186 而不是 172：小米系统字体比模拟器的 Roboto 宽，172 时「模型名 + 已选择」会把名字截成
+                        // 「DeepSeek-V4-…」，放宽一点刚好放得下完整模型名。
+                        modifier = Modifier.width(if (compact) 186.dp else 224.dp).height(if (compact) 56.dp else 72.dp),
                         compact = compact,
                         alignStart = true,
                         onClick = { onSelected(model.id) },
