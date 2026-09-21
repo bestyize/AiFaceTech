@@ -396,7 +396,12 @@ private fun ModelSection(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            if (model.recommended) SmallTag("推荐", compact)
+                            // 右上角只放一枚标签：选中时是「已选择」，没选中才显示「推荐」。
+                            if (selected) {
+                                SelectedTag(compact)
+                            } else if (model.recommended) {
+                                SmallTag("推荐", compact)
+                            }
                         }
                         Row(
                             Modifier.fillMaxWidth(),
@@ -764,6 +769,21 @@ private fun SmallTag(text: String, compact: Boolean) {
         color = LifeColors.Amber,
         fontSize = if (compact) 8.sp else 10.sp,
         // 收紧行高：默认行盒比字高出不少，胶囊会显得又厚又空。
+        lineHeight = if (compact) 10.sp else 12.sp,
+        maxLines = 1,
+    )
+}
+
+/** 选中标签：实心暖金 + 深色字，比「推荐」更重，放在模型卡右上角。 */
+@Composable
+private fun SelectedTag(compact: Boolean) {
+    Text(
+        "已选择",
+        modifier = Modifier.background(LifeColors.Amber, RoundedCornerShape(50))
+            .padding(horizontal = if (compact) 6.dp else 8.dp, vertical = if (compact) 1.dp else 2.dp),
+        color = Color(0xFF14181F),
+        fontWeight = FontWeight.SemiBold,
+        fontSize = if (compact) 8.sp else 10.sp,
         lineHeight = if (compact) 10.sp else 12.sp,
         maxLines = 1,
     )

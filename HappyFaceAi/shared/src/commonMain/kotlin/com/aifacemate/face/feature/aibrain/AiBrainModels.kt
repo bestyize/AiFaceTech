@@ -108,9 +108,10 @@ data class AiBrainUiState(
 
     fun selectModel(modelId: String): AiBrainUiState {
         val model = visibleModels.firstOrNull { it.id == modelId } ?: return this
+        // 选中这件事由模型卡右上角的「已选择」标签表达，不再写一行状态文案。
         return copy(
             config = config.copy(modelId = model.id),
-            statusMessage = "已选择 ${model.name}",
+            statusMessage = "",
         )
     }
 
