@@ -135,7 +135,7 @@ jobs:
         id: keystore
         shell: bash
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "${RUNNER_TEMP}/release.keystore"
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "${RUNNER_TEMP}/release.keystore"
           echo "path=${RUNNER_TEMP}/release.keystore" >> "${GITHUB_OUTPUT}"
 
       - name: Build Android release APK
@@ -222,12 +222,29 @@ jobs:
       - name: Ensure release tag exists
         shell: bash
         run: |
-          if git rev-parse "${{ needs.metadata.outputs.tag }}" >/dev/null 2>&1; then
+          tag="${{ needs.metadata.outputs.tag }}"
+          build_ref="${{ needs.metadata.outputs.build_ref }}"
+
+          if git rev-parse "${tag}" >/dev/null 2>&1; then
             exit 0
           fi
 
-          git tag "${{ needs.metadata.outputs.tag }}" "${{ needs.metadata.outputs.build_ref }}"
-          git push origin "refs/tags/${{ needs.metadata.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            git fetch --tags origin "${tag}:${tag}"
+            exit 0
+          fi
+
+          git tag "${tag}" "${build_ref}"
+          if git push origin "refs/tags/${tag}"; then
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            git fetch --tags origin "${tag}:${tag}"
+            exit 0
+          fi
+
+          exit 1
 
       - uses: actions/download-artifact@v4
         with:
