@@ -40,7 +40,12 @@ jobs:
       version_code: ${{ steps.meta.outputs.version_code }}
       release_name: ${{ steps.meta.outputs.release_name }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
+      build_ref: ${{ steps.meta.outputs.build_ref }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - id: meta
         shell: bash
         run: |
@@ -84,11 +89,18 @@ jobs:
             version_code="$((10#${major} * 10000 + 10#${minor} * 100 + 10#${patch}))"
           fi
 
+          if git rev-parse "${tag}" >/dev/null 2>&1; then
+            build_ref="${tag}"
+          else
+            build_ref="${GITHUB_SHA}"
+          fi
+
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "version_code=${version_code}" >> "${GITHUB_OUTPUT}"
           echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
           echo "prerelease=${prerelease}" >> "${GITHUB_OUTPUT}"
+          echo "build_ref=${build_ref}" >> "${GITHUB_OUTPUT}"
 
   build-android:
     needs: metadata
@@ -98,6 +110,8 @@ jobs:
         working-directory: HappyFaceAi
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.build_ref }}
 
       - uses: actions/setup-java@v4
         with:
@@ -166,6 +180,8 @@ jobs:
         working-directory: HappyFaceAi
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.build_ref }}
 
       - uses: actions/setup-java@v4
         with:
@@ -203,7 +219,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.metadata.outputs.tag }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ needs.metadata.outputs.build_ref }}
           name: ${{ needs.metadata.outputs.release_name }}
           prerelease: ${{ needs.metadata.outputs.prerelease == 'true' }}
           generate_release_notes: true

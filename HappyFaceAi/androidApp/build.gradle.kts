@@ -17,6 +17,21 @@ val releaseVersionCode = providers.gradleProperty("releaseVersionCode")
     .orElse(1)
 fun releaseSecret(name: String) = providers.gradleProperty(name)
     .orElse(providers.environmentVariable(name))
+val releaseSigningKeys = listOf(
+    "ANDROID_KEYSTORE_PATH",
+    "ANDROID_KEYSTORE_PASSWORD",
+    "ANDROID_KEY_ALIAS",
+    "ANDROID_KEY_PASSWORD",
+)
+val hasCompleteReleaseSigning = releaseSigningKeys.all { !releaseSecret(it).orNull.isNullOrBlank() }
+val hasAnyReleaseSigning = releaseSigningKeys.any { !releaseSecret(it).orNull.isNullOrBlank() }
+
+if (hasAnyReleaseSigning && !hasCompleteReleaseSigning) {
+    throw GradleException(
+        "Android release signing requires ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, " +
+            "ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD."
+    )
+}
 
 kotlin {
     compilerOptions {
@@ -46,10 +61,9 @@ android {
         versionName = releaseVersion.get()
     }
     signingConfigs {
-        create("release") {
-            val keystorePath = releaseSecret("ANDROID_KEYSTORE_PATH").orNull
-            if (!keystorePath.isNullOrBlank()) {
-                storeFile = file(keystorePath)
+        if (hasCompleteReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseSecret("ANDROID_KEYSTORE_PATH").get())
                 storePassword = releaseSecret("ANDROID_KEYSTORE_PASSWORD").orNull
                 keyAlias = releaseSecret("ANDROID_KEY_ALIAS").orNull
                 keyPassword = releaseSecret("ANDROID_KEY_PASSWORD").orNull
@@ -64,7 +78,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (!releaseSecret("ANDROID_KEYSTORE_PATH").orNull.isNullOrBlank()) {
+            if (hasCompleteReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
             proguardFiles(
