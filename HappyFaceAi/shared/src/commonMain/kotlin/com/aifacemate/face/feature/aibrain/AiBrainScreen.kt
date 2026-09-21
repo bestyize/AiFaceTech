@@ -330,7 +330,7 @@ private fun SecretConfigSection(
                 overflow = TextOverflow.Ellipsis,
             )
             SecretSaveButton(
-                saved = state.savedSecret == state.config,
+                saved = state.secretSaved,
                 checking = state.secretChecking,
                 compact = compact,
                 onClick = onSave,

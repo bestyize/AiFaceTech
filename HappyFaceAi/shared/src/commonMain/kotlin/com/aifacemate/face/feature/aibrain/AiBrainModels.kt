@@ -33,6 +33,9 @@ data class BrainConfig(
     val apiKey: String = "",
 )
 
+/** 校验通过并保存下来的密钥配置。按供应商分开存，切供应商不会串用别人的 Key。 */
+data class SavedSecret(val baseUrl: String, val apiKey: String)
+
 /** 思考模式。[detail] 用换行分成两行，对齐设计稿的两行说明。 */
 enum class ThinkingMode(val title: String, val detail: String, val symbol: String) {
     Fast("快速", "更快响应\n适合简单问题", "⚡"),
@@ -66,13 +69,23 @@ data class AiBrainUiState(
     val fetchStatus: FetchStatus = FetchStatus.Idle,
     /** 没有 API Key 就点「获取模型列表」时，弹窗提示去填写。 */
     val apiKeyPromptVisible: Boolean = false,
-    /** 校验通过并保存下来的密钥配置；和当前配置不一致时「保存」按钮重新可点。 */
-    val savedSecret: BrainConfig? = null,
+    /** 各供应商各自的 API Key，切换供应商时互不串用。 */
+    val apiKeys: Map<String, String> = emptyMap(),
+    /** 校验通过并保存下来的密钥配置，按供应商分开存。 */
+    val savedSecrets: Map<String, SavedSecret> = emptyMap(),
     /** 正在向供应商校验密钥。 */
     val secretChecking: Boolean = false,
     /** 一次性提示文案（toast），展示后由界面清掉。 */
     val toastMessage: String? = null,
 ) {
+    /**
+     * 当前供应商的密钥是否已保存。
+     *
+     * 只比 Base URL 和 API Key：换个模型不该让「已保存」变回「保存」。
+     */
+    val secretSaved: Boolean
+        get() = savedSecrets[config.providerId] == SavedSecret(config.baseUrl.trim(), config.apiKey.trim())
+
     val selectedProvider: AiProvider
         get() = providers.firstOrNull { it.id == config.providerId } ?: providers.first()
 
@@ -98,11 +111,14 @@ data class AiBrainUiState(
             ?: provider.models.firstOrNull()
             ?: custom.firstOrNull()?.let { name -> AiModel(id = name, name = name, description = "自定义模型") }
             ?: AiModel(id = "", name = "", description = "")
+        // 切供应商时换成这家自己的密钥：已保存过就用保存过的，否则用它自己的草稿，没有就是空。
+        val saved = savedSecrets[provider.id]
         return copy(
             config = config.copy(
                 providerId = provider.id,
                 modelId = model.id,
-                baseUrl = provider.defaultBaseUrl,
+                baseUrl = saved?.baseUrl ?: provider.defaultBaseUrl,
+                apiKey = saved?.apiKey ?: apiKeys[provider.id].orEmpty(),
             ),
             fetchedModels = emptyList(),
             fetchStatus = FetchStatus.Idle,
@@ -168,7 +184,13 @@ class AiBrainViewModel : ViewModel() {
         uiState = uiState.copy(capabilities = uiState.capabilities + (capability to !(uiState.capabilities[capability] ?: false)))
     }
     fun updateBaseUrl(value: String) { uiState = uiState.copy(config = uiState.config.copy(baseUrl = value)) }
-    fun updateApiKey(value: String) { uiState = uiState.copy(config = uiState.config.copy(apiKey = value)) }
+    fun updateApiKey(value: String) {
+        // Key 按供应商各存一份，切回来还是自己那串。
+        uiState = uiState.copy(
+            config = uiState.config.copy(apiKey = value),
+            apiKeys = uiState.apiKeys + (uiState.config.providerId to value),
+        )
+    }
 
     fun dismissApiKeyPrompt() { uiState = uiState.copy(apiKeyPromptVisible = false) }
 
@@ -198,7 +220,11 @@ class AiBrainViewModel : ViewModel() {
             when (val result = fetchProviderModels(config.baseUrl, apiKey)) {
                 is ModelFetchResult.Success -> uiState = uiState
                     .withFetchedModels(result.models)
-                    .copy(secretChecking = false, savedSecret = config, toastMessage = "API Key 校验通过，已保存")
+                    .copy(
+                        secretChecking = false,
+                        savedSecrets = uiState.savedSecrets + (config.providerId to SavedSecret(config.baseUrl, apiKey)),
+                        toastMessage = "API Key 校验通过，已保存",
+                    )
 
                 is ModelFetchResult.Failure -> uiState = uiState
                     .withFetchFailure(result.message)
