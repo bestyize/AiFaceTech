@@ -39,6 +39,8 @@ private fun aiBrain(state: AiBrainUiState = AiBrainUiState()): @Composable () ->
         onFetchModels = {},
         onCustomModelAdded = {},
         onDismissApiKeyPrompt = {},
+        onSaveSecret = {},
+        onToastShown = {},
     )
 }
 

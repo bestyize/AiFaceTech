@@ -66,6 +66,12 @@ data class AiBrainUiState(
     val fetchStatus: FetchStatus = FetchStatus.Idle,
     /** 没有 API Key 就点「获取模型列表」时，弹窗提示去填写。 */
     val apiKeyPromptVisible: Boolean = false,
+    /** 校验通过并保存下来的密钥配置；和当前配置不一致时「保存」按钮重新可点。 */
+    val savedSecret: BrainConfig? = null,
+    /** 正在向供应商校验密钥。 */
+    val secretChecking: Boolean = false,
+    /** 一次性提示文案（toast），展示后由界面清掉。 */
+    val toastMessage: String? = null,
 ) {
     val selectedProvider: AiProvider
         get() = providers.firstOrNull { it.id == config.providerId } ?: providers.first()
@@ -167,6 +173,39 @@ class AiBrainViewModel : ViewModel() {
     fun dismissApiKeyPrompt() { uiState = uiState.copy(apiKeyPromptVisible = false) }
 
     fun addCustomModel(name: String) { uiState = uiState.addCustomModel(name) }
+
+    /** 界面把 toast 展示完后清掉，避免重复弹。 */
+    fun consumeToast() {
+        if (uiState.toastMessage != null) uiState = uiState.copy(toastMessage = null)
+    }
+
+    /**
+     * 「保存」密钥配置：先校验再保存。
+     *
+     * 没填 API Key 只提示；填了就拿它去请求一次供应商的 `/models`，通了才算有效。
+     * 保存成功后按钮变「已保存」，改动 API Key / Base URL 才会重新可点。
+     */
+    fun saveSecret() {
+        val current = uiState
+        val apiKey = current.config.apiKey.trim()
+        if (apiKey.isBlank()) {
+            uiState = current.copy(toastMessage = "需要先填写 API Key")
+            return
+        }
+        val config = current.config.copy(baseUrl = current.config.baseUrl.trim(), apiKey = apiKey)
+        uiState = current.copy(config = config, secretChecking = true, toastMessage = null)
+        viewModelScope.launch {
+            when (val result = fetchProviderModels(config.baseUrl, apiKey)) {
+                is ModelFetchResult.Success -> uiState = uiState
+                    .withFetchedModels(result.models)
+                    .copy(secretChecking = false, savedSecret = config, toastMessage = "API Key 校验通过，已保存")
+
+                is ModelFetchResult.Failure -> uiState = uiState
+                    .withFetchFailure(result.message)
+                    .copy(secretChecking = false, toastMessage = "校验未通过：${result.message}")
+            }
+        }
+    }
 
     /**
      * 真实拉取供应商的模型列表。

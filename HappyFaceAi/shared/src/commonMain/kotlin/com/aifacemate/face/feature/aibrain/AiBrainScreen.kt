@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +52,8 @@ import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.ui.AppDialog
 import com.aifacemate.face.ui.FaceStage
 import com.aifacemate.face.ui.AppInputDialog
+import com.aifacemate.face.ui.AppToast
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val CardTop = Color(0xFF171C25)
@@ -76,6 +79,8 @@ fun AiBrainRoute(onBack: () -> Unit, viewModel: AiBrainViewModel = viewModel()) 
         onFetchModels = viewModel::fetchModels,
         onCustomModelAdded = viewModel::addCustomModel,
         onDismissApiKeyPrompt = viewModel::dismissApiKeyPrompt,
+        onSaveSecret = viewModel::saveSecret,
+        onToastShown = viewModel::consumeToast,
     )
 }
 
@@ -98,6 +103,8 @@ fun AiBrainScreen(
     onFetchModels: () -> Unit,
     onCustomModelAdded: (String) -> Unit,
     onDismissApiKeyPrompt: () -> Unit,
+    onSaveSecret: () -> Unit,
+    onToastShown: () -> Unit,
 ) {
     // 页面上的输入项都只做展示，点一行才弹输入弹窗，草稿在这里暂存。
     var editingSecret by remember { mutableStateOf<SecretEdit?>(null) }
@@ -148,6 +155,7 @@ fun AiBrainScreen(
                             compact = compact,
                             onEditBaseUrl = { openSecretEditor(SecretEdit.BaseUrl) },
                             onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
+                            onSave = onSaveSecret,
                         )
                         ModelSection(state, compact, onModelSelected, onFetchModels) { customModelDialogVisible = true }
                         ThinkingModeCard(state.thinkingMode, compact, onThinkingModeSelected)
@@ -170,6 +178,7 @@ fun AiBrainScreen(
                             compact = false,
                             onEditBaseUrl = { openSecretEditor(SecretEdit.BaseUrl) },
                             onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
+                            onSave = onSaveSecret,
                             stacked = true,
                         )
                         ModelSection(state, compact = false, onModelSelected, onFetchModels) { customModelDialogVisible = true }
@@ -233,6 +242,15 @@ fun AiBrainScreen(
                 },
             )
         }
+
+        // 轻提示：保存校验这类一次性反馈走它，展示完由 ViewModel 清掉。
+        state.toastMessage?.let { message ->
+            AppToast(message)
+            LaunchedEffect(message) {
+                delay(2400)
+                onToastShown()
+            }
+        }
     }
 }
 
@@ -292,10 +310,32 @@ private fun SecretConfigSection(
     compact: Boolean,
     onEditBaseUrl: () -> Unit,
     onEditApiKey: () -> Unit,
+    onSave: () -> Unit,
     stacked: Boolean = compact,
 ) {
     BrainCard(compact) {
-        SectionHeader("⚙", "密钥配置", "使用 OpenAI Compatible 格式配置，兼容大多数模型服务", compact)
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("⚙", color = LifeColors.Amber, fontSize = if (compact) 16.sp else 21.sp, maxLines = 1)
+            Text("密钥配置", color = Color.White, fontWeight = FontWeight.Bold, fontSize = if (compact) 15.sp else 19.sp, maxLines = 1)
+            Text(
+                "使用 OpenAI Compatible 格式配置，兼容大多数模型服务",
+                Modifier.weight(1f),
+                color = LifeColors.Secondary,
+                fontSize = if (compact) 9.sp else 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            SecretSaveButton(
+                saved = state.savedSecret == state.config,
+                checking = state.secretChecking,
+                compact = compact,
+                onClick = onSave,
+            )
+        }
         // 窄屏（非宽屏布局、或横屏矮窗口）两行并排只剩一点宽度，地址和密钥都会被截断，改成上下两行。
         if (stacked) {
             ConfigFieldRow("link", "API Base URL", state.config.baseUrl, compact, onEditBaseUrl)
@@ -306,6 +346,33 @@ private fun SecretConfigSection(
                 ConfigFieldRow("key", "API Key", maskSecret(state.config.apiKey), compact, onEditApiKey, Modifier.weight(1f))
             }
         }
+    }
+}
+
+/** 密钥配置右上角的保存按钮：可点时校验并保存，通过后变绿色「已保存」并禁用，直到用户改了配置。 */
+@Composable
+private fun SecretSaveButton(saved: Boolean, checking: Boolean, compact: Boolean, onClick: () -> Unit) {
+    val tint = if (saved) ConnectedGreen else LifeColors.Amber
+    OutlinedButton(
+        onClick = onClick,
+        enabled = !saved && !checking,
+        modifier = Modifier.height(if (compact) 30.dp else 38.dp),
+        border = BorderStroke(1.dp, tint.copy(alpha = if (saved) .55f else .7f)),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = tint,
+            disabledContentColor = if (saved) ConnectedGreen else LifeColors.Secondary,
+        ),
+        contentPadding = PaddingValues(horizontal = if (compact) 10.dp else 16.dp),
+    ) {
+        Text(
+            when {
+                saved -> "✓ 已保存"
+                checking -> "检查中…"
+                else -> "保存"
+            },
+            fontSize = if (compact) 10.sp else 13.sp,
+            maxLines = 1,
+        )
     }
 }
 
