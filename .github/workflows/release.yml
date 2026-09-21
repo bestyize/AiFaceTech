@@ -243,11 +243,16 @@ jobs:
           ARCHIVE_PATH="${RUNNER_TEMP}/HappyFaceAi.xcarchive"
           EXPORT_PATH="${RUNNER_TEMP}/ios-export"
           DERIVED_DATA_PATH="${RUNNER_TEMP}/ios-derived-data"
-          BUNDLE_ID="${IOS_BUNDLE_ID:-com.aifacemate.face.HappyFaceAi${IOS_TEAM_ID}}"
+          BUNDLE_ID="${IOS_BUNDLE_ID:-com.aifacemate.face.HappyFaceAi}"
 
           rm -rf "${ARCHIVE_PATH}" "${EXPORT_PATH}" "${DERIVED_DATA_PATH}"
 
           if [[ -n "${KEYCHAIN_PATH}" && -n "${PROFILE_NAME}" ]]; then
+            if [[ -z "${IOS_BUNDLE_ID}" ]]; then
+              echo "IOS_BUNDLE_ID must be configured when iOS signing secrets are provided." >&2
+              exit 1
+            fi
+
             xcodebuild \
               -project iosApp/iosApp.xcodeproj \
               -scheme iosApp \
@@ -420,6 +425,7 @@ jobs:
             exit 0
           fi
 
+          echo "Failed to create or fetch release tag ${tag} for ${build_ref}." >&2
           exit 1
 
       - uses: actions/download-artifact@v4.1.3
