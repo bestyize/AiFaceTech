@@ -10,6 +10,10 @@ on:
         description: "发布版本号，例如 1.0.0 或 v1.0.0"
         required: true
         type: string
+      source_ref:
+        description: "构建来源 ref（可选，manual publish 时建议填写 tag 或 commit SHA）"
+        required: false
+        type: string
       version_code:
         description: "Android versionCode（可选，默认按语义化版本自动换算）"
         required: false
@@ -61,12 +65,14 @@ jobs:
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             raw_version="${{ github.event.inputs.version }}"
+            source_ref_input="${{ github.event.inputs.source_ref }}"
             input_version_code="${{ github.event.inputs.version_code }}"
             prerelease="${{ github.event.inputs.prerelease }}"
             release_name="${{ github.event.inputs.release_name }}"
             publish="${{ github.event.inputs.publish }}"
           else
             raw_version="${GITHUB_REF_NAME}"
+            source_ref_input=""
             input_version_code=""
             prerelease="false"
             release_name=""
@@ -101,8 +107,13 @@ jobs:
             version_code="$((10#${major} * 10000 + 10#${minor} * 100 + 10#${patch}))"
           fi
 
-          if git rev-parse "${tag}" >/dev/null 2>&1; then
+          if [[ -n "${source_ref_input}" ]]; then
+            build_ref="${source_ref_input}"
+          elif git rev-parse "${tag}" >/dev/null 2>&1; then
             build_ref="${tag}"
+          elif [[ "${publish}" == "true" ]]; then
+            echo "Manual publish requires an existing tag or an explicit source_ref." >&2
+            exit 1
           else
             build_ref="${GITHUB_SHA}"
           fi
@@ -242,7 +253,7 @@ jobs:
           RELEASE_VERSION_CODE: ${{ needs.metadata.outputs.version_code }}
           KEYCHAIN_PATH: ${{ steps.ios_signing.outputs.keychain_path }}
           PROFILE_NAME: ${{ steps.ios_signing.outputs.profile_name }}
-          BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+          BUNDLE_ID: ${{ env.IOS_BUNDLE_ID }}
         run: |
           chmod +x gradlew
 
