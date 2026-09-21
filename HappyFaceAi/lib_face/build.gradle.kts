@@ -37,6 +37,12 @@ kotlin {
     }
 
     sourceSets {
+        val iosMain by creating {
+            dependsOn(commonMain.get())
+        }
+        iosArm64Main.get().dependsOn(iosMain)
+        iosSimulatorArm64Main.get().dependsOn(iosMain)
+
         commonMain.dependencies {
             api(libs.compose.runtime)
             api(libs.compose.foundation)

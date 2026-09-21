@@ -150,11 +150,25 @@ jobs:
           java-version: "21"
           cache: gradle
 
-      - uses: android-actions/setup-android@v3
-
       - name: Prepare Android SDK
         shell: bash
         run: |
+          ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          CMDLINE_TOOLS_BIN="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin"
+          if [[ ! -x "${CMDLINE_TOOLS_BIN}/sdkmanager" ]]; then
+            CMDLINE_TOOLS_BIN="${ANDROID_SDK_ROOT}/cmdline-tools/16.0/bin"
+          fi
+
+          {
+            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
+            echo "ANDROID_HOME=${ANDROID_HOME}"
+            echo "${CMDLINE_TOOLS_BIN}"
+            echo "${ANDROID_SDK_ROOT}/platform-tools"
+          } >> "${GITHUB_ENV}"
+
+          export ANDROID_SDK_ROOT ANDROID_HOME
+          export PATH="${CMDLINE_TOOLS_BIN}:${ANDROID_SDK_ROOT}/platform-tools:${PATH}"
           yes | sdkmanager --licenses > /dev/null
           sdkmanager \
             "platform-tools" \
@@ -353,13 +367,16 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: desktop-linux-release-assets
-            artifact_path: HappyFaceAi/desktopApp/build/compose/binaries/main-release/*.deb
+            gradle_task: :desktopApp:packageReleaseDeb
+            artifact_path: HappyFaceAi/desktopApp/build/compose/binaries/main-release/deb/*.deb
           - os: windows-latest
             artifact_name: desktop-windows-release-assets
-            artifact_path: HappyFaceAi/desktopApp/build/compose/binaries/main-release/*.msi
+            gradle_task: :desktopApp:packageReleaseMsi
+            artifact_path: HappyFaceAi/desktopApp/build/compose/binaries/main-release/msi/*.msi
           - os: macos-latest
             artifact_name: desktop-macos-release-assets
-            artifact_path: HappyFaceAi/desktopApp/build/compose/binaries/main-release/*.dmg
+            gradle_task: :desktopApp:packageReleaseDmg
+            artifact_path: HappyFaceAi/desktopApp/build/compose/binaries/main-release/dmg/*.dmg
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -385,14 +402,14 @@ jobs:
         shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :desktopApp:packageReleaseDistributionForCurrentOS \
+          ./gradlew ${{ matrix.gradle_task }} \
             -PreleaseVersion="${{ needs.metadata.outputs.version }}"
 
       - name: Build desktop package
         if: ${{ matrix.os == 'windows-latest' }}
         shell: pwsh
         run: |
-          ./gradlew.bat :desktopApp:packageReleaseDistributionForCurrentOS `
+          ./gradlew.bat ${{ matrix.gradle_task }} `
             -PreleaseVersion="${{ needs.metadata.outputs.version }}"
 
       - uses: actions/upload-artifact@v4

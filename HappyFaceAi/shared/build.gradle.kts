@@ -46,8 +46,13 @@ kotlin {
         val jvmSharedMain by creating {
             dependsOn(commonMain.get())
         }
+        val iosMain by creating {
+            dependsOn(commonMain.get())
+        }
         jvmMain.get().dependsOn(jvmSharedMain)
         androidMain.get().dependsOn(jvmSharedMain)
+        iosArm64Main.get().dependsOn(iosMain)
+        iosSimulatorArm64Main.get().dependsOn(iosMain)
 
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)

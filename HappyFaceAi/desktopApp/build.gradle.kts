@@ -39,8 +39,13 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "com.aifacemate.face"
+            packageName = "HappyFaceAi"
             packageVersion = releaseVersion.get()
+
+            macOS {
+                bundleID = "com.aifacemate.face"
+                packageName = "HappyFaceAi"
+            }
         }
     }
 }
