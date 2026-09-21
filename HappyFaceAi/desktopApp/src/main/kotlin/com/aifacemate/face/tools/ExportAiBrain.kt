@@ -67,13 +67,9 @@ fun main(args: Array<String>) {
         Shot("dialog-base-url", 817, 375, overPage {
             AppInputDialog(
                 title = "API Base URL",
-                description = "OpenAI Compatible 地址填到 /v1 即可，请求模型列表时会自动补 /models。",
-                label = "接口地址",
                 value = "https://api.deepseek.com/v1",
                 onValueChange = {},
                 placeholder = "https://api.deepseek.com/v1",
-                hint = "换供应商时这里会自动切成对应的默认地址。",
-                symbol = "⇄",
                 keyboardType = KeyboardType.Uri,
                 onDismiss = {},
                 onConfirm = {},
@@ -82,13 +78,9 @@ fun main(args: Array<String>) {
         Shot("dialog-api-key", 817, 375, overPage {
             AppInputDialog(
                 title = "API Key",
-                description = "只保存在这台设备上，用来向你选择的模型服务发起请求。",
-                label = "密钥",
                 value = "sk-e2a1234567890abcdef3228",
                 onValueChange = {},
                 placeholder = "sk-xxxxxxxxxxxxxxxx",
-                hint = "在供应商控制台创建，页面上只会显示成 sk-xxx••••1234。",
-                symbol = "✧",
                 secret = true,
                 onDismiss = {},
                 onConfirm = {},
@@ -97,29 +89,20 @@ fun main(args: Array<String>) {
         Shot("dialog-add-model", 817, 375, overPage {
             AppInputDialog(
                 title = "添加自定义模型",
-                description = "填供应商控制台里的模型 ID，模型列表里没列出来的也能直接加。",
-                label = "模型 ID",
                 value = "",
                 onValueChange = {},
                 placeholder = "deepseek-chat",
-                hint = "例如 deepseek-chat、glm-4.5-air；添加后会立刻选中它。",
-                symbol = "＋",
-                confirmText = "添加",
                 onDismiss = {},
                 onConfirm = {},
             )
         }),
-        // 横屏 + 键盘弹起时可用高度只剩 100dp 出头：用矮画布逼近那个状态，走查一行式紧凑布局。
-        Shot("dialog-cramped", 817, 130, overPage {
+        // 横屏 + 键盘弹起时可用高度只剩 100dp 出头：用矮画布逼近那个状态，看输入条是不是正好贴在键盘上方。
+        Shot("dialog-input-bar-over-keyboard", 817, 130, overPage {
             AppInputDialog(
                 title = "API Key",
-                description = "只保存在这台设备上，用来向你选择的模型服务发起请求。",
-                label = "密钥",
                 value = "sk-e2a1234567890abcdef3228",
                 onValueChange = {},
                 placeholder = "sk-xxxxxxxxxxxxxxxx",
-                hint = "在供应商控制台创建，页面上只会显示成 sk-xxx••••1234。",
-                symbol = "✧",
                 secret = true,
                 onDismiss = {},
                 onConfirm = {},

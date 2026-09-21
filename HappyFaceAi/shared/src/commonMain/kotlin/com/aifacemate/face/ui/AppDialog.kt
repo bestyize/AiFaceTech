@@ -54,6 +54,8 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -72,8 +74,9 @@ import kotlinx.coroutines.delay
  * 和生命中心 / AI 大脑同一套视觉：深色渐变卡片、暖金描边与强调色、大圆角、柔和阴影。
  * 点击遮罩、按系统返回键、点次要按钮都走 [onDismiss]。
  * 横屏时键盘会顶起来，所以外层用 [imePadding] 把卡片抬到键盘之上；键盘把可用高度压到
- * [LocalAppDialogCramped] 判定为极窄时，[fieldOnlyWhenCramped] 的弹窗（输入框类）只留一条输入框贴在键盘上方，
- * 其余弹窗切成「标题 + 内容 + 按钮」并排的一行布局。
+ * [LocalAppDialogCramped] 判定为极窄时，卡片会自动收紧（标题 + 可滚动正文 + 固定在底部的按钮）。
+ *
+ * [bar] = true 的弹窗不画卡片：只在屏幕底部留一条输入条，键盘弹起时正好贴在键盘上方。
  */
 /** 键盘几乎吃掉整个横屏时置为 true，内容需要按一行排布。 */
 val LocalAppDialogCramped = compositionLocalOf { false }
@@ -93,7 +96,7 @@ fun AppDialog(
     onConfirm: (() -> Unit)? = null,
     confirmEnabled: Boolean = true,
     dismissText: String = "取消",
-    fieldOnlyWhenCramped: Boolean = false,
+    bar: Boolean = false,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     BackHandler(enabled = true, onBack = onDismiss)
@@ -120,46 +123,46 @@ fun AppDialog(
             tight -> 10.dp
             else -> 14.dp
         }
-        // 键盘几乎占满横屏时，输入类弹窗只留一条贴键盘的输入框（跟聊天输入框一样）：
-        // 确认走键盘上的「完成」键，取消走点遮罩或系统返回键。
-        val bar = cramped && fieldOnlyWhenCramped
-        // 换布局只换外壳，content() 始终挂在同一个调用点上。否则切到输入条时输入框会被重建、
-        // 连带丢掉焦点：键盘收起 -> 高度恢复 -> 又切回卡片 -> 再弹键盘，来回死循环。
-        val frame = if (bar) {
-            Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                // 输入条周围的一圈也算弹窗，别点一下就关掉
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-        } else {
-            Modifier.padding(horizontal = if (tight) 12.dp else 20.dp, vertical = if (cramped) 4.dp else if (tight) 6.dp else 12.dp)
-                .shadow(26.dp, shape, clip = false)
-                .clip(shape)
-                .background(Brush.verticalGradient(listOf(AppDialogColors.CardTop, AppDialogColors.CardBottom)))
-                .border(1.dp, LifeColors.Amber.copy(alpha = .26f), shape)
-                // 吸收卡片上的点击，避免误触遮罩把弹窗关掉
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-                .padding(horizontal = if (tight) 18.dp else 22.dp, vertical = if (cramped) 12.dp else if (tight) 14.dp else 20.dp)
-        }
+        val frame = Modifier.padding(horizontal = if (tight) 12.dp else 20.dp, vertical = if (cramped) 4.dp else if (tight) 6.dp else 12.dp)
+            .shadow(26.dp, shape, clip = false)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(AppDialogColors.CardTop, AppDialogColors.CardBottom)))
+            .border(1.dp, LifeColors.Amber.copy(alpha = .26f), shape)
+            // 吸收卡片上的点击，避免误触遮罩把弹窗关掉
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+            .padding(horizontal = if (tight) 18.dp else 22.dp, vertical = if (cramped) 12.dp else if (tight) 14.dp else 20.dp)
         CompositionLocalProvider(LocalAppDialogCramped provides cramped) {
-            Column(
-                Modifier.align(if (bar) Alignment.BottomCenter else Alignment.Center)
-                    .widthIn(max = 460.dp)
-                    .fillMaxWidth()
-                    .heightIn(max = cardMaxHeight)
-                    .then(frame),
-                verticalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                if (!bar) AppDialogTitle(symbol, title, compact = cramped)
-                // 说明和输入区放在中间并允许滚动：空间不够时先让说明文字让位，标题和按钮不动。
+            if (bar) {
+                // 输入条：不画卡片、不要标题和按钮，只在底部留一条输入框。
+                // 位置跟着 [imePadding] 走，键盘弹起时正好贴在键盘上方。
                 Column(
-                    modifier = if (bar) Modifier else Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    Modifier.align(Alignment.BottomCenter)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .widthIn(max = 460.dp)
+                        .fillMaxWidth()
+                        // 输入条周围的一圈也算弹窗，点它不该把弹窗关掉
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+                ) { content() }
+            } else {
+                Column(
+                    Modifier.align(Alignment.Center)
+                        .widthIn(max = 460.dp)
+                        .fillMaxWidth()
+                        .heightIn(max = cardMaxHeight)
+                        .then(frame),
                     verticalArrangement = Arrangement.spacedBy(gap),
                 ) {
-                    if (!bar && description != null) {
-                        Text(description, color = LifeColors.Secondary, fontSize = 12.sp, lineHeight = 18.sp)
+                    AppDialogTitle(symbol, title, compact = cramped)
+                    // 说明和正文放在中间并允许滚动：空间不够时先让说明文字让位，标题和按钮不动。
+                    Column(
+                        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        if (description != null) {
+                            Text(description, color = LifeColors.Secondary, fontSize = 12.sp, lineHeight = 18.sp)
+                        }
+                        content()
                     }
-                    content()
-                }
-                if (!bar) {
                     AppDialogActions(
                         dismissText = dismissText,
                         confirmText = confirmText,
@@ -217,7 +220,9 @@ private fun AppDialogActions(
 /**
  * 输入弹窗：AI 大脑页所有可编辑项都用它。
  *
- * 字段本身只做展示，点任意一行进这里编辑，键盘上的「完成」等同确认按钮。
+ * 只画一条输入框（底下是遮罩），没有卡片、标题、说明和取消/保存按钮：
+ * 键盘弹起时它就贴在键盘上方，键盘上的「完成/回车」或右侧的对勾都是确认，点遮罩 / 返回键是取消。
+ * [title] 只用于无障碍朗读，不出现在界面上。
  */
 @Composable
 fun AppInputDialog(
@@ -226,55 +231,61 @@ fun AppInputDialog(
     onValueChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
-    description: String? = null,
-    label: String? = null,
     placeholder: String = "",
-    hint: String? = null,
-    symbol: String = "✎",
     secret: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
-    confirmText: String = "保存",
     allowEmpty: Boolean = false,
 ) {
     var revealed by remember { mutableStateOf(false) }
-    AppDialog(
-        title = title,
-        onDismiss = onDismiss,
-        symbol = symbol,
-        description = description,
-        confirmText = confirmText,
-        onConfirm = onConfirm,
-        confirmEnabled = allowEmpty || value.isNotBlank(),
-        fieldOnlyWhenCramped = true,
-    ) {
-        // 内容在弹窗内部组合，才读得到「键盘把空间挤到极窄」的标记：
-        // 这时标题和输入框并排，标签、说明、提示文字都让位给输入框。
-        val cramped = LocalAppDialogCramped.current
-        AppDialogTextField(
-            value = value,
-            onValueChange = onValueChange,
-            label = label.takeUnless { cramped },
-            placeholder = placeholder,
-            secret = secret && !revealed,
-            onToggleReveal = if (secret) ({ revealed = !revealed }) else null,
-            keyboardType = keyboardType,
-            compact = cramped,
-            // 贴键盘的那一条按聊天输入框的样式走：整条胶囊。
-            chatBar = cramped,
-            onImeAction = { if (allowEmpty || value.isNotBlank()) onConfirm() },
-        )
-        if (hint != null && !cramped) {
-            Text(hint, color = LifeColors.Secondary, fontSize = 11.sp, lineHeight = 16.sp)
+    val confirmEnabled = allowEmpty || value.isNotBlank()
+    AppDialog(title = title, onDismiss = onDismiss, bar = true) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            AppDialogTextField(
+                modifier = Modifier.weight(1f),
+                value = value,
+                onValueChange = onValueChange,
+                placeholder = placeholder,
+                secret = secret && !revealed,
+                onToggleReveal = if (secret) ({ revealed = !revealed }) else null,
+                keyboardType = keyboardType,
+                onImeAction = { if (confirmEnabled) onConfirm() },
+                contentDescription = title,
+            )
+            AppDialogConfirmKey(enabled = confirmEnabled, onClick = onConfirm)
         }
     }
 }
 
-/** 弹窗里的输入框：深色填充 + 聚焦时暖金描边 + 可选的密码可见性切换。 */
+/** 输入条右侧的确认键：暖金圆形对勾，值为空时变暗且不可点。 */
+@Composable
+private fun AppDialogConfirmKey(enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.size(44.dp)
+            .clip(RoundedCornerShape(50))
+            .background(if (enabled) LifeColors.Amber else LifeColors.Amber.copy(alpha = .22f))
+            .clickable(enabled = enabled) { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "✓",
+            color = if (enabled) Color(0xFF14181F) else LifeColors.Amber.copy(alpha = .55f),
+            fontWeight = FontWeight.Bold,
+            fontSize = 17.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+/** 弹窗里的输入框：整条胶囊、深色填充 + 聚焦时暖金描边 + 可选的密码可见性切换。 */
 @Composable
 fun AppDialogTextField(
     value: String,
     onValueChange: (String) -> Unit,
-    label: String? = null,
+    modifier: Modifier = Modifier,
     placeholder: String = "",
     secret: Boolean = false,
     onToggleReveal: (() -> Unit)? = null,
@@ -282,8 +293,7 @@ fun AppDialogTextField(
     imeAction: ImeAction = ImeAction.Done,
     onImeAction: () -> Unit = {},
     autoFocus: Boolean = true,
-    compact: Boolean = false,
-    chatBar: Boolean = false,
+    contentDescription: String? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
@@ -309,55 +319,51 @@ fun AppDialogTextField(
         }
     }
 
-    val shape = if (chatBar) RoundedCornerShape(50) else RoundedCornerShape(14.dp)
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        if (label != null) {
-            Text(label, color = LifeColors.Secondary, fontSize = 11.sp, maxLines = 1)
-        }
-        Row(
-            Modifier.fillMaxWidth()
-                .height(if (chatBar) 44.dp else if (compact) 38.dp else 46.dp)
-                .clip(shape)
-                .background(AppDialogColors.FieldFill)
-                .border(1.dp, if (focused) LifeColors.Amber.copy(alpha = .8f) else LifeColors.Border, shape)
-                .padding(horizontal = if (chatBar) 18.dp else if (compact) 11.dp else 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                if (value.isEmpty()) {
-                    Text(
-                        placeholder,
-                        color = LifeColors.Secondary.copy(alpha = .65f),
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    modifier = Modifier.fillMaxWidth()
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { focused = it.isFocused },
-                    singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 13.sp),
-                    cursorBrush = SolidColor(LifeColors.Amber),
-                    visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
-                    keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-                    keyboardActions = KeyboardActions(
-                        onDone = { onImeAction() },
-                        onGo = { onImeAction() },
-                        onSend = { onImeAction() },
-                    ),
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier.fillMaxWidth()
+            .height(44.dp)
+            .clip(shape)
+            .background(AppDialogColors.FieldFill)
+            .border(1.dp, if (focused) LifeColors.Amber.copy(alpha = .8f) else LifeColors.Border, shape)
+            .semantics { contentDescription?.let { this.contentDescription = it } }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (value.isEmpty()) {
+                Text(
+                    placeholder,
+                    color = LifeColors.Secondary.copy(alpha = .65f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (onToggleReveal != null) {
-                Box(
-                    Modifier.size(22.dp).clickable { onToggleReveal() },
-                    contentAlignment = Alignment.Center,
-                ) { RevealEyeIcon(hidden = secret, size = 16.dp) }
-            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { focused = it.isFocused },
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 13.sp),
+                cursorBrush = SolidColor(LifeColors.Amber),
+                visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+                keyboardActions = KeyboardActions(
+                    onDone = { onImeAction() },
+                    onGo = { onImeAction() },
+                    onSend = { onImeAction() },
+                ),
+            )
+        }
+        if (onToggleReveal != null) {
+            Box(
+                Modifier.size(22.dp).clickable { onToggleReveal() },
+                contentAlignment = Alignment.Center,
+            ) { RevealEyeIcon(hidden = secret, size = 16.dp) }
         }
     }
 }

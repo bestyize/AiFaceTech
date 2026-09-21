@@ -134,7 +134,6 @@ fun AiBrainScreen(
                             verticalArrangement = Arrangement.spacedBy(gap),
                         ) {
                             CurrentBrainCard(state, compact)
-                            ThinkingModeCard(state.thinkingMode, compact, onThinkingModeSelected)
                         }
                     }
                     Column(
@@ -149,6 +148,7 @@ fun AiBrainScreen(
                             onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
                         )
                         ModelSection(state, compact, onModelSelected, onFetchModels, onCustomModelAdded)
+                        ThinkingModeCard(state.thinkingMode, compact, onThinkingModeSelected)
                         CapabilitySection(state, compact, onCapabilityToggled)
                     }
                 }
@@ -180,13 +180,9 @@ fun AiBrainScreen(
         when (editingSecret) {
             SecretEdit.BaseUrl -> AppInputDialog(
                 title = "API Base URL",
-                description = "OpenAI Compatible 地址填到 /v1 即可，请求模型列表时会自动补 /models。",
-                label = "接口地址",
                 value = secretDraft,
                 onValueChange = { secretDraft = it },
                 placeholder = "https://api.deepseek.com/v1",
-                hint = "换供应商时这里会自动切成对应的默认地址。",
-                symbol = "⇄",
                 keyboardType = KeyboardType.Uri,
                 onDismiss = { editingSecret = null },
                 onConfirm = {
@@ -197,13 +193,9 @@ fun AiBrainScreen(
 
             SecretEdit.ApiKey -> AppInputDialog(
                 title = "API Key",
-                description = "只保存在这台设备上，用来向你选择的模型服务发起请求。",
-                label = "密钥",
                 value = secretDraft,
                 onValueChange = { secretDraft = it },
                 placeholder = "sk-xxxxxxxxxxxxxxxx",
-                hint = "在供应商控制台创建，页面上只会显示成 sk-xxx••••1234。",
-                symbol = "✧",
                 secret = true,
                 onDismiss = { editingSecret = null },
                 onConfirm = {
@@ -447,14 +439,9 @@ private fun CustomModelDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit
     var name by remember { mutableStateOf("") }
     AppInputDialog(
         title = "添加自定义模型",
-        description = "填供应商控制台里的模型 ID，模型列表里没列出来的也能直接加。",
-        label = "模型 ID",
         value = name,
         onValueChange = { name = it },
         placeholder = "deepseek-chat",
-        hint = "例如 deepseek-chat、glm-4.5-air；添加后会立刻选中它。",
-        symbol = "＋",
-        confirmText = "添加",
         onDismiss = onDismiss,
         onConfirm = { onConfirm(name.trim()) },
     )
