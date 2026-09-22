@@ -1,95 +1,68 @@
 package com.aifacemate.face.feature.aibrain
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.aifacemate.face.feature.lifecenter.LifeColors
-import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.ui.AppDialog
-import com.aifacemate.face.ui.FaceStage
 import com.aifacemate.face.ui.AppInputDialog
 import com.aifacemate.face.ui.AppToast
+import happyfaceai.shared.generated.resources.Res
+import happyfaceai.shared.generated.resources.brain_companion
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.painterResource
 
-private val CardTop = Color(0xFF171C25)
-private val CardBottom = Color(0xFF11161E)
-private val FieldFill = Color(0xFF12161E)
-private val SelectedFill = Color(0xFF292315)
-private val ConnectedGreen = Color(0xFF38E66B)
-
-/** 密钥配置里可以编辑的两项。 */
-private enum class SecretEdit { BaseUrl, ApiKey }
+/** v3 prose takes precedence over the older six-item menus still pictured in the boards. */
+enum class BrainNavSection(val title: String, internal val icon: String) {
+    Brain("AI 大脑", "brain"), Secret("密钥配置", "key"),
+    Capabilities("能力接入", "link"), Thinking("思考模式", "thinking"),
+}
+private enum class BrainField { BaseUrl, ApiKey, Model }
 
 @Composable
 fun AiBrainRoute(onBack: () -> Unit, viewModel: AiBrainViewModel = viewModel()) {
     AiBrainScreen(
-        state = viewModel.uiState,
-        onBack = onBack,
-        onProviderSelected = viewModel::selectProvider,
-        onModelSelected = viewModel::selectModel,
-        onThinkingModeSelected = viewModel::selectThinkingMode,
-        onCapabilityToggled = viewModel::toggleCapability,
-        onBaseUrlChanged = viewModel::updateBaseUrl,
-        onApiKeyChanged = viewModel::updateApiKey,
-        onFetchModels = viewModel::fetchModels,
-        onCustomModelAdded = viewModel::addCustomModel,
-        onDismissApiKeyPrompt = viewModel::dismissApiKeyPrompt,
-        onSaveSecret = viewModel::saveSecret,
-        onToastShown = viewModel::consumeToast,
+        state = viewModel.uiState, onBack = onBack,
+        onProviderSelected = viewModel::selectProvider, onModelSelected = viewModel::selectModel,
+        onThinkingModeSelected = viewModel::selectThinkingMode, onCapabilityToggled = viewModel::toggleCapability,
+        onBaseUrlChanged = viewModel::updateBaseUrl, onApiKeyChanged = viewModel::updateApiKey,
+        onFetchModels = viewModel::fetchModels, onCustomModelAdded = viewModel::addCustomModel,
+        onDismissApiKeyPrompt = viewModel::dismissApiKeyPrompt, onSaveSecret = viewModel::saveSecret,
+        onToastShown = viewModel::consumeToast, onTestConnection = viewModel::testConnection,
+        onClearSecret = viewModel::clearSecret,
     )
 }
 
-/**
- * AI 大脑设置页。
- *
- * 左栏是「当前大脑 + 思考模式」，右栏依次是「模型提供商 / 密钥配置 / 模型选择 / 模型接入」。
- * 两栏各自纵向滚动，横屏优先，窄屏退化为单列。
- */
+@Suppress("DEPRECATION")
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun AiBrainScreen(
     state: AiBrainUiState,
@@ -105,1002 +78,306 @@ fun AiBrainScreen(
     onDismissApiKeyPrompt: () -> Unit,
     onSaveSecret: () -> Unit,
     onToastShown: () -> Unit,
+    onTestConnection: () -> Unit,
+    onClearSecret: () -> Unit,
+    initialSection: BrainNavSection = BrainNavSection.Brain,
 ) {
-    // 页面上的输入项都只做展示，点一行才弹输入弹窗，草稿在这里暂存。
-    var editingSecret by remember { mutableStateOf<SecretEdit?>(null) }
-    var secretDraft by remember { mutableStateOf("") }
-    // 弹窗一律挂在页面根节点上：挂在滚动里的卡片内部时，遮罩和输入条只会盖住那张卡（看着像嵌在页面里）。
-    var customModelDialogVisible by remember { mutableStateOf(false) }
-    fun openSecretEditor(field: SecretEdit) {
-        secretDraft = when (field) {
-            SecretEdit.BaseUrl -> state.config.baseUrl
-            SecretEdit.ApiKey -> state.config.apiKey
+    var sectionName by rememberSaveable { mutableStateOf(initialSection.name) }
+    val section = BrainNavSection.valueOf(sectionName)
+    var editing by remember { mutableStateOf<BrainField?>(null) }
+    var draft by remember { mutableStateOf("") }
+    var clearPrompt by remember { mutableStateOf(false) }
+    val busy = state.secretChecking || state.fetchStatus == FetchStatus.Loading
+    fun edit(field: BrainField) {
+        draft = when (field) {
+            BrainField.BaseUrl -> state.config.baseUrl
+            BrainField.ApiKey -> state.config.apiKey
+            BrainField.Model -> state.config.modelId
         }
-        editingSecret = field
+        editing = field
     }
-
-    BoxWithConstraints(Modifier.fillMaxSize().background(LifeColors.Background).safeDrawingPadding()) {
-        // 横屏就用左右两栏：门槛放到小型手机横屏（480dp 级）也走两栏，只有竖屏/超窄屏才退回单栏。
-        val wide = maxWidth >= 480.dp && maxWidth > maxHeight * 1.2f
-        val compact = wide && maxHeight < 560.dp
-        val gap = if (compact) 8.dp else 14.dp
-        val screenPadding = if (compact) 10.dp else 24.dp
-        // 左栏只放「当前大脑 + 思考模式」，按设计稿 0.34 / 0.66；矮窗口用 0.35 / 0.65。
-        // 不给小型横屏再加宽左栏：右栏的 API Base URL 是功能性信息（别处看不到），模型名在下方模型卡里还有完整显示。
-        val leftWeight = if (compact) .35f else .34f
-
-        Column(
-            Modifier.fillMaxSize().padding(horizontal = screenPadding, vertical = if (compact) 4.dp else 12.dp),
-            verticalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            if (wide) {
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    Column(Modifier.weight(leftWeight).fillMaxHeight()) {
-                        AiBrainTitleRow(compact, onBack)
-                        Spacer(Modifier.height(gap))
-                        Column(
-                            Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(gap),
-                        ) {
-                            CurrentBrainCard(state, compact)
-                        }
-                    }
-                    Column(
-                        Modifier.weight(1f - leftWeight).fillMaxHeight().verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(gap),
-                    ) {
-                        ProviderSection(state, compact, onProviderSelected)
-                        SecretConfigSection(
-                            state = state,
-                            compact = compact,
-                            onEditBaseUrl = { openSecretEditor(SecretEdit.BaseUrl) },
-                            onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
-                            onSave = onSaveSecret,
-                        )
-                        ModelSection(state, compact, onModelSelected, onFetchModels) { customModelDialogVisible = true }
-                        ThinkingModeCard(state.thinkingMode, compact, onThinkingModeSelected)
-                        CapabilitySection(state, compact, onCapabilityToggled)
-                    }
-                }
-            } else {
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-                    AiBrainTitleRow(false, onBack)
-                    Spacer(Modifier.height(gap))
-                    Column(
-                        Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(gap),
-                    ) {
-                        CurrentBrainCard(state, compact = false)
-                        ThinkingModeCard(state.thinkingMode, compact = false, onThinkingModeSelected)
-                        ProviderSection(state, compact = false, onProviderSelected)
-                        SecretConfigSection(
-                            state = state,
-                            compact = false,
-                            onEditBaseUrl = { openSecretEditor(SecretEdit.BaseUrl) },
-                            onEditApiKey = { openSecretEditor(SecretEdit.ApiKey) },
-                            onSave = onSaveSecret,
-                            stacked = true,
-                        )
-                        ModelSection(state, compact = false, onModelSelected, onFetchModels) { customModelDialogVisible = true }
-                        CapabilitySection(state, compact = false, onCapabilityToggled)
-                    }
+    BackHandler(enabled = section != BrainNavSection.Brain && editing == null && !clearPrompt && !state.apiKeyPromptVisible) {
+        sectionName = BrainNavSection.Brain.name
+    }
+    BoxWithConstraints(Modifier.fillMaxSize().background(BrainStyle.Background).safeDrawingPadding()) {
+        val layout = brainLayout(maxWidth.value, maxHeight.value)
+        Row(Modifier.fillMaxSize()) {
+            SideNav(section, layout, { sectionName = it.name }, onBack)
+            Box(Modifier.weight(1f).fillMaxHeight().padding(if (layout.compact) 12.dp else 24.dp)) {
+                when (section) {
+                    BrainNavSection.Brain -> BrainOverview(state, layout, busy, onProviderSelected, onModelSelected,
+                        onFetchModels, { edit(BrainField.Model) }, { sectionName = it.name })
+                    BrainNavSection.Secret -> SecretPage(state, layout, busy, { edit(it) }, onTestConnection,
+                        onSaveSecret, { clearPrompt = true })
+                    BrainNavSection.Capabilities -> CapabilitiesPage(state, layout, onCapabilityToggled)
+                    BrainNavSection.Thinking -> ThinkingPage(state.thinkingMode, layout, onThinkingModeSelected)
                 }
             }
         }
-
-        when (editingSecret) {
-            SecretEdit.BaseUrl -> AppInputDialog(
-                title = "API Base URL",
-                value = secretDraft,
-                onValueChange = { secretDraft = it },
-                placeholder = "https://api.deepseek.com/v1",
-                keyboardType = KeyboardType.Uri,
-                onDismiss = { editingSecret = null },
+        editing?.let { field ->
+            // Reuse the app's keyboard-aware editor; configuration screens themselves are not dialogs.
+            AppInputDialog(
+                title = when (field) { BrainField.BaseUrl -> "API Base URL"; BrainField.ApiKey -> "API Key"; BrainField.Model -> "Model" },
+                value = draft, onValueChange = { draft = it }, onDismiss = { editing = null },
+                secret = field == BrainField.ApiKey,
+                keyboardType = if (field == BrainField.BaseUrl) KeyboardType.Uri else KeyboardType.Text,
+                allowEmpty = field != BrainField.Model,
+                placeholder = when (field) { BrainField.BaseUrl -> "https://your-provider/v1"; BrainField.ApiKey -> "输入服务商密钥"; BrainField.Model -> "输入模型 ID" },
                 onConfirm = {
-                    onBaseUrlChanged(secretDraft.trim())
-                    editingSecret = null
-                },
-            )
-
-            SecretEdit.ApiKey -> AppInputDialog(
-                title = "API Key",
-                value = secretDraft,
-                onValueChange = { secretDraft = it },
-                placeholder = "sk-xxxxxxxxxxxxxxxx",
-                secret = true,
-                onDismiss = { editingSecret = null },
-                onConfirm = {
-                    onApiKeyChanged(secretDraft.trim())
-                    editingSecret = null
-                },
-            )
-
-            null -> Unit
-        }
-
-        if (state.apiKeyPromptVisible) {
-            AppDialog(
-                title = "还没有填 API Key",
-                symbol = "✦",
-                description = "获取模型列表需要先连上供应商的接口，填一个 API Key 就能拉取了。",
-                confirmText = "去填写",
-                dismissText = "稍后再说",
-                onConfirm = {
-                    onDismissApiKeyPrompt()
-                    openSecretEditor(SecretEdit.ApiKey)
-                },
-                onDismiss = onDismissApiKeyPrompt,
-            )
-        }
-
-        if (customModelDialogVisible) {
-            CustomModelDialog(
-                onDismiss = { customModelDialogVisible = false },
-                onConfirm = { name ->
-                    customModelDialogVisible = false
-                    onCustomModelAdded(name)
+                    when (field) {
+                        BrainField.BaseUrl -> onBaseUrlChanged(draft.trim())
+                        BrainField.ApiKey -> onApiKeyChanged(draft.trim())
+                        BrainField.Model -> if (state.visibleModels.any { it.id == draft.trim() }) onModelSelected(draft.trim()) else onCustomModelAdded(draft.trim())
+                    }
+                    editing = null
                 },
             )
         }
-
-        // 轻提示：保存校验这类一次性反馈走它，展示完由 ViewModel 清掉。
+        if (clearPrompt) AppDialog(title = "清空当前服务商配置？", symbol = "—",
+            description = "移除 ${state.selectedProvider.name} 已保存的地址和密钥，清空当前模型选择。其他服务商不受影响。",
+            confirmText = "清空配置", onConfirm = { onClearSecret(); clearPrompt = false }, onDismiss = { clearPrompt = false })
+        if (state.apiKeyPromptVisible) AppDialog(title = "请先配置连接信息", symbol = "◇",
+            description = "填写服务商的 API Base URL 与 API Key 后，再获取模型列表。",
+            confirmText = "配置密钥", onConfirm = { onDismissApiKeyPrompt(); sectionName = BrainNavSection.Secret.name },
+            onDismiss = onDismissApiKeyPrompt)
         state.toastMessage?.let { message ->
+            LaunchedEffect(message) { delay(2800); onToastShown() }
             AppToast(message)
-            LaunchedEffect(message) {
-                delay(2400)
-                onToastShown()
-            }
         }
     }
 }
 
-// ------------------------------------------------------------------ 右栏
-
-/** 模型提供商：横向滑动卡片，选中项高亮并带金色圆点。 */
 @Composable
-private fun ProviderSection(state: AiBrainUiState, compact: Boolean, onSelected: (String) -> Unit) {
-    BrainCard(compact) {
-        SectionHeader("◇", "模型提供商", "选择 AI 模型的提供商（左右滑动查看更多）", compact)
-        Carousel(
-            count = state.providers.size,
-            compact = compact,
-            stepWidth = if (compact) 132.dp else 180.dp,
-        ) { listState ->
-            LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
-                items(state.providers, key = { provider -> provider.id }) { provider ->
+private fun SideNav(selected: BrainNavSection, layout: BrainLayout, onSelect: (BrainNavSection) -> Unit, onBack: () -> Unit) {
+    val width = if (!layout.labelledRail) 56.dp else if (layout.compact) 132.dp else 172.dp
+    Column(Modifier.width(width).fillMaxHeight().background(Color(0xFF0A0D0E)).padding(horizontal = 6.dp, vertical = 12.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            BrainNavSection.entries.forEach { item ->
+                Row(Modifier.fillMaxWidth().heightIn(min = if (layout.compact) 44.dp else 56.dp)
+                    .then(if (item == selected) Modifier.brainPanel(true) else Modifier.clip(BrainStyle.Shape))
+                    .selectable(item == selected, role = Role.Tab, onClick = { onSelect(item) })
+                    .semantics { contentDescription = item.title }.padding(horizontal = if (layout.labelledRail) 12.dp else 10.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    BrainIcon(item.icon)
+                    if (layout.labelledRail) Text(item.title, color = BrainStyle.Text, fontSize = 13.sp, maxLines = 1)
+                }
+            }
+        }
+        if (layout.labelledRail && !layout.compact) Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BrainIcon("planet", Modifier.size(30.dp))
+            Column { Text("星环智能", color = BrainStyle.Gold, fontSize = 13.sp); Text("AI AGENT", color = BrainStyle.Muted, fontSize = 9.sp, letterSpacing = 2.sp) }
+        }
+        Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(BrainStyle.Shape).clickable(onClick = onBack)
+            .semantics { contentDescription = "返回生命中心" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            BrainIcon("back")
+            if (layout.labelledRail) Text("返回", color = BrainStyle.Muted, fontSize = 12.sp, lineHeight = 16.sp)
+        }
+    }
+}
+
+@Composable
+private fun PageHeading(title: String, subtitle: String, compact: Boolean, trailing: @Composable () -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 30.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(title, color = BrainStyle.Text, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 15.sp else 23.sp, lineHeight = if (compact) 20.sp else 28.sp)
+            if (!compact) Text(subtitle, color = BrainStyle.Muted, fontSize = 12.sp, lineHeight = 16.sp)
+        }
+        trailing()
+    }
+}
+
+@Composable
+private fun ConnectionChip(state: AiBrainUiState) {
+    val good = state.connectionStatus == ConnectionStatus.Connected
+    val label = when { state.secretChecking -> "测试中"; good -> "已验证"; state.connectionStatus == ConnectionStatus.Invalid -> "连接失败"; else -> "未测试" }
+    Row(Modifier.padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(if (good) BrainStyle.Green else BrainStyle.Muted))
+        Text(label, color = if (good) BrainStyle.Gold else BrainStyle.Muted, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun BrainOverview(state: AiBrainUiState, layout: BrainLayout, busy: Boolean,
+                          onProvider: (String) -> Unit, onModel: (String) -> Unit, onFetch: () -> Unit,
+                          onCustom: () -> Unit, onSection: (BrainNavSection) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(if (layout.compact) 10.dp else 12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (layout.compact) 10.dp else 12.dp)) {
+                PageHeading("当前 AI 大脑", "选择智能核心，让每一次对话都更有温度", layout.compact) { ConnectionChip(state) }
+                Row(Modifier.fillMaxWidth().heightIn(min = if (layout.compact) 86.dp else 108.dp).brainPanel()
+                    .clickable { expanded = true }.padding(if (layout.compact) 12.dp else 18.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Box(Modifier.size(if (layout.compact) 52.dp else 72.dp).clip(RoundedCornerShape(14.dp))
+                        .background(Brush.linearGradient(listOf(Color(0xFF746345),Color(0xFF332D23)))), contentAlignment = Alignment.Center) {
+                        ProviderBrandIcon(state.selectedProvider.id, if (layout.compact) 52.dp else 72.dp)
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(state.selectedProvider.name, color = BrainStyle.Text, fontSize = if (layout.compact) 17.sp else 23.sp, fontWeight = FontWeight.Medium)
+                        Text(state.selectedModel.name.ifBlank { "尚未选择模型" }, color = BrainStyle.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!layout.compact) Text(state.selectedModel.summary.ifBlank { state.selectedModel.description }, color = BrainStyle.Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Text("›", color = BrainStyle.Gold, fontSize = 28.sp)
+                }
+                if (!layout.compact || layout.artwork) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BrainButton("配置密钥", Modifier.weight(1f), onClick = { onSection(BrainNavSection.Secret) })
+                    BrainButton("能力接入", Modifier.weight(1f), onClick = { onSection(BrainNavSection.Capabilities) })
+                    BrainButton("思考模式", Modifier.weight(1f), onClick = { onSection(BrainNavSection.Thinking) })
+                }
+            }
+            if (layout.artwork) CompanionArt(Modifier.width(if (layout.compact) 160.dp else 245.dp).height(if (layout.compact) 158.dp else 238.dp))
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!layout.compact) Text("快速切换", color = BrainStyle.Text, fontSize = 14.sp)
+            LazyRow(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(if (layout.compact) 8.dp else 12.dp), contentPadding = PaddingValues(3.dp)) {
+                items(state.providers, key = { it.id }) { provider ->
                     val selected = provider.id == state.config.providerId
-                    SelectionTile(
-                        selected = selected,
-                        modifier = Modifier.width(if (compact) 124.dp else 168.dp).height(if (compact) 52.dp else 66.dp),
-                        compact = compact,
-                        onClick = { onSelected(provider.id) },
-                    ) {
-                        Row(
-                            Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            ProviderMark(provider.id, if (compact) 26.dp else 34.dp)
-                            Text(
-                                provider.name,
-                                Modifier.weight(1f, fill = false),
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = if (compact) 11.sp else 14.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (selected) {
-                                Box(Modifier.size(if (compact) 5.dp else 7.dp).clip(CircleShape).background(LifeColors.Amber))
+                    Column(Modifier.width((if (layout.compact) 59.dp else 70.dp) * fontScale).brainPanel(selected)
+                        .selectable(selected, enabled = !busy, role = Role.RadioButton, onClick = { onProvider(provider.id) })
+                        .padding(vertical = 8.dp, horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        ProviderBrandIcon(provider.id, if (layout.compact) 32.dp else 38.dp)
+                        Text(provider.name, color = if (selected) BrainStyle.LightGold else BrainStyle.Text, fontSize = 9.sp, lineHeight = 12.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.weight(1f)) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).brainPanel().clickable { expanded = true }.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(state.config.modelId.ifBlank { "选择模型" }, Modifier.weight(1f), color = BrainStyle.Text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("⌄", color = BrainStyle.Gold)
+                }
+                DropdownMenu(expanded, { expanded = false }, Modifier.heightIn(max = 220.dp).background(BrainStyle.Surface)) {
+                    if (state.visibleModels.isEmpty()) DropdownMenuItem(text = { Text("暂无模型，请获取或添加") }, onClick = {}, enabled = false)
+                    state.visibleModels.forEach { model ->
+                        DropdownMenuItem(text = { Text(model.name, color = if (model.id == state.config.modelId) BrainStyle.Gold else BrainStyle.Text) },
+                            onClick = { onModel(model.id); expanded = false }, enabled = !busy)
+                    }
+                    DropdownMenuItem(text = { Text("＋ 自定义模型", color = BrainStyle.Gold) }, onClick = { expanded = false; onCustom() }, enabled = !busy)
+                }
+            }
+            BrainButton(if (state.fetchStatus == FetchStatus.Loading) "获取中…" else "获取模型", enabled = !busy, onClick = onFetch)
+        }
+    }
+}
+
+@Composable
+private fun CompanionArt(modifier: Modifier) {
+    Image(painterResource(Res.drawable.brain_companion), contentDescription = null, modifier = modifier, contentScale = ContentScale.Fit)
+}
+
+@Composable
+private fun SecretPage(state: AiBrainUiState, layout: BrainLayout, busy: Boolean, onEdit: (BrainField) -> Unit,
+                       onTest: () -> Unit, onSave: () -> Unit, onClear: () -> Unit) {
+    var formatHelp by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(if (layout.compact) 8.dp else 16.dp)) {
+        PageHeading("密钥配置", "配置模型服务连接信息，连接更强大的 AI 能力", layout.compact)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(Modifier.weight(1f).brainPanel().padding(if (layout.compact) 10.dp else 18.dp), verticalArrangement = Arrangement.spacedBy(if (layout.compact) 6.dp else 14.dp)) {
+                SettingInputRow("API Base URL", state.config.baseUrl, "link", busy) { onEdit(BrainField.BaseUrl) }
+                SettingInputRow("API Key", if (state.config.apiKey.isBlank()) "" else "••••••••••••", "key", busy) { onEdit(BrainField.ApiKey) }
+                SettingInputRow("Model", state.config.modelId, "model", busy) { onEdit(BrainField.Model) }
+                if (!layout.compact) {
+                    BrainButton("OpenAI Compatible 格式说明  ⌄", Modifier.fillMaxWidth(), onClick = { formatHelp = !formatHelp })
+                    if (formatHelp) Text("填写兼容服务的基础地址（通常以 /v1 结尾）、该服务的 API Key 和准确的模型 ID。测试请求访问 /models；不验证实际对话能力。非兼容接口请使用兼容网关。", color = BrainStyle.Muted, fontSize = 11.sp)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BrainButton(if (state.secretChecking) "测试中…" else "测试连接", Modifier.weight(1f), enabled = !busy, onClick = onTest)
+                    BrainButton("保存配置", Modifier.weight(1f), primary = true, enabled = !busy, onClick = onSave)
+                    BrainButton("清空", Modifier.width(58.dp), enabled = !busy, onClick = onClear)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ConnectionChip(state)
+                    if (state.secretSaved) Text(" · 已保存", color = BrainStyle.Muted, fontSize = 10.sp)
+                }
+                if (state.statusMessage.isNotBlank()) Text(state.statusMessage, color = BrainStyle.Muted, fontSize = 11.sp)
+            }
+            if (layout.artwork) Column(Modifier.width(if (layout.compact) 160.dp else 245.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                CompanionArt(Modifier.fillMaxWidth().height(if (layout.compact) 120.dp else 180.dp))
+                Column(Modifier.brainPanel().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("连接提示", color = BrainStyle.LightGold, fontSize = 14.sp)
+                    Text("1. 从服务商获取 API Key\n2. 使用兼容的接口地址\n3. 测试连接后保存配置", color = BrainStyle.Muted, fontSize = 11.sp, lineHeight = 19.sp)
+                    Text("密钥保存在当前设备。仅向你配置的服务地址发送验证请求。", color = BrainStyle.Muted, fontSize = 10.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingInputRow(label: String, value: String, icon: String, busy: Boolean, onClick: () -> Unit) {
+    val labelWidth = 82.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        BrainIcon(icon, Modifier.size(20.dp))
+        Text(label, Modifier.width(labelWidth), color = BrainStyle.Text, fontSize = 11.sp, maxLines = 1)
+        Box(Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF252828))
+            .clickable(enabled = !busy, onClick = onClick).semantics { contentDescription = "编辑 $label" }.padding(10.dp), contentAlignment = Alignment.CenterStart) {
+            Text(value.ifBlank { "点击填写" }, color = if (value.isBlank()) BrainStyle.Muted else BrainStyle.Text, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun CapabilitiesPage(state: AiBrainUiState, layout: BrainLayout, onToggle: (AiCapability) -> Unit) {
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(if (layout.compact) 8.dp else 16.dp)) {
+        PageHeading("能力接入", "连接更多能力，让 AI 看见世界、服务生活", layout.compact) {
+            Text("已开启 ${state.capabilities.values.count { it }} 项", color = BrainStyle.Green, fontSize = 11.sp)
+        }
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+                val columns = if (maxWidth >= 460.dp) 2 else 1
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AiCapability.entries.chunked(columns).forEach { row ->
+                        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { capability ->
+                                val enabled = state.capabilities[capability] ?: false
+                                Row(Modifier.weight(1f).fillMaxHeight().heightIn(min = if (layout.compact) 64.dp else 78.dp).brainPanel().padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Box(Modifier.size(if (layout.compact) 30.dp else 40.dp).brainPanel(true), contentAlignment = Alignment.Center) { BrainIcon(capability.icon) }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(capability.title, color = BrainStyle.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        if (!layout.compact || columns == 1) Text(capability.description, color = BrainStyle.Muted, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Switch(checked = enabled, onCheckedChange = { onToggle(capability) },
+                                        modifier = Modifier.semantics { contentDescription = capability.title },
+                                        colors = SwitchDefaults.colors(checkedTrackColor = BrainStyle.Green, checkedThumbColor = Color.White,
+                                            uncheckedTrackColor = Color(0xFF393A35), uncheckedThumbColor = Color(0xFFE6E4DA)))
+                                }
                             }
+                            if (row.size < columns) Spacer(Modifier.weight(1f))
                         }
                     }
+                    Text("这里保存能力偏好；实际执行需接入对应服务，开启不代表已获得系统权限。", color = BrainStyle.Muted, fontSize = 10.sp)
                 }
             }
-        }
-    }
-}
-
-/**
- * 密钥配置：页面只做展示，点任意一行弹输入弹窗改值，走 OpenAI Compatible 格式。
- */
-@Composable
-private fun SecretConfigSection(
-    state: AiBrainUiState,
-    compact: Boolean,
-    onEditBaseUrl: () -> Unit,
-    onEditApiKey: () -> Unit,
-    onSave: () -> Unit,
-    stacked: Boolean = compact,
-) {
-    BrainCard(compact) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("⚙", color = LifeColors.Amber, fontSize = if (compact) 16.sp else 21.sp, maxLines = 1)
-            Text("密钥配置", color = Color.White, fontWeight = FontWeight.Bold, fontSize = if (compact) 15.sp else 19.sp, maxLines = 1)
-            Text(
-                "使用 OpenAI Compatible 格式配置，兼容大多数模型服务",
-                Modifier.weight(1f),
-                color = LifeColors.Secondary,
-                fontSize = if (compact) 9.sp else 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            SecretSaveButton(
-                saved = state.secretSaved,
-                checking = state.secretChecking,
-                compact = compact,
-                onClick = onSave,
-            )
-        }
-        // 窄屏（非宽屏布局、或横屏矮窗口）两行并排只剩一点宽度，地址和密钥都会被截断，改成上下两行。
-        if (stacked) {
-            ConfigFieldRow("link", "API Base URL", state.config.baseUrl, compact, onEditBaseUrl)
-            ConfigFieldRow("key", "API Key", maskSecret(state.config.apiKey), compact, onEditApiKey)
-        } else {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ConfigFieldRow("link", "API Base URL", state.config.baseUrl, compact, onEditBaseUrl, Modifier.weight(1f))
-                ConfigFieldRow("key", "API Key", maskSecret(state.config.apiKey), compact, onEditApiKey, Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-/** 密钥配置右上角的保存按钮：可点时校验并保存，通过后变绿色「已保存」并禁用，直到用户改了配置。 */
-@Composable
-private fun SecretSaveButton(saved: Boolean, checking: Boolean, compact: Boolean, onClick: () -> Unit) {
-    val tint = if (saved) ConnectedGreen else LifeColors.Amber
-    OutlinedButton(
-        onClick = onClick,
-        enabled = !saved && !checking,
-        modifier = Modifier.height(if (compact) 30.dp else 38.dp),
-        border = BorderStroke(1.dp, tint.copy(alpha = if (saved) .55f else .7f)),
-        colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = tint,
-            disabledContentColor = if (saved) ConnectedGreen else LifeColors.Secondary,
-        ),
-        contentPadding = PaddingValues(horizontal = if (compact) 10.dp else 16.dp),
-    ) {
-        Text(
-            when {
-                saved -> "✓ 已保存"
-                checking -> "检查中…"
-                else -> "保存"
-            },
-            fontSize = if (compact) 10.sp else 13.sp,
-            maxLines = 1,
-        )
-    }
-}
-
-/** API Key 在页面上只露出头尾，避免整串明文一直挂在屏幕上。 */
-private fun maskSecret(value: String): String = when {
-    value.isEmpty() -> ""
-    value.length <= 8 -> "•".repeat(value.length)
-    else -> value.take(5) + "•".repeat(6) + value.takeLast(4)
-}
-
-/** 模型选择：按供应商动态刷新，最多展示 5 个，标题行右侧提供「获取模型列表」。 */
-@Composable
-private fun ModelSection(
-    state: AiBrainUiState,
-    compact: Boolean,
-    onSelected: (String) -> Unit,
-    onFetchModels: () -> Unit,
-    onAddCustomModel: () -> Unit,
-) {
-    BrainCard(compact) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("▤", color = LifeColors.Amber, fontSize = if (compact) 16.sp else 21.sp, maxLines = 1)
-            Text("模型选择", color = Color.White, fontWeight = FontWeight.Bold, fontSize = if (compact) 15.sp else 19.sp, maxLines = 1)
-            Text(
-                "从供应商实时拉取模型列表（左右滑动查看更多）",
-                Modifier.weight(1f),
-                color = LifeColors.Secondary,
-                fontSize = if (compact) 9.sp else 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            OutlinedButton(
-                onClick = onFetchModels,
-                enabled = state.fetchStatus != FetchStatus.Loading,
-                modifier = Modifier.height(if (compact) 30.dp else 38.dp),
-                border = BorderStroke(1.dp, LifeColors.Amber.copy(alpha = .7f)),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = LifeColors.Amber,
-                    disabledContentColor = LifeColors.Secondary,
-                ),
-                contentPadding = PaddingValues(horizontal = if (compact) 10.dp else 16.dp),
-            ) {
-                Text(
-                    if (state.fetchStatus == FetchStatus.Loading) "获取中…" else "⟳  获取模型列表",
-                    fontSize = if (compact) 10.sp else 13.sp,
-                    maxLines = 1,
-                )
-            }
-        }
-        if (state.statusMessage.isNotEmpty()) {
-            Text(
-                state.statusMessage,
-                color = if (state.fetchStatus == FetchStatus.Failure) LifeColors.Pink else LifeColors.Secondary,
-                fontSize = if (compact) 9.sp else 11.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        val models = state.visibleModels
-        Carousel(
-            count = models.size + 1,
-            compact = compact,
-            stepWidth = if (compact) 194.dp else 236.dp,
-        ) { listState ->
-            LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
-                items(models, key = { model -> model.id }) { model ->
-                    val selected = model.id == state.config.modelId
-                    SelectionTile(
-                        selected = selected,
-                        // 两行文案的高度就够了：第一行模型名 + 右上角标签，第二行能力标签。
-                        // 56/72 是实测值：再矮一点安卓的字形行盒会把第二行胶囊和标题切掉。
-                        // 186 而不是 172：小米系统字体比模拟器的 Roboto 宽，172 时「模型名 + 已选择」会把名字截成
-                        // 「DeepSeek-V4-…」，放宽一点刚好放得下完整模型名。
-                        modifier = Modifier.width(if (compact) 186.dp else 224.dp).height(if (compact) 56.dp else 72.dp),
-                        compact = compact,
-                        alignStart = true,
-                        onClick = { onSelected(model.id) },
-                    ) {
-                        val radioWidth = if (compact) 10.dp else 13.dp
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Box(Modifier.width(radioWidth), contentAlignment = Alignment.Center) {
-                                Text(
-                                    if (selected) "●" else "○",
-                                    color = if (selected) LifeColors.Amber else LifeColors.Secondary,
-                                    fontSize = if (compact) 10.sp else 13.sp,
-                                    maxLines = 1,
-                                )
-                            }
-                            Text(
-                                model.name,
-                                Modifier.weight(1f),
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = if (compact) 11.sp else 14.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            // 右上角只放一枚标签：选中时是「已选择」，没选中才显示「推荐」。
-                            if (selected) {
-                                SelectedTag(compact)
-                            } else if (model.recommended) {
-                                SmallTag("推荐", compact)
-                            }
-                        }
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp),
-                        ) {
-                            Spacer(Modifier.width(radioWidth))
-                            ModelCapabilities.of(model.id).forEach { capability -> SmallTag(capability, compact) }
-                        }
-                    }
-                }
-                item(key = "add-custom-model") {
-                    SelectionTile(
-                        selected = false,
-                        modifier = Modifier.width(if (compact) 96.dp else 118.dp).height(if (compact) 56.dp else 72.dp),
-                        compact = compact,
-                        onClick = onAddCustomModel,
-                    ) {
-                        Text("＋", color = LifeColors.Amber, fontSize = if (compact) 16.sp else 20.sp, maxLines = 1)
-                        Text("自定义模型", color = LifeColors.Secondary, fontSize = if (compact) 9.sp else 11.sp, maxLines = 1)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** 自定义模型弹窗：填写供应商控制台里的模型 ID。 */
-@Composable
-private fun CustomModelDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    AppInputDialog(
-        title = "添加自定义模型",
-        value = name,
-        onValueChange = { name = it },
-        placeholder = "deepseek-chat",
-        onDismiss = onDismiss,
-        onConfirm = { onConfirm(name.trim()) },
-    )
-}
-
-/** 模型接入：联网搜索 / 长期记忆 / 工具调用 / 日程与提醒。 */
-@Composable
-private fun CapabilitySection(state: AiBrainUiState, compact: Boolean, onToggle: (AiCapability) -> Unit) {
-    BrainCard(compact) {
-        SectionHeader("✚", "模型接入", "为小星扩展更多能力，让它更好地帮助你", compact)
-        if (compact) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(AiCapability.entries, key = { capability -> capability.name }) { capability ->
-                    CapabilityTile(
-                        capability = capability,
-                        enabled = state.capabilities[capability] ?: false,
-                        compact = true,
-                        modifier = Modifier.width(186.dp),
-                        onToggle = { onToggle(capability) },
-                    )
-                }
-            }
-        } else {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                AiCapability.entries.forEach { capability ->
-                    CapabilityTile(
-                        capability = capability,
-                        enabled = state.capabilities[capability] ?: false,
-                        compact = false,
-                        modifier = Modifier.weight(1f),
-                        onToggle = { onToggle(capability) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ------------------------------------------------------------------ 通用组件
-
-/** 横向卡片列表：左右箭头翻页 + 底部圆点，滚动状态由组件自己持有。 */
-@Composable
-private fun Carousel(
-    count: Int,
-    compact: Boolean,
-    stepWidth: Dp,
-    content: @Composable (LazyListState) -> Unit,
-) {
-    val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    val stepPx = with(LocalDensity.current) { (stepWidth + 12.dp).toPx() }
-
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
-    ) {
-        CarouselArrow("‹", compact, enabled = listState.firstVisibleItemIndex > 0) {
-            scope.launch { listState.animateScrollBy(-stepPx) }
-        }
-        Box(Modifier.weight(1f)) { content(listState) }
-        CarouselArrow("›", compact, enabled = count > 0 && listState.firstVisibleItemIndex < count - 1) {
-            scope.launch { listState.animateScrollBy(stepPx) }
-        }
-    }
-}
-
-@Composable
-private fun CarouselArrow(symbol: String, compact: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.size(if (compact) 22.dp else 30.dp),
-        shape = CircleShape,
-        color = Color.Transparent,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                symbol,
-                color = if (enabled) LifeColors.Secondary else LifeColors.Border,
-                fontSize = if (compact) 15.sp else 20.sp,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-/** 模块标题行：图标 + 标题 + 灰色说明，同一行展示。 */
-@Composable
-private fun SectionHeader(symbol: String, title: String, description: String, compact: Boolean) {
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(symbol, color = LifeColors.Amber, fontSize = if (compact) 16.sp else 21.sp, maxLines = 1)
-        Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = if (compact) 15.sp else 19.sp, maxLines = 1)
-        Text(
-            description,
-            Modifier.weight(1f),
-            color = LifeColors.Secondary,
-            fontSize = if (compact) 9.sp else 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-/** 密钥配置的一行：图标 + 标签 + 可编辑值 + 后缀。 */
-@Composable
-private fun ConfigFieldRow(
-    icon: String,
-    label: String,
-    value: String,
-    compact: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier.fillMaxWidth(),
-) {
-    val shape = RoundedCornerShape(if (compact) 9.dp else 12.dp)
-    Row(
-        modifier.height(if (compact) 38.dp else 50.dp)
-            .clip(shape)
-            .background(FieldFill)
-            .border(1.dp, LifeColors.Border, shape)
-            .clickable { onClick() }
-            .padding(horizontal = if (compact) 9.dp else 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp),
-    ) {
-        FieldIcon(icon, if (compact) 14.dp else 18.dp)
-        Text(
-            label,
-            color = LifeColors.Secondary,
-            fontSize = if (compact) 9.sp else 12.sp,
-            maxLines = 1,
-            modifier = Modifier.width(if (compact) 74.dp else 104.dp),
-        )
-        Text(
-            value.ifEmpty { "未填写" },
-            Modifier.weight(1f),
-            color = if (value.isEmpty()) LifeColors.Secondary.copy(alpha = .6f) else Color.White,
-            fontSize = if (compact) 10.sp else 13.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text("✎", color = LifeColors.Amber, fontSize = if (compact) 11.sp else 13.sp, maxLines = 1)
-    }
-}
-
-/** 配置项的矢量小图标：链接 / 钥匙 / 模型方块。 */
-@Composable
-private fun FieldIcon(kind: String, size: Dp) {
-    Canvas(Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        val stroke = Stroke(width = this.size.minDimension * .13f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        when (kind) {
-            "link" -> {
-                drawArc(
-                    color = LifeColors.Amber,
-                    startAngle = 40f,
-                    sweepAngle = 250f,
-                    useCenter = false,
-                    topLeft = Offset(w * .05f, h * .18f),
-                    size = Size(w * .5f, h * .42f),
-                    style = stroke,
-                )
-                drawArc(
-                    color = LifeColors.Amber,
-                    startAngle = 220f,
-                    sweepAngle = 250f,
-                    useCenter = false,
-                    topLeft = Offset(w * .45f, h * .4f),
-                    size = Size(w * .5f, h * .42f),
-                    style = stroke,
-                )
-            }
-
-            "key" -> {
-                drawCircle(LifeColors.Amber, this.size.minDimension * .2f, Offset(w * .3f, h * .34f), style = stroke)
-                drawLine(LifeColors.Amber, Offset(w * .45f, h * .5f), Offset(w * .9f, h * .88f), stroke.width, StrokeCap.Round)
-                drawLine(LifeColors.Amber, Offset(w * .66f, h * .72f), Offset(w * .78f, h * .6f), stroke.width, StrokeCap.Round)
-            }
-
-            else -> {
-                val cube = Path().apply {
-                    moveTo(w * .5f, h * .06f)
-                    lineTo(w * .94f, h * .3f)
-                    lineTo(w * .94f, h * .74f)
-                    lineTo(w * .5f, h * .96f)
-                    lineTo(w * .06f, h * .74f)
-                    lineTo(w * .06f, h * .3f)
-                    close()
-                }
-                drawPath(cube, LifeColors.Amber, style = stroke)
+            if (layout.artwork) Column(Modifier.width(if (layout.compact) 150.dp else 235.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                CompanionArt(Modifier.fillMaxWidth().height(if (layout.compact) 170.dp else 270.dp))
+                Text("更强的能力\n创造更大的可能", color = BrainStyle.Gold, fontSize = 14.sp, lineHeight = 24.sp)
             }
         }
     }
 }
 
 @Composable
-private fun CapabilityTile(
-    capability: AiCapability,
-    enabled: Boolean,
-    compact: Boolean,
-    modifier: Modifier,
-    onToggle: () -> Unit,
-) {
-    val shape = RoundedCornerShape(if (compact) 10.dp else 14.dp)
-    Row(
-        modifier.height(if (compact) 52.dp else 68.dp)
-            .clip(shape)
-            .background(CardTop)
-            .border(1.dp, LifeColors.Border, shape)
-            .clickable { onToggle() }
-            .padding(horizontal = if (compact) 8.dp else 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 8.dp),
-    ) {
-        Box(
-            Modifier.size(if (compact) 24.dp else 30.dp).clip(CircleShape).background(LifeColors.Amber.copy(alpha = .1f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(capability.symbol, color = LifeColors.Amber, fontSize = if (compact) 11.sp else 13.sp, maxLines = 1)
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(capability.title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 10.sp else 13.sp, maxLines = 1)
-            Text(
-                capability.description,
-                color = LifeColors.Secondary,
-                fontSize = if (compact) 8.sp else 9.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (compact) {
-            CompactSwitch(enabled)
-        } else {
-            Switch(
-                checked = enabled,
-                onCheckedChange = { onToggle() },
-                modifier = Modifier.size(36.dp, 22.dp),
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = LifeColors.Amber,
-                    uncheckedThumbColor = LifeColors.Secondary,
-                    uncheckedTrackColor = LifeColors.Border,
-                ),
-            )
-        }
-    }
-}
-
-/**
- * 紧凑横屏用的自绘开关。
- *
- * Material3 的 Switch 会强制最小触控尺寸，在 375dp 高度下会把整行撑开并挤压文字；
- * 卡片本身已经是点击区域，所以这里只画视觉状态。
- */
-@Composable
-private fun CompactSwitch(checked: Boolean) {
-    Box(
-        Modifier.size(30.dp, 17.dp)
-            .background(if (checked) LifeColors.Amber else LifeColors.Border, RoundedCornerShape(50)),
-        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
-    ) {
-        Box(
-            Modifier.padding(2.dp).size(13.dp)
-                .background(if (checked) Color.White else LifeColors.Secondary, CircleShape),
-        )
-    }
-}
-
-@Composable
-private fun BrainCard(compact: Boolean, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(if (compact) 16.dp else 22.dp)
-    Column(
-        Modifier.fillMaxWidth()
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(CardTop, CardBottom)))
-            .border(1.dp, LifeColors.Border.copy(alpha = .85f), shape)
-            .padding(if (compact) 9.dp else 14.dp),
-        verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
-        content = content,
-    )
-}
-
-@Composable
-private fun SelectionTile(
-    selected: Boolean,
-    modifier: Modifier,
-    compact: Boolean,
-    onClick: () -> Unit,
-    alignStart: Boolean = false,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val shape = RoundedCornerShape(if (compact) 10.dp else 14.dp)
-    Box(
-        modifier.clip(shape)
-            .background(if (selected) SelectedFill else CardTop)
-            .border(if (selected) 1.5.dp else 1.dp, if (selected) LifeColors.Amber else LifeColors.Border, shape)
-            .clickable { onClick() }
-            .padding(if (compact) 7.dp else 11.dp),
-    ) {
-        Column(
-            Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp),
-            horizontalAlignment = if (alignStart) Alignment.Start else Alignment.CenterHorizontally,
-            content = content,
-        )
-    }
-}
-
-@Composable
-private fun SmallTag(text: String, compact: Boolean) {
-    Text(
-        text,
-        modifier = Modifier.background(LifeColors.Amber.copy(alpha = .1f), RoundedCornerShape(50))
-            .padding(horizontal = if (compact) 7.dp else 9.dp, vertical = if (compact) 1.dp else 2.dp),
-        color = LifeColors.Amber,
-        fontSize = if (compact) 8.sp else 10.sp,
-        // 收紧行高：默认行盒比字高出不少，胶囊会显得又厚又空。
-        lineHeight = if (compact) 10.sp else 12.sp,
-        maxLines = 1,
-    )
-}
-
-/** 选中标签：实心暖金 + 深色字，比「推荐」更重，放在模型卡右上角。 */
-@Composable
-private fun SelectedTag(compact: Boolean) {
-    Text(
-        "已选择",
-        modifier = Modifier.background(LifeColors.Amber, RoundedCornerShape(50))
-            .padding(horizontal = if (compact) 6.dp else 8.dp, vertical = if (compact) 1.dp else 2.dp),
-        color = Color(0xFF14181F),
-        fontWeight = FontWeight.SemiBold,
-        fontSize = if (compact) 8.sp else 10.sp,
-        lineHeight = if (compact) 10.sp else 12.sp,
-        maxLines = 1,
-    )
-}
-
-@Composable
-private fun ConnectionBadge(status: ConnectionStatus, compact: Boolean) {
-    val color = when (status) {
-        ConnectionStatus.Connected -> ConnectedGreen
-        ConnectionStatus.NotConfigured -> LifeColors.Amber
-        ConnectionStatus.Invalid -> LifeColors.Pink
-    }
-    val text = when (status) {
-        ConnectionStatus.Connected -> "已连接"
-        ConnectionStatus.NotConfigured -> "待配置"
-        ConnectionStatus.Invalid -> "配置有误"
-    }
-    Text(
-        "● $text",
-        modifier = Modifier.background(color.copy(alpha = .12f), RoundedCornerShape(50))
-            .padding(horizontal = if (compact) 7.dp else 10.dp, vertical = 3.dp),
-        color = color,
-        fontSize = if (compact) 9.sp else 11.sp,
-        maxLines = 1,
-    )
-}
-
-/** 提供商品牌标记：用矢量近似各家 logo，不引入图片资源。 */
-@Composable
-private fun ProviderMark(providerId: String, size: Dp) {
-    val shape = if (providerId == "kimi" || providerId == "minimax") RoundedCornerShape(size * .28f) else CircleShape
-    Box(
-        Modifier.size(size).clip(shape).background(brandBackground(providerId)),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (providerId == "kimi") {
-            Text("K", color = Color.White, fontWeight = FontWeight.Bold, fontSize = (size.value * .46f).sp, maxLines = 1)
-        } else {
-            Canvas(Modifier.size(size * .62f)) {
-                val w = this.size.width
-                val h = this.size.height
-                val minSide = this.size.minDimension
-                when (providerId) {
-                    "deepseek" -> {
-                        val body = Path().apply {
-                            moveTo(0f, h * .78f)
-                            cubicTo(w * .22f, h * .04f, w * .78f, h * .04f, w, h * .6f)
-                            lineTo(w * .58f, h * .6f)
-                            cubicTo(w * .34f, h * .6f, w * .16f, h * .92f, 0f, h * .78f)
-                            close()
-                        }
-                        drawPath(body, Color(0xFF4D6BFE))
-                    }
-
-                    "zhipu" -> {
-                        val r = minSide * .17f
-                        drawCircle(Color(0xFF3D6BFF), r, Offset(w * .3f, h * .3f))
-                        drawCircle(Color(0xFF3D6BFF), r * .8f, Offset(w * .74f, h * .44f))
-                        drawCircle(Color(0xFF3D6BFF), r * .92f, Offset(w * .42f, h * .76f))
-                    }
-
-                    "minimax" -> {
-                        val barWidth = w * .14f
-                        listOf(.5f, 1f, .74f, .52f).forEachIndexed { index, ratio ->
-                            drawRoundRect(
-                                color = Color(0xFFFF4D7D),
-                                topLeft = Offset(x = w * (.06f + index * .23f), y = h * (1f - ratio * .86f)),
-                                size = Size(barWidth, h * ratio * .86f),
-                                cornerRadius = CornerRadius(barWidth / 2f),
-                            )
-                        }
-                    }
-
-                    else -> {
-                        val nodes = listOf(
-                            Offset(w * .2f, h * .2f),
-                            Offset(w * .8f, h * .2f),
-                            Offset(w * .5f, h * .82f),
-                        )
-                        val strokeWidth = minSide * .09f
-                        val outline = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                        drawLine(LifeColors.Amber, nodes[0], nodes[1], strokeWidth, StrokeCap.Round)
-                        drawLine(LifeColors.Amber, nodes[0], nodes[2], strokeWidth, StrokeCap.Round)
-                        drawLine(LifeColors.Amber, nodes[1], nodes[2], strokeWidth, StrokeCap.Round)
-                        nodes.forEach { drawCircle(Color(0xFF1B2029), minSide * .13f, it) }
-                        nodes.forEach { drawCircle(LifeColors.Amber, minSide * .13f, it, style = outline) }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun brandBackground(providerId: String): Color = when (providerId) {
-    "deepseek", "zhipu" -> Color(0xFF141A2E)
-    "kimi", "minimax" -> Color(0xFF101216)
-    else -> Color(0xFF1B2029)
-}
-
-/**
- * 标题区：设计稿里没有整条顶栏，标题连同返回箭头属于左栏顶部，且不随卡片滚动。
- */
-@Composable
-private fun AiBrainTitleRow(compact: Boolean, onBack: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().height(if (compact) 34.dp else 46.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
-    ) {
-        Box(
-            Modifier.size(if (compact) 26.dp else 34.dp)
-                .clip(CircleShape)
-                .clickable { onBack() }
-                .semantics { contentDescription = "返回生命中心" },
-            contentAlignment = Alignment.Center,
-        ) {
-            Canvas(Modifier.size(if (compact) 12.dp else 16.dp)) {
-                val chevron = Path().apply {
-                    moveTo(size.width * .78f, 0f)
-                    lineTo(size.width * .22f, size.height * .5f)
-                    lineTo(size.width * .78f, size.height)
-                }
-                drawPath(
-                    chevron,
-                    Color.White.copy(alpha = .9f),
-                    style = Stroke(
-                        width = size.minDimension * .17f,
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round,
-                    ),
-                )
-            }
-        }
-        Text(
-            "AI 大脑",
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = if (compact) 19.sp else 26.sp,
-            maxLines = 1,
-        )
-    }
-}
-
-// ------------------------------------------------------------------ 左栏
-
-/** 当前大脑：展示（不配置）供应商、模型、特点标签，以及小星状态。 */
-@Composable
-private fun CurrentBrainCard(state: AiBrainUiState, compact: Boolean) {
-    val model = state.selectedModel
-    val modelName = model.name.ifEmpty { "未选择模型" }
-    val modelDetail = model.summary.ifEmpty { model.description }.ifEmpty {
-        if (modelName == "未选择模型") {
-            "点「获取模型列表」或 ＋ 添加模型"
-        } else {
-            "来自 ${state.selectedProvider.name} 的可用模型"
-        }
-    }
-    BrainCard(compact) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("◉", color = LifeColors.Amber, fontSize = if (compact) 16.sp else 21.sp, maxLines = 1)
-            Text("当前大脑", color = Color.White, fontWeight = FontWeight.Bold, fontSize = if (compact) 15.sp else 19.sp, maxLines = 1)
-            Spacer(Modifier.weight(1f))
-            ConnectionBadge(state.connectionStatus, compact)
-        }
-
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 9.dp else 14.dp),
-        ) {
-            ProviderMark(state.selectedProvider.id, if (compact) 34.dp else 56.dp)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 5.dp)) {
-                Text(
-                    "${state.selectedProvider.name} · $modelName",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = if (compact) 11.sp else 21.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    modelDetail,
-                    color = LifeColors.Secondary,
-                    fontSize = if (compact) 10.sp else 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            state.selectedModel.tags.take(3).forEach { tag -> SmallTag(tag, compact) }
-        }
-
-        Row(
-            Modifier.fillMaxWidth()
-                .height(if (compact) 116.dp else 196.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Brush.radialGradient(listOf(LifeColors.Amber.copy(alpha = .10f), Color.Transparent))),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(.44f).rotate(-7f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("和你一起", color = LifeColors.Amber, fontSize = if (compact) 13.sp else 19.sp, fontWeight = FontWeight.Medium)
-                Text("思考更大的世界", color = LifeColors.Amber, fontSize = if (compact) 13.sp else 19.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    Modifier.width(if (compact) 56.dp else 84.dp)
-                        .height(2.dp)
-                        .background(LifeColors.Amber.copy(alpha = .45f), RoundedCornerShape(50)),
-                )
-            }
-            Box(Modifier.weight(.56f).fillMaxHeight()) {
-                FaceStage(FaceExpression.HAPPY, Modifier.fillMaxSize(), diffuseGlow = 1f)
-            }
-        }
-    }
-}
-
-/** 思考模式：快速 / 平衡 / 深度。 */
-@Composable
-private fun ThinkingModeCard(selected: ThinkingMode, compact: Boolean, onSelected: (ThinkingMode) -> Unit) {
-    BrainCard(compact) {
-        SectionHeader("⌁", "思考模式", "平衡速度、效果与成本，适合大多数场景", compact)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
+private fun ThinkingPage(selected: ThinkingMode, layout: BrainLayout, onSelect: (ThinkingMode) -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(if (layout.compact) 20.dp else 38.dp)) {
+        PageHeading("思考模式", "选择 AI 的思考深度，平衡速度与效果。", layout.compact)
+        Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(if (layout.compact) 10.dp else 20.dp)) {
             ThinkingMode.entries.forEach { mode ->
-                SelectionTile(
-                    selected = mode == selected,
-                    // 只要图标 + 标题，下面的说明去掉后卡片自然矮下来。
-                    modifier = Modifier.weight(1f).height(if (compact) 56.dp else 72.dp),
-                    compact = compact,
-                    onClick = { onSelected(mode) },
-                ) {
-                    Text(
-                        mode.symbol,
-                        color = if (mode == selected) LifeColors.Amber else Color.White,
-                        fontSize = if (compact) 14.sp else 18.sp,
-                        lineHeight = if (compact) 16.sp else 20.sp,
-                        maxLines = 1,
-                    )
-                    Text(mode.title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 11.sp else 14.sp, maxLines = 1)
+                val active = selected == mode
+                Box(Modifier.weight(1f).height(if (layout.compact) 176.dp else 260.dp).brainPanel(active)
+                    .selectable(active, role = Role.RadioButton, onClick = { onSelect(mode) }).padding(12.dp)) {
+                    if (active) Text("✓", Modifier.align(Alignment.TopEnd), color = BrainStyle.LightGold, fontSize = 20.sp)
+                    Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        BrainIcon(when(mode) { ThinkingMode.Fast -> "fast"; ThinkingMode.Balanced -> "balanced"; ThinkingMode.Deep -> "deep" }, Modifier.size(if (layout.compact) 40.dp else 60.dp))
+                        Text(mode.title, color = BrainStyle.Text, fontSize = if (layout.compact) 18.sp else 26.sp, fontWeight = FontWeight.SemiBold)
+                        Text(when(mode) { ThinkingMode.Fast -> "响应更快"; ThinkingMode.Balanced -> "推荐默认"; ThinkingMode.Deep -> "深入推理" },
+                            color = if (active) BrainStyle.Gold else BrainStyle.Muted, fontSize = 12.sp)
+                    }
                 }
             }
         }

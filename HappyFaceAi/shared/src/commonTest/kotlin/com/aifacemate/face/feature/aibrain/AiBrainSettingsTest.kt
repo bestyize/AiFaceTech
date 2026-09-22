@@ -30,6 +30,10 @@ class AiBrainSettingsTest {
             "brain.capability.LongTermMemory",
             "brain.capability.ToolCalling",
             "brain.capability.Schedule",
+            "brain.capability.CameraVision",
+            "brain.capability.FileUnderstanding",
+            "brain.capability.VoiceConversation",
+            "brain.capability.SmartHome",
         ),
     )
 
@@ -89,4 +93,30 @@ class AiBrainSettingsTest {
 
         assertEquals(names, AiBrainSettings.customModels("zhipu"))
     }
+    @Test
+    fun savedRemoteModelRestoresEvenOutsideBuiltInCatalog() {
+        AiBrainSettings.saveSelection("deepseek", "my-remote-model")
+        val restored = restoreSettings(AiBrainUiState())
+        assertEquals("my-remote-model", restored.config.modelId)
+        assertEquals("my-remote-model", restored.selectedModel.name)
+        assertEquals(ConnectionStatus.NotConfigured, restored.connectionStatus)
+    }
+
+    @Test
+    fun clearSecretAndEmptyModelSurviveRestart() {
+        AiBrainSettings.saveSecret("deepseek", SavedSecret("https://example.test/v1", "test-key"))
+        AiBrainSettings.clearSecret("deepseek")
+        AiBrainSettings.saveSelection("deepseek", "")
+        val restored = restoreSettings(AiBrainUiState())
+        assertEquals("", restored.config.apiKey)
+        assertEquals("", restored.config.modelId)
+        assertFalse(restored.secretSaved)
+    }
+
+    @Test
+    fun newCapabilityPreferencePersists() {
+        AiBrainSettings.saveCapability(AiCapability.CameraVision.name, true)
+        assertTrue(restoreSettings(AiBrainUiState()).capabilities.getValue(AiCapability.CameraVision))
+    }
+
 }

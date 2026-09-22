@@ -56,3 +56,10 @@ tasks.register<JavaExec>("exportAiBrain") {
     classpath = sourceSets["main"].runtimeClasspath
     args = listOf(layout.buildDirectory.dir("ai-brain").get().asFile.absolutePath)
 }
+
+// Offline interaction checks using the actual small-screen Compose semantics tree.
+tasks.register<JavaExec>("verifyAiBrainV3") {
+    group = "verification"
+    mainClass.set("com.aifacemate.face.tools.VerifyAiBrainV3Kt")
+    classpath = sourceSets["main"].runtimeClasspath
+}

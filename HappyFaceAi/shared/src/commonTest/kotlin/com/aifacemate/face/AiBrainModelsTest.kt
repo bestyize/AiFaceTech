@@ -27,7 +27,8 @@ class AiBrainModelsTest {
         assertEquals("kimi", state.config.providerId)
         assertEquals("kimi-k2.5", state.config.modelId)
         assertEquals("https://api.moonshot.cn/v1", state.config.baseUrl)
-        assertEquals(ConnectionStatus.Connected, state.connectionStatus)
+        // Choosing a catalog entry is not proof that its network connection works.
+        assertEquals(ConnectionStatus.NotConfigured, state.connectionStatus)
     }
 
     @Test

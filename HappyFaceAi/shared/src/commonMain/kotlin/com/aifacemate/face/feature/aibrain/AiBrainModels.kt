@@ -43,11 +43,15 @@ enum class ThinkingMode(val title: String, val detail: String, val symbol: Strin
     Deep("深度", "更深入的思考\n适合复杂问题", "◉"),
 }
 
-enum class AiCapability(val title: String, val description: String, val symbol: String) {
-    WebSearch("联网搜索", "获取最新的网络信息", "◎"),
-    LongTermMemory("长期记忆", "记住重要的对话内容", "▤"),
-    ToolCalling("工具调用", "使用各种实用工具", "◆"),
-    Schedule("日程与提醒", "管理日程、设置提醒", "□"),
+enum class AiCapability(val title: String, val description: String, val symbol: String, val icon: String) {
+    WebSearch("联网搜索", "获取网络信息，提供有时效的回答", "◎", "globe"),
+    LongTermMemory("长期记忆", "记住偏好与重要信息", "▤", "memory"),
+    ToolCalling("工具调用", "调用工具和服务，完成复杂任务", "◆", "model"),
+    Schedule("日程提醒", "管理日程安排与重要事项", "□", "calendar"),
+    SmartHome("智能家居", "连接家中的智能设备", "⌂", "home"),
+    CameraVision("相机视觉", "理解图像内容与视觉问题", "◉", "camera"),
+    VoiceConversation("语音对话", "语音输入与回复，自然交流", "♫", "voice"),
+    FileUnderstanding("文件理解", "解析文件，提取关键信息", "▤", "file"),
 }
 
 enum class ConnectionStatus { Connected, NotConfigured, Invalid }
@@ -59,8 +63,8 @@ data class AiBrainUiState(
     val providers: List<AiProvider> = defaultAiProviders,
     val config: BrainConfig = BrainConfig(),
     val thinkingMode: ThinkingMode = ThinkingMode.Balanced,
-    val capabilities: Map<AiCapability, Boolean> = AiCapability.entries.associateWith { true },
-    val connectionStatus: ConnectionStatus = ConnectionStatus.Connected,
+    val capabilities: Map<AiCapability, Boolean> = AiCapability.entries.associateWith { it in setOf(AiCapability.WebSearch, AiCapability.LongTermMemory, AiCapability.ToolCalling, AiCapability.Schedule) },
+    val connectionStatus: ConnectionStatus = ConnectionStatus.NotConfigured,
     val statusMessage: String = "",
     /** 从供应商 `/models` 拉回来的模型；为空时回退到内置目录。 */
     val fetchedModels: List<AiModel> = emptyList(),
@@ -96,12 +100,11 @@ data class AiBrainUiState(
             val custom = customModels[config.providerId].orEmpty().map { name ->
                 AiModel(id = name, name = name, description = "自定义模型")
             }
-            return base + custom
+            return (base + custom).distinctBy { it.id }
         }
 
     val selectedModel: AiModel
         get() = visibleModels.firstOrNull { it.id == config.modelId }
-            ?: visibleModels.firstOrNull()
             ?: AiModel(id = config.modelId, name = config.modelId, description = "")
 
     fun selectProvider(providerId: String): AiBrainUiState {
@@ -111,45 +114,42 @@ data class AiBrainUiState(
             ?: provider.models.firstOrNull()
             ?: custom.firstOrNull()?.let { name -> AiModel(id = name, name = name, description = "自定义模型") }
             ?: AiModel(id = "", name = "", description = "")
-        // 切供应商时换成这家自己的密钥：已保存过就用保存过的，否则用它自己的草稿，没有就是空。
+
         val saved = savedSecrets[provider.id]
+        val key = saved?.apiKey ?: apiKeys[provider.id].orEmpty()
+        val base = saved?.baseUrl ?: provider.defaultBaseUrl
+        val connected = ConnectionStatus.NotConfigured
+
         return copy(
             config = config.copy(
                 providerId = provider.id,
                 modelId = model.id,
-                baseUrl = saved?.baseUrl ?: provider.defaultBaseUrl,
-                apiKey = saved?.apiKey ?: apiKeys[provider.id].orEmpty(),
+                baseUrl = base,
+                apiKey = key,
             ),
             fetchedModels = emptyList(),
             fetchStatus = FetchStatus.Idle,
-            apiKeyPromptVisible = false,
-            connectionStatus = if (provider.id == "custom") ConnectionStatus.NotConfigured else ConnectionStatus.Connected,
-            statusMessage = if (provider.id == "custom") "请填写自己的 AI 服务" else "已切换到 ${provider.name}",
-        )
-    }
-
-    fun selectModel(modelId: String): AiBrainUiState {
-        val model = visibleModels.firstOrNull { it.id == modelId } ?: return this
-        // 选中这件事由模型卡右上角的「已选择」标签表达，不再写一行状态文案。
-        return copy(
-            config = config.copy(modelId = model.id),
+            connectionStatus = connected,
             statusMessage = "",
+            secretChecking = false,
         )
     }
 
-    /** 拉取成功：用服务端返回的模型覆盖列表，并默认选中当前模型（若还在）。 */
+    fun selectModel(modelId: String): AiBrainUiState = copy(config = config.copy(modelId = modelId))
+
     fun withFetchedModels(models: List<RemoteModel>): AiBrainUiState {
-        val mapped = models.map { remote ->
-            AiModel(id = remote.id, name = remote.id, description = remote.ownedBy?.let { "由 $it 提供" }.orEmpty())
+        val converted = models.distinctBy { it.id }.map { remote ->
+            selectedProvider.models.firstOrNull { it.id == remote.id }
+                ?: AiModel(remote.id, remote.id, "", tags = ModelCapabilities.of(remote.id))
         }
-        val stillThere = mapped.any { it.id == config.modelId }
+        // A /models response must not silently replace an explicitly selected model.
         return copy(
-            fetchedModels = mapped,
-            config = if (stillThere || mapped.isEmpty()) config else config.copy(modelId = mapped.first().id),
+            fetchedModels = converted,
             fetchStatus = FetchStatus.Success,
-            apiKeyPromptVisible = false,
             connectionStatus = ConnectionStatus.Connected,
-            statusMessage = "已获取 ${mapped.size} 个模型",
+            statusMessage = "模型接口验证通过（不代表对话调用已验证）",
+            config = if (config.modelId.isBlank()) config.copy(modelId = converted.firstOrNull()?.id.orEmpty()) else config,
+            toastMessage = "已获取 ${converted.size} 个模型",
         )
     }
 
@@ -157,34 +157,106 @@ data class AiBrainUiState(
         fetchStatus = FetchStatus.Failure,
         connectionStatus = ConnectionStatus.Invalid,
         statusMessage = message,
+        toastMessage = message.ifEmpty { "获取模型列表失败，请检查网络和 API Key" },
     )
 
-    fun addCustomModel(name: String): AiBrainUiState {
-        val trimmed = name.trim()
+    /** Ignore responses from an old provider or edited credentials. */
+    internal fun completeConnection(request: BrainConfig, result: ModelFetchResult): AiBrainUiState {
+        if (config != request) return this
+        return when (result) {
+            is ModelFetchResult.Success -> withFetchedModels(result.models)
+            is ModelFetchResult.Failure -> withFetchFailure(result.message)
+        }.copy(secretChecking = false)
+    }
+
+    fun showApiKeyPrompt(): AiBrainUiState = copy(apiKeyPromptVisible = true)
+
+    fun dismissApiKeyPrompt(): AiBrainUiState = copy(apiKeyPromptVisible = false)
+
+    fun addCustomModel(modelName: String): AiBrainUiState {
+        val trimmed = modelName.trim()
         if (trimmed.isEmpty()) return this
-        val providerId = config.providerId
-        val existing = customModels[providerId].orEmpty()
-        val updated = if (trimmed in existing) existing else existing + trimmed
+        val current = customModels[config.providerId].orEmpty()
+        if (current.contains(trimmed)) {
+            return copy(config = config.copy(modelId = trimmed))
+        }
+        val next = current + trimmed
         return copy(
-            customModels = customModels + (providerId to updated),
+            customModels = customModels + (config.providerId to next),
             config = config.copy(modelId = trimmed),
-            statusMessage = "已添加自定义模型 $trimmed",
+            toastMessage = "已添加自定义模型：$trimmed",
         )
     }
+
+    /**
+     * 校验通过后把当前配置写入「已保存」集合，同时刷新连接状态。
+     *
+     * 切换供应商不会丢掉上一家的已保存状态，只要别点「清除」。
+     */
+    fun withSecretSaved(): AiBrainUiState {
+        val saved = SavedSecret(config.baseUrl.trim(), config.apiKey.trim())
+        val nextSecrets = savedSecrets + (config.providerId to saved)
+        return copy(
+            savedSecrets = nextSecrets,
+            connectionStatus = ConnectionStatus.Connected,
+            toastMessage = "密钥已保存",
+        )
+    }
+
+    /** 清掉当前供应商的已保存密钥，连接状态退回 NotConfigured。 */
+    fun withSecretCleared(): AiBrainUiState {
+        val nextSecrets = savedSecrets - config.providerId
+        val nextKeys = apiKeys - config.providerId
+        return copy(
+            savedSecrets = nextSecrets,
+            apiKeys = nextKeys,
+            config = config.copy(baseUrl = "", apiKey = "", modelId = ""),
+            fetchedModels = emptyList(),
+            fetchStatus = FetchStatus.Idle,
+            secretChecking = false,
+            statusMessage = "配置已清空",
+            connectionStatus = ConnectionStatus.NotConfigured,
+            toastMessage = "密钥已清除",
+        )
+    }
+
+    fun withSecretChecking(checking: Boolean): AiBrainUiState = copy(secretChecking = checking)
 }
 
 class AiBrainViewModel : ViewModel() {
     var uiState by mutableStateOf(restoreSettings(AiBrainUiState()))
         private set
 
+    /**
+     * 实际发请求的实现。默认走各平台的 `fetchProviderModels`。
+     *
+     * 保持无参构造函数是有意为之：`viewModel()` 需要能直接实例化这个类，
+     * 把可替换的依赖放在属性上而不是构造参数上，测试同样能注入桩实现。
+     */
+    internal var fetcher: suspend (String, String) -> ModelFetchResult = ::fetchProviderModels
+
+    private var requestJob: kotlinx.coroutines.Job? = null
+    private var requestVersion = 0
+
+    private fun invalidateConnection() {
+        requestVersion++
+        requestJob?.cancel()
+        uiState = uiState.copy(connectionStatus = ConnectionStatus.NotConfigured, statusMessage = "",
+            secretChecking = false, fetchStatus = FetchStatus.Idle)
+    }
+
     fun selectProvider(id: String) {
+        if (uiState.providers.none { it.id == id } || uiState.config.providerId == id) return
+        invalidateConnection()
         uiState = uiState.selectProvider(id)
+        AiBrainSettings.modelId(id)?.let { saved -> uiState = uiState.selectModel(saved) }
         AiBrainSettings.saveSelection(uiState.config.providerId, uiState.config.modelId)
     }
 
     fun selectModel(id: String) {
+        invalidateConnection()
         uiState = uiState.selectModel(id)
-        AiBrainSettings.saveSelection(uiState.config.providerId, uiState.config.modelId)
+        AiBrainSettings.saveSelection(uiState.config.providerId, id)
     }
 
     fun selectThinkingMode(mode: ThinkingMode) {
@@ -197,98 +269,79 @@ class AiBrainViewModel : ViewModel() {
         uiState = uiState.copy(capabilities = uiState.capabilities + (capability to enabled))
         AiBrainSettings.saveCapability(capability.name, enabled)
     }
-    fun updateBaseUrl(value: String) { uiState = uiState.copy(config = uiState.config.copy(baseUrl = value)) }
+
+    fun updateBaseUrl(value: String) {
+        invalidateConnection()
+        uiState = uiState.copy(config = uiState.config.copy(baseUrl = value))
+    }
+
     fun updateApiKey(value: String) {
-        // Key 按供应商各存一份，切回来还是自己那串。
-        uiState = uiState.copy(
-            config = uiState.config.copy(apiKey = value),
-            apiKeys = uiState.apiKeys + (uiState.config.providerId to value),
-        )
+        invalidateConnection()
+        uiState = uiState.copy(config = uiState.config.copy(apiKey = value),
+            apiKeys = uiState.apiKeys + (uiState.config.providerId to value))
     }
 
     fun dismissApiKeyPrompt() { uiState = uiState.copy(apiKeyPromptVisible = false) }
 
     fun addCustomModel(name: String) {
+        if (name.isBlank()) return
+        invalidateConnection()
         uiState = uiState.addCustomModel(name)
         AiBrainSettings.saveCustomModels(uiState.config.providerId, uiState.customModels[uiState.config.providerId].orEmpty())
+        AiBrainSettings.saveSelection(uiState.config.providerId, uiState.config.modelId)
     }
 
-    /** 界面把 toast 展示完后清掉，避免重复弹。 */
-    fun consumeToast() {
-        if (uiState.toastMessage != null) uiState = uiState.copy(toastMessage = null)
+    fun consumeToast() { uiState = uiState.copy(toastMessage = null) }
+
+    fun clearSecret() {
+        invalidateConnection()
+        AiBrainSettings.clearSecret(uiState.config.providerId)
+        AiBrainSettings.saveSelection(uiState.config.providerId, "")
+        uiState = uiState.withSecretCleared()
     }
 
-    /**
-     * 「保存」密钥配置：先校验再保存。
-     *
-     * 没填 API Key 只提示；填了就拿它去请求一次供应商的 `/models`，通了才算有效。
-     * 保存成功后按钮变「已保存」，改动 API Key / Base URL 才会重新可点。
-     */
-    fun saveSecret() {
-        val current = uiState
-        val apiKey = current.config.apiKey.trim()
-        if (apiKey.isBlank()) {
-            uiState = current.copy(toastMessage = "需要先填写 API Key")
+    // Test never persists credentials. Save validates the exact snapshot before writing it.
+    fun testConnection() = requestModels(save = false, testing = true)
+    fun saveSecret() = requestModels(save = true, testing = true)
+    fun fetchModels() = requestModels(save = false, testing = false)
+
+    private fun requestModels(save: Boolean, testing: Boolean) {
+        if (uiState.secretChecking || uiState.fetchStatus == FetchStatus.Loading) return
+        val request = uiState.config.copy(baseUrl = uiState.config.baseUrl.trim(), apiKey = uiState.config.apiKey.trim())
+        if (request.apiKey.isBlank() || request.baseUrl.isBlank()) {
+            uiState = uiState.copy(apiKeyPromptVisible = true, toastMessage = "请填写 API Base URL 和 API Key")
             return
         }
-        val config = current.config.copy(baseUrl = current.config.baseUrl.trim(), apiKey = apiKey)
-        uiState = current.copy(config = config, secretChecking = true, toastMessage = null)
-        viewModelScope.launch {
-            when (val result = fetchProviderModels(config.baseUrl, apiKey)) {
-                is ModelFetchResult.Success -> uiState = uiState
-                    .withFetchedModels(result.models)
-                    .copy(
-                        secretChecking = false,
-                        savedSecrets = uiState.savedSecrets + (config.providerId to SavedSecret(config.baseUrl, apiKey)),
-                        toastMessage = "API Key 校验通过，已保存",
-                    )
-                    // 校验通过才落盘：写下去就等于"这家配过且有效"。
-                    .also { AiBrainSettings.saveSecret(config.providerId, SavedSecret(config.baseUrl, apiKey)) }
-
-                is ModelFetchResult.Failure -> uiState = uiState
-                    .withFetchFailure(result.message)
-                    .copy(secretChecking = false, toastMessage = "校验未通过：${result.message}")
-            }
-        }
-    }
-
-    /**
-     * 真实拉取供应商的模型列表。
-     *
-     * 没填 API Key 时不发请求，直接弹窗让用户去「密钥配置」补上。
-     */
-    fun fetchModels() {
-        val current = uiState
-        if (current.config.apiKey.isBlank()) {
-            uiState = current.copy(
-                apiKeyPromptVisible = true,
-                fetchStatus = FetchStatus.Idle,
-                statusMessage = "请先在「密钥配置」里填写 API Key",
-            )
+        if (!Regex("https?://[^/\\s]+.*").matches(request.baseUrl)) {
+            uiState = uiState.copy(toastMessage = "请输入 http:// 或 https:// 开头的完整地址")
             return
         }
-        uiState = current.copy(
-            fetchStatus = FetchStatus.Loading,
-            apiKeyPromptVisible = false,
-            statusMessage = "正在获取模型列表…",
-        )
-        viewModelScope.launch {
-            val baseUrl = uiState.config.baseUrl
-            val apiKey = uiState.config.apiKey
-            when (val result = fetchProviderModels(baseUrl, apiKey)) {
-                is ModelFetchResult.Success -> uiState = uiState.withFetchedModels(result.models)
-                is ModelFetchResult.Failure -> uiState = uiState.withFetchFailure(result.message)
+        if (save && request.modelId.isBlank()) {
+            uiState = uiState.copy(toastMessage = "请先选择或填写模型 ID")
+            return
+        }
+        val version = ++requestVersion
+        uiState = uiState.copy(config = request, secretChecking = testing, fetchStatus = FetchStatus.Loading,
+            statusMessage = "正在验证模型接口…", toastMessage = null)
+        requestJob = viewModelScope.launch {
+            val result = try { fetcher(request.baseUrl, request.apiKey) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { ModelFetchResult.Failure("连接未完成，请检查网络与接口地址") }
+            if (version != requestVersion || uiState.config != request) return@launch
+            uiState = uiState.completeConnection(request, result)
+            if (result is ModelFetchResult.Success) {
+                if (save) {
+                    val secret = SavedSecret(request.baseUrl, request.apiKey)
+                    AiBrainSettings.saveSecret(request.providerId, secret)
+                    AiBrainSettings.saveSelection(request.providerId, uiState.config.modelId)
+                    uiState = uiState.copy(savedSecrets = uiState.savedSecrets + (request.providerId to secret),
+                        toastMessage = "连接验证通过，配置已保存")
+                } else if (testing) uiState = uiState.copy(toastMessage = "连接测试通过，尚未保存本次配置")
             }
         }
     }
 }
 
-/**
- * 冷启动时把上次的配置读回来：选了哪家、哪家的哪个模型、思考模式、能力开关，
- * 以及每家校验通过并保存过的 Key / Base URL 和自定义模型。
- *
- * 任何一项读不到都只是退回默认值，不该让页面起不来——所以这里不校验、不抛异常。
- */
 internal fun restoreSettings(base: AiBrainUiState): AiBrainUiState {
     val providerId = AiBrainSettings.providerId()
         ?.takeIf { saved -> base.providers.any { it.id == saved } }
@@ -311,9 +364,7 @@ internal fun restoreSettings(base: AiBrainUiState): AiBrainUiState {
         },
     )
 
-    // 模型按供应商取：上次选的还在列表里就用它，否则退回这家的推荐模型。
     val modelId = AiBrainSettings.modelId(providerId)
-        ?.takeIf { saved -> restored.visibleModels.any { it.id == saved } }
         ?: restored.visibleModels.firstOrNull()?.id
         ?: restored.config.modelId
     val secret = savedSecrets[providerId]
@@ -329,7 +380,45 @@ internal fun restoreSettings(base: AiBrainUiState): AiBrainUiState {
     )
 }
 
+/** 完整对齐新版设计稿的 11 家模型服务提供商 */
 val defaultAiProviders = listOf(
+    AiProvider(
+        id = "openai",
+        name = "OpenAI",
+        subtitle = "全球领先的人工智能研发机构",
+        symbol = "OAI",
+        defaultBaseUrl = "https://api.openai.com/v1",
+        models = listOf(
+            AiModel(
+                id = "gpt-4o",
+                name = "GPT-4o",
+                description = "强大的多模态通用大模型",
+                recommended = true,
+                tags = listOf("多模态", "逻辑推理", "旗舰性能"),
+                summary = "强大的多模态通用大模型",
+            ),
+            AiModel("gpt-4o-mini", "GPT-4o-mini", "轻巧快速的高性价比多模态模型"),
+            AiModel("o1", "o1", "擅长深层复杂推理的思维链模型"),
+        ),
+    ),
+    AiProvider(
+        id = "claude",
+        name = "Claude",
+        subtitle = "Anthropic 核心模型",
+        symbol = "CL",
+        defaultBaseUrl = "https://api.anthropic.com/v1",
+        models = listOf(
+            AiModel(
+                id = "claude-3-5-sonnet",
+                name = "Claude 3.5 Sonnet",
+                description = "卓越的代码、写作与视觉理解能力",
+                recommended = true,
+                tags = listOf("代码专精", "长上下文", "高智能"),
+                summary = "卓越的代码、写作与视觉理解能力",
+            ),
+            AiModel("claude-3-5-haiku", "Claude 3.5 Haiku", "极速敏捷的轻量级模型"),
+        ),
+    ),
     AiProvider(
         id = "deepseek",
         name = "DeepSeek",
@@ -343,14 +432,47 @@ val defaultAiProviders = listOf(
                 description = "最强大的推理与创作能力\n适合复杂任务",
                 recommended = true,
                 tags = listOf("深度思考", "中文友好", "高性价比"),
-                summary = "强大、快速、擅长中文的推理模型",
+                summary = "最强大的推理与深度思考模型",
             ),
+            AiModel("deepseek-flash", "DeepSeek-Flash", "更快的响应速度\n适合日常对话"),
+            AiModel("deepseek-v3", "DeepSeek-V3", "稳定可靠的通用大模型"),
+            AiModel("deepseek-r1", "DeepSeek-R1", "最强大的推理与深度思考模型"),
+        ),
+    ),
+    AiProvider(
+        id = "qwen",
+        name = "Qwen",
+        subtitle = "通义千问",
+        symbol = "QW",
+        defaultBaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        models = listOf(
             AiModel(
-                "deepseek-flash", "DeepSeek-Flash", "更快的响应速度\n适合日常对话",
+                id = "qwen-2.5-max",
+                name = "Qwen-2.5-Max",
+                description = "千问系列旗舰超大规模模型",
+                recommended = true,
+                tags = listOf("中文原生", "工具调用", "全能旗舰"),
+                summary = "千问系列旗舰超大规模模型",
             ),
+            AiModel("qwen-2.5-72b", "Qwen-2.5-72B", "开源领跑的高性能大模型"),
+        ),
+    ),
+    AiProvider(
+        id = "kimi",
+        name = "Kimi",
+        subtitle = "月之暗面",
+        symbol = "KIMI",
+        defaultBaseUrl = "https://api.moonshot.cn/v1",
+        models = listOf(
             AiModel(
-                "deepseek-v3", "DeepSeek-V3", "稳定可靠\n适合通用场景",
+                id = "kimi-k2.5",
+                name = "Kimi-K2.5",
+                description = "超长上下文理解与对话探索",
+                recommended = true,
+                tags = listOf("长上下文", "无损记忆"),
+                summary = "超长上下文理解与对话探索",
             ),
+            AiModel("kimi-k2-turbo", "Kimi-K2-Turbo", "极速长文本推理模型"),
         ),
     ),
     AiProvider(
@@ -361,26 +483,14 @@ val defaultAiProviders = listOf(
         defaultBaseUrl = "https://open.bigmodel.cn/api/paas/v4",
         models = listOf(
             AiModel(
-                "glm-4.5", "GLM-4.5", "通用推理与工具使用", true, listOf("中文友好", "工具调用"),
+                id = "glm-4.5",
+                name = "GLM-4.5",
+                description = "新一代通用推理与智能体模型",
+                recommended = true,
+                tags = listOf("智能体", "工具调用"),
+                summary = "新一代通用推理与智能体模型",
             ),
-            AiModel(
-                "glm-4.5-air", "GLM-4.5-Air", "轻量、快速的日常模型",
-            ),
-        ),
-    ),
-    AiProvider(
-        id = "kimi",
-        name = "Kimi",
-        subtitle = "月之暗面",
-        symbol = "K",
-        defaultBaseUrl = "https://api.moonshot.cn/v1",
-        models = listOf(
-            AiModel(
-                "kimi-k2.5", "Kimi-K2.5", "长文本理解与复杂任务", true, listOf("长上下文", "中文友好"),
-            ),
-            AiModel(
-                "kimi-k2-turbo", "Kimi-K2-Turbo", "更快速的长文本对话",
-            ),
+            AiModel("glm-4.5-air", "GLM-4.5-Air", "高性价比轻量级模型"),
         ),
     ),
     AiProvider(
@@ -391,19 +501,69 @@ val defaultAiProviders = listOf(
         defaultBaseUrl = "https://api.minimax.chat/v1",
         models = listOf(
             AiModel(
-                "minimax-m2.5", "MiniMax-M2.5", "综合能力与自然表达", true, listOf("自然对话", "高性价比"),
+                id = "minimax-m2.5",
+                name = "MiniMax-M2.5",
+                description = "自然生动的口语表达与拟人陪伴",
+                recommended = true,
+                tags = listOf("自然对话", "情感表达"),
+                summary = "自然生动的口语表达与拟人陪伴",
             ),
-            AiModel(
-                "minimax-m2.1", "MiniMax-M2.1", "稳定的通用模型",
-            ),
+            AiModel("minimax-m2.1", "MiniMax-M2.1", "稳定的通用大模型"),
         ),
     ),
     AiProvider(
-        id = "custom",
-        name = "自定义",
-        subtitle = "OpenAI Compatible",
-        symbol = "+",
-        defaultBaseUrl = "",
-        models = emptyList(),
+        id = "volcengine",
+        name = "火山方舟",
+        subtitle = "字节跳动",
+        symbol = "VC",
+        defaultBaseUrl = "https://ark.cn-beijing.volces.com/api/v3",
+        models = listOf(
+            AiModel(
+                id = "doubao-pro",
+                name = "Doubao-Pro",
+                description = "高响应速度与强泛化能力模型",
+                recommended = true,
+                tags = listOf("极速响应", "多场景覆盖"),
+                summary = "高响应速度与强泛化能力模型",
+            ),
+            AiModel("doubao-lite", "Doubao-Lite", "极致成本的高速轻量模型"),
+        ),
     ),
+    AiProvider(
+        id = "tencent",
+        name = "腾讯云",
+        subtitle = "混元大模型",
+        symbol = "TC",
+        defaultBaseUrl = "https://api.hunyuan.cloud.tencent.com/v1",
+        models = listOf(
+            AiModel(
+                id = "hunyuan-large",
+                name = "Hunyuan-Large",
+                description = "腾讯自研大规模 MoE 混合专家模型",
+                recommended = true,
+                tags = listOf("MoE架构", "中文理解"),
+                summary = "腾讯自研大规模 MoE 混合专家模型",
+            ),
+            AiModel("hunyuan-standard", "Hunyuan-Standard", "高稳定日常通用模型"),
+        ),
+    ),
+    AiProvider(
+        id = "bailian",
+        name = "阿里云百炼",
+        subtitle = "阿里云百炼平台",
+        symbol = "BL",
+        defaultBaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        models = listOf(
+            AiModel(
+                id = "qwen-plus",
+                name = "Qwen-Plus",
+                description = "能力全面升级的中等规模大模型",
+                recommended = true,
+                tags = listOf("企业级", "稳定调用"),
+                summary = "能力全面升级的中等规模大模型",
+            ),
+            AiModel("qwen-turbo", "Qwen-Turbo", "百炼高并发秒级响应模型"),
+        ),
+    ),
+    AiProvider("custom", "更多", "OpenAI Compatible / 自定义", "+", "", emptyList()),
 )

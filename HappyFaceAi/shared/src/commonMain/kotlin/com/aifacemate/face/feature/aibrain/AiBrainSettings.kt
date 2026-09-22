@@ -29,7 +29,7 @@ object AiBrainSettings {
 
     /** 某一家上次选中的模型。按供应商分开存，切回来不会拿错别家的模型。 */
     fun modelId(providerId: String): String? =
-        SettingsStore.get(modelOf(providerId))?.takeIf { it.isNotBlank() }
+        SettingsStore.get(modelOf(providerId))
 
     fun thinkingMode(): ThinkingMode? =
         SettingsStore.get(KEY_THINKING)?.let { saved -> ThinkingMode.entries.firstOrNull { it.name == saved } }
@@ -64,6 +64,11 @@ object AiBrainSettings {
     fun saveSecret(providerId: String, secret: SavedSecret) {
         SettingsStore.put(baseUrlOf(providerId), secret.baseUrl)
         SettingsStore.put(apiKeyOf(providerId), secret.apiKey)
+    }
+
+    fun clearSecret(providerId: String) {
+        SettingsStore.remove(apiKeyOf(providerId))
+        SettingsStore.remove(baseUrlOf(providerId))
     }
 
     fun saveCustomModels(providerId: String, names: List<String>) {
