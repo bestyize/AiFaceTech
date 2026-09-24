@@ -23,13 +23,16 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal suspend fun openSocket(url: String, headers: Map<String, String>): Pair<HttpClient, WebSocketSession> {
     val client = HttpClient { install(WebSockets) }
     try {
-        val socket = client.webSocketSession {
-            url(url)
-            headers.forEach { (name, value) -> header(name, value) }
+        val socket = withTimeout(15_000) {
+            client.webSocketSession {
+                url(url)
+                headers.forEach { (name, value) -> header(name, value) }
+            }
         }
         return client to socket
     } catch (error: Throwable) {
@@ -106,7 +109,7 @@ internal abstract class SocketSession(
         if (stopped) return
         stopped = true
         try {
-            if (ready.isCompleted && !ready.isCancelled) finish()
+            if (ready.isCompleted && !ready.isCancelled) withTimeoutOrNull(2_000) { finish() }
         } finally {
             socket.close(CloseReason(CloseReason.Codes.NORMAL, "Finished"))
             client.close()

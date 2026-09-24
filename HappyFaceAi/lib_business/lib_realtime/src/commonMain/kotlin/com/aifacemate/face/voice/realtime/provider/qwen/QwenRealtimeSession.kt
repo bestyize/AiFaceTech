@@ -9,7 +9,6 @@ import com.aifacemate.face.voice.realtime.internal.openSocket
 import io.ktor.client.HttpClient
 import io.ktor.websocket.Frame
 import io.ktor.websocket.WebSocketSession
-import kotlin.io.encoding.Base64
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -23,7 +22,7 @@ internal class QwenRealtimeSession private constructor(
     client: HttpClient,
     socket: WebSocketSession,
 ) : SocketSession(client, socket) {
-    private var responding = false
+    private val responses = QwenResponseTracker()
 
     override suspend fun open() {
         send(Frame.Text(buildJsonObject {
@@ -48,8 +47,7 @@ internal class QwenRealtimeSession private constructor(
     }.toString())
 
     override suspend fun cancelOutput() {
-        if (responding) send(Frame.Text("""{"type":"response.cancel"}"""))
-        responding = false
+        if (responses.interrupt()) send(Frame.Text("""{"type":"response.cancel"}"""))
     }
 
     override suspend fun finish() { send(Frame.Text("""{"type":"session.finish"}""")) }
@@ -58,25 +56,36 @@ internal class QwenRealtimeSession private constructor(
         if (frame !is Frame.Text) return
         val data = Json.parseToJsonElement(frame.readText()).jsonObject
         fun value(key: String) = data[key]?.jsonPrimitive?.content.orEmpty()
+        fun belongsToActiveResponse() = responses.accepts(value("response_id"))
+        QwenEventDecoder.input(data)?.let { emit(it); return }
         when (value("type")) {
             "session.updated" -> markReady()
             "input_audio_buffer.speech_started" -> {
-                responding = false
+                responses.interrupt()
                 emit(RealtimeEvent.InterruptPlayback)
                 emit(RealtimeEvent.Listening)
             }
             "input_audio_buffer.speech_stopped" -> emit(RealtimeEvent.Thinking)
-            "conversation.item.input_audio_transcription.completed" -> emit(RealtimeEvent.InputText(value("transcript"), true))
-            "response.created" -> { responding = true; emit(RealtimeEvent.Thinking) }
-            "response.audio_transcript.delta", "response.text.delta" -> emit(RealtimeEvent.OutputText(value("delta"), false))
-            "response.audio_transcript.done", "response.text.done" -> emit(RealtimeEvent.OutputText(value("transcript").ifEmpty { value("text") }, true))
+            "response.created" -> {
+                val id = data["response"]?.jsonObject?.get("id")?.jsonPrimitive?.content.orEmpty()
+                responses.start(id)
+                if (id.isNotBlank()) emit(RealtimeEvent.Thinking)
+            }
+            "response.audio_transcript.delta", "response.text.delta" -> if (belongsToActiveResponse()) emit(RealtimeEvent.OutputText(value("delta"), false))
+            "response.audio_transcript.done", "response.text.done" -> if (belongsToActiveResponse()) emit(RealtimeEvent.OutputText(value("transcript").ifEmpty { value("text") }, true))
             "response.audio.delta" -> {
-                if (responding) {
+                if (belongsToActiveResponse()) {
                     emit(RealtimeEvent.Speaking)
-                    emit(RealtimeEvent.OutputAudio(Base64.Default.decode(value("delta")), "pcm_s16le", 24000))
+                    emit(QwenEventDecoder.outputAudio(data))
                 }
             }
-            "response.done" -> { responding = false; emit(RealtimeEvent.Listening) }
+            "response.done" -> {
+                val response = data["response"]?.jsonObject
+                if (responses.finish(response?.get("id")?.jsonPrimitive?.content.orEmpty())) {
+                    if (response?.get("status")?.jsonPrimitive?.content == "failed") emit(RealtimeEvent.Failure("Qwen response generation failed"))
+                    emit(RealtimeEvent.OutputComplete)
+                }
+            }
             "error" -> fail(data["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content ?: "Qwen realtime error")
         }
     }

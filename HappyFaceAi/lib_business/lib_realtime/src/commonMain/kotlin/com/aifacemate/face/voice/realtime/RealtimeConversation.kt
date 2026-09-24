@@ -35,9 +35,13 @@ sealed interface RealtimeEvent {
     /** Immediately discard queued speaker audio on this event. */
     data object InterruptPlayback : RealtimeEvent
     data class InputText(val text: String, val final: Boolean) : RealtimeEvent
+    /** Recognition can fail for one utterance while the conversation remains connected. */
+    data class TranscriptionFailed(val message: String) : RealtimeEvent
     data class OutputText(val text: String, val final: Boolean) : RealtimeEvent
     /** Output format is provider-specific; pass format and sample rate to the audio decoder. */
     data class OutputAudio(val bytes: ByteArray, val format: String, val sampleRate: Int) : RealtimeEvent
+    /** The server finished generating audio; switch back to Listening after the local player drains. */
+    data object OutputComplete : RealtimeEvent
     data class Failure(val message: String) : RealtimeEvent
     data object Closed : RealtimeEvent
 }
