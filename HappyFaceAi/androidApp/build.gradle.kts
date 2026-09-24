@@ -12,7 +12,8 @@ kotlin {
 }
 dependencies {
     implementation(project(":shared"))
-    implementation(project(":lib_face"))
+    implementation(project(":lib_business:lib_face"))
+    implementation(project(":lib_common:lib_storage"))
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)

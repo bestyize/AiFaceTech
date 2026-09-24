@@ -1,5 +1,7 @@
 package com.aifacemate.face
 
+import com.aifacemate.face.theme.AppColors
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -22,7 +24,7 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) {
-    MaterialTheme(colorScheme = darkColorScheme(primary = LifeColors.Amber, background = LifeColors.Background, surface = LifeColors.Card)) {
+    MaterialTheme(colorScheme = darkColorScheme(primary = AppColors.Amber, background = AppColors.Background, surface = AppColors.Card)) {
         var routeName by rememberSaveable { mutableStateOf(LifeRoute.Living.name) }
         val route = LifeRoute.valueOf(routeName)
         var expressionName by rememberSaveable { mutableStateOf(FaceExpression.IDLE.name) }
@@ -72,7 +74,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             }
             LifeRoute.LifeCenter -> LifeCenterRoute(LifeCenterUiState(recentChanges = changes.toList()), expression, diffuseGlow, navigate)
             LifeRoute.Brain -> AiBrainRoute(onBack = { navigate(LifeRoute.LifeCenter) })
-            LifeRoute.Appearance -> Column(Modifier.fillMaxSize().background(LifeColors.Background).safeDrawingPadding()) {
+            LifeRoute.Appearance -> Column(Modifier.fillMaxSize().background(AppColors.Background).safeDrawingPadding()) {
                 FacePreviewScreen(
                     modifier = Modifier.weight(1f), expression = expression,
                     onExpressionChange = {

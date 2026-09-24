@@ -6,6 +6,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import com.aifacemate.face.feature.lifecenter.*
+import com.aifacemate.face.theme.AppColors
 import com.aifacemate.face.model.FaceExpression
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
@@ -22,7 +23,7 @@ fun main(args: Array<String>) {
         Triple("phone", 390, 844),
     ).forEach { (name, width, height) ->
         val scene = ImageComposeScene(width, height, Density(1f)) {
-            MaterialTheme(colorScheme = darkColorScheme(primary = LifeColors.Amber)) {
+            MaterialTheme(colorScheme = darkColorScheme(primary = AppColors.Amber)) {
                 LifeCenterScreen(LifeCenterUiState(), FaceExpression.HAPPY, 1f) {}
             }
         }
