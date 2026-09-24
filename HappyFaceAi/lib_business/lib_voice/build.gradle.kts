@@ -18,6 +18,13 @@ kotlin {
     }
 
     sourceSets {
+        val jvmSharedMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(jvmSharedMain)
+        jvmSharedMain.dependencies { implementation(libs.kotlinx.coroutinesCore) }
+        androidMain.dependencies { implementation(libs.kotlinx.coroutinesCore) }
+        val iosMain = maybeCreate("iosMain").apply { dependsOn(commonMain.get()) }
+        iosArm64Main.get().dependsOn(iosMain)
+        iosSimulatorArm64Main.get().dependsOn(iosMain)
         commonMain.dependencies {
             api(project(":lib_business:lib_tts"))
             api(project(":lib_business:lib_asr"))

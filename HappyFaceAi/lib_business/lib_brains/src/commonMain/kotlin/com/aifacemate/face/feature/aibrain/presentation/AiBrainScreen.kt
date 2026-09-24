@@ -37,7 +37,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aifacemate.face.ui.AppDialog
 import com.aifacemate.face.ui.AppInputDialog
 import com.aifacemate.face.ui.AppToast
@@ -54,16 +53,18 @@ enum class BrainNavSection(val title: String, internal val icon: String) {
 private enum class BrainField { BaseUrl, ApiKey, Model }
 
 @Composable
-fun AiBrainRoute(onBack: () -> Unit, viewModel: AiBrainViewModel = viewModel()) {
+fun AiBrainRoute(onBack: () -> Unit, viewModel: AiBrainViewModel? = null) {
+    // Compose Desktop 没有 Android ViewModel factory；显式托管实例可跨三端工作。
+    val brainViewModel = viewModel ?: remember { AiBrainViewModel() }
     AiBrainScreen(
-        state = viewModel.uiState, onBack = onBack,
-        onProviderSelected = viewModel::selectProvider, onModelSelected = viewModel::selectModel,
-        onThinkingModeSelected = viewModel::selectThinkingMode, onCapabilityToggled = viewModel::toggleCapability,
-        onBaseUrlChanged = viewModel::updateBaseUrl, onApiKeyChanged = viewModel::updateApiKey,
-        onFetchModels = viewModel::fetchModels, onCustomModelAdded = viewModel::addCustomModel,
-        onDismissApiKeyPrompt = viewModel::dismissApiKeyPrompt, onSaveSecret = viewModel::saveSecret,
-        onToastShown = viewModel::consumeToast, onTestConnection = viewModel::testConnection,
-        onClearSecret = viewModel::clearSecret,
+        state = brainViewModel.uiState, onBack = onBack,
+        onProviderSelected = brainViewModel::selectProvider, onModelSelected = brainViewModel::selectModel,
+        onThinkingModeSelected = brainViewModel::selectThinkingMode, onCapabilityToggled = brainViewModel::toggleCapability,
+        onBaseUrlChanged = brainViewModel::updateBaseUrl, onApiKeyChanged = brainViewModel::updateApiKey,
+        onFetchModels = brainViewModel::fetchModels, onCustomModelAdded = brainViewModel::addCustomModel,
+        onDismissApiKeyPrompt = brainViewModel::dismissApiKeyPrompt, onSaveSecret = brainViewModel::saveSecret,
+        onToastShown = brainViewModel::consumeToast, onTestConnection = brainViewModel::testConnection,
+        onClearSecret = brainViewModel::clearSecret,
     )
 }
 

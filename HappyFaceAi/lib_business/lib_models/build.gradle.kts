@@ -1,33 +1,19 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidMultiplatformLibrary)
 }
-
 kotlin {
-    iosArm64()
-    iosSimulatorArm64()
-    jvm()
-
+    iosArm64(); iosSimulatorArm64(); jvm()
     android {
         namespace = "com.aifacemate.face.models"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         compilerOptions { jvmTarget = JvmTarget.JVM_11 }
     }
-
     sourceSets {
+        commonMain.dependencies { implementation(project(":lib_common:lib_network")) }
         commonTest.dependencies { implementation(libs.kotlin.test) }
-        // Android and Desktop share the same HTTP implementation.
-        val jvmSharedMain by creating { dependsOn(commonMain.get()) }
-        jvmMain.get().dependsOn(jvmSharedMain)
-        androidMain.get().dependsOn(jvmSharedMain)
-        jvmSharedMain.dependencies { implementation(libs.kotlinx.coroutinesCore) }
-
-        // Manual JVM edges disable Kotlin's default hierarchy; attach both iOS targets.
-        val iosMain = maybeCreate("iosMain").apply { dependsOn(commonMain.get()) }
-        iosArm64Main.get().dependsOn(iosMain)
-        iosSimulatorArm64Main.get().dependsOn(iosMain)
+        jvmTest.dependencies { implementation(libs.kotlinx.coroutinesCore) }
     }
 }

@@ -4,7 +4,7 @@ import com.aifacemate.face.theme.AppColors
 
 import androidx.compose.ui.graphics.Color
 
-enum class LifeRoute { Living, LifeCenter, Brain, Voice, Personality, Memory, Appearance, Skills, Rhythm, DeviceSystem }
+enum class LifeRoute { Living, LifeCenter, Brain, Voice, Personality, Memory, Appearance, Skills, Rhythm, DeviceSystem, Conversation }
 data class CompanionProfile(val name: String = "小星", val status: String = "本地陪伴", val personality: String = "等待认识你", val message: String = "有我在，每天都是好日子")
 data class LifeCenterFeature(val route: LifeRoute, val title: String, val subtitle: String, val symbol: String, val accent: Color = AppColors.Amber)
 data class RecentChange(val title: String, val description: String)

@@ -1,17 +1,13 @@
 package com.aifacemate.face.voice
 
-/** Platform voice input and output boundary. Implementations are added when ASR/TTS is integrated. */
+data class VoiceClip(val bytes: ByteArray, val mimeType: String = "audio/wav")
+sealed interface VoiceCaptureResult { data class Success(val clip: VoiceClip) : VoiceCaptureResult; data class Failure(val reason: String) : VoiceCaptureResult }
+sealed interface VoicePlaybackResult { data object Complete : VoicePlaybackResult; data class Failure(val reason: String) : VoicePlaybackResult }
+
 interface VoiceService {
-    suspend fun listen(): VoiceInput
-    suspend fun speak(text: String): VoiceOutput
+    suspend fun record(maxDurationMs: Long = 6_000): VoiceCaptureResult
+    suspend fun play(clip: VoiceClip): VoicePlaybackResult
+    fun stop()
 }
 
-sealed interface VoiceInput {
-    data class Recognized(val text: String) : VoiceInput
-    data class Unavailable(val reason: String) : VoiceInput
-}
-
-sealed interface VoiceOutput {
-    data object Complete : VoiceOutput
-    data class Unavailable(val reason: String) : VoiceOutput
-}
+expect fun createVoiceService(): VoiceService

@@ -59,3 +59,15 @@ AI 大脑模块按职责分包，避免页面、状态和设备存储互相引�
 - `model`：请求参数与结果类型。
 - `client`：跨平台 `expect/actual` 调用入口。
 - `internal`：HTTP 协议、JSON 转义和 multipart 辅助，不向业务层暴露。
+
+### `lib_common:lib_network`
+
+基础网络模块独立于业务能力模块，负责平台 HTTP 实现、超时和 multipart 组装。`lib_tts` / `lib_asr` 只依赖 `NetworkClient` 契约并编排供应商协议，不直接引用 `java.net`、Android 或 iOS 网络 API。
+
+### `lib_business:lib_chat`
+
+AI 文本对话协议模块，复用 `lib_common:lib_network`，支持 OpenAI Compatible 的 `/chat/completions`。共享层的表情页入口可打开对话界面，配置沿用 AI 大脑中已保存的供应商、Base URL、API Key 和模型。
+
+### 实时语音对话链路
+
+表情页的「对话」入口进入实时对话控件。文本发送直接走 `lib_chat`；语音按钮由 `lib_voice` 录音，交给 `lib_asr` 识别，再发送给 `lib_chat`，回复交给 `lib_tts` 合成并由 `VoiceService` 播放。Android/Desktop 已提供基础音频实现，iOS 暂保留接口。

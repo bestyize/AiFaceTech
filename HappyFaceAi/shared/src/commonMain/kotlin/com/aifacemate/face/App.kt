@@ -34,10 +34,9 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var diffuseGlow by rememberSaveable { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
         var hud by remember { mutableStateOf(false) }
         var petting by remember { mutableStateOf(false) }
-        var conversationNotice by remember { mutableStateOf(false) }
         val changes = remember { mutableStateListOf<RecentChange>() }
         val haptic = LocalHapticFeedback.current
-        val navigate: (LifeRoute) -> Unit = { routeName = it.name; hud = false; conversationNotice = false; petting = false }
+        val navigate: (LifeRoute) -> Unit = { routeName = it.name; hud = false; petting = false }
         onBackHandler(route != LifeRoute.Living || hud) {
             if (hud) hud = false else navigate(if (route == LifeRoute.LifeCenter) LifeRoute.Living else LifeRoute.LifeCenter)
         }
@@ -63,17 +62,12 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         .background(Color(0xEE191C24), RoundedCornerShape(28.dp)).padding(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    TextButton(onClick = { conversationNotice = true; hud = false }) { Text("对话") }
+                    TextButton(onClick = { navigate(LifeRoute.Conversation) }) { Text("对话") }
                     TextButton(onClick = { petting = true; hud = false }) { Text("抚摸") }
                     TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }
                 }
-                if (conversationNotice) AppDialog(
-                    title = "还在学习说话",
-                    symbol = "♫",
-                    description = "语音与 AI 对话还没有接入。现在可以先轻点「抚摸」，看看小星的回应。",
-                    onDismiss = { conversationNotice = false },
-                )
             }
+            LifeRoute.Conversation -> ChatScreen(onBack = { navigate(LifeRoute.Living) })
             LifeRoute.LifeCenter -> LifeCenterRoute(LifeCenterUiState(recentChanges = changes.toList()), expression, diffuseGlow, navigate)
             LifeRoute.Brain -> AiBrainRoute(onBack = { navigate(LifeRoute.LifeCenter) })
             LifeRoute.Appearance -> Column(Modifier.fillMaxSize().background(AppColors.Background).safeDrawingPadding()) {

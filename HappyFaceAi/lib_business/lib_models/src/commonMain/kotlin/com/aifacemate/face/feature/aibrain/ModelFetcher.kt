@@ -1,5 +1,7 @@
 package com.aifacemate.face.feature.aibrain
 
+import com.aifacemate.face.network.NetworkClient
+
 /** 从供应商 `/models` 接口拉到的一条模型记录。 */
 data class RemoteModel(val id: String, val ownedBy: String? = null)
 
@@ -11,10 +13,19 @@ sealed interface ModelFetchResult {
 /**
  * 拉取供应商的模型列表。
  *
- * 走 OpenAI Compatible 的 `GET {baseUrl}/models`，需要 `Authorization: Bearer <apiKey>`。
- * 平台实现：Android / Desktop(JVM) 用 `HttpURLConnection`，iOS 尚未接入。
+ * 走 OpenAI Compatible 的 `/models`，网络细节由 [NetworkClient] 提供。
  */
-expect suspend fun fetchProviderModels(baseUrl: String, apiKey: String): ModelFetchResult
+suspend fun fetchProviderModels(baseUrl: String, apiKey: String, network: NetworkClient = NetworkClient()): ModelFetchResult {
+    val endpoint = modelsEndpoint(baseUrl)
+    if (endpoint.isEmpty()) return ModelFetchResult.Failure("请先填写 API Base URL")
+    if (apiKey.isBlank()) return ModelFetchResult.Failure("请先填写 API Key")
+    val response = network.get(endpoint, mapOf("Authorization" to "Bearer ${apiKey.trim()}"))
+    return when {
+        response.statusCode !in 200..299 -> ModelFetchResult.Failure(httpErrorMessage(response.statusCode, response.text))
+        else -> parseModelIds(response.text).takeIf { it.isNotEmpty() }?.let { ModelFetchResult.Success(it) }
+            ?: ModelFetchResult.Failure("接口返回成功，但没有解析到模型列表")
+    }
+}
 
 /**
  * 把用户填写的 Base URL 规范成 `/models` 端点。

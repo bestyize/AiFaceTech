@@ -9,6 +9,8 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 
 fun main() = application {
+    // 仅桌面本地开发启用被 .gitignore 忽略的 local.properties 默认配置。
+    System.setProperty("aifacemate.devDefaults", "true")
     Window(
         onCloseRequest = ::exitApplication,
         title = "灵伴科技 · RoboCat 脸部表情系统（Alpha 1）",
