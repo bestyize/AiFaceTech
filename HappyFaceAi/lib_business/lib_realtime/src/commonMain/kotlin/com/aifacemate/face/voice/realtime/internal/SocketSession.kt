@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 
 internal suspend fun openSocket(url: String, headers: Map<String, String>): Pair<HttpClient, WebSocketSession> {
@@ -50,7 +49,10 @@ internal abstract class SocketSession(
     private var stopped = false
     override val events: Flow<RealtimeEvent> = output.receiveAsFlow()
 
-    protected suspend fun send(frame: Frame) = sendLock.withLock { socket.send(frame) }
+    protected suspend fun send(frame: Frame) {
+        sendLock.lock()
+        try { socket.send(frame) } finally { sendLock.unlock() }
+    }
     protected suspend fun emit(event: RealtimeEvent) { output.send(event) }
     protected suspend fun markReady() {
         if (ready.complete(Unit)) emit(RealtimeEvent.Ready)
