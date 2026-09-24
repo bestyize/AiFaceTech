@@ -1,15 +1,6 @@
 name: Build HappyFaceAi
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'HappyFaceAi/**'
-      - '.github/workflows/happyfaceai-build.yml'
-  pull_request:
-    paths:
-      - 'HappyFaceAi/**'
-      - '.github/workflows/happyfaceai-build.yml'
   workflow_dispatch:
 
 permissions:
