@@ -11,11 +11,11 @@ class AsrTest {
     @Test fun includesXiaomiProvider() {
         val provider = defaultAsrProviders.single { it.id == "xiaomi-asr" }
         assertEquals("小米 ASR", provider.name)
-        assertTrue(provider.models.contains("mimo-asr"))
+        assertTrue(provider.models.contains("mimo-v2.5-asr"))
     }
     @Test fun requestHasSafeDefaults() {
         val request = AsrRequest(apiKey = "key", audio = byteArrayOf())
         assertEquals("audio/wav", request.mimeType)
-        assertEquals("mimo-asr", request.model)
+        assertEquals("mimo-v2.5-asr", request.model)
     }
 }

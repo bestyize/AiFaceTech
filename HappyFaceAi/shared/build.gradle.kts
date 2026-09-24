@@ -32,6 +32,7 @@ kotlin {
             implementation(project(":lib_business:lib_chat"))
             implementation(project(":lib_business:lib_voice"))
             implementation(project(":lib_common:lib_network"))
+            implementation(project(":lib_common:lib_storage"))
             implementation(project(":lib_common:lib_theme"))
             implementation(project(":lib_common:lib_ui"))
             implementation(libs.compose.runtime)

@@ -1,9 +1,15 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
 }
+
+val localSecrets = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { input -> load(input) }
+}
+fun localSecret(name: String): String = localSecrets.getProperty(name, "").replace("\\", "\\\\").replace("\"", "\\\"")
 
 kotlin {
     compilerOptions {
@@ -32,6 +38,10 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"${localSecret("aifacemate.dev.apiKey")}\"")
+        buildConfigField("String", "DEV_DEEPSEEK_BASE_URL", "\"${localSecret("aifacemate.dev.baseUrl")}\"")
+        buildConfigField("String", "DEV_MIMO_API_KEY", "\"${localSecret("aifacemate.dev.mimoApiKey")}\"")
+        buildConfigField("String", "DEV_MIMO_BASE_URL", "\"${localSecret("aifacemate.dev.mimoBaseUrl")}\"")
     }
     packaging {
         resources {
@@ -53,5 +63,6 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }

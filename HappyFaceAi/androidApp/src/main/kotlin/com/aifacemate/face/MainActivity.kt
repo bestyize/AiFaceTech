@@ -21,7 +21,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // 最先装：SettingsStore 要靠它才能落到 SharedPreferences，而 AI 大脑一构造就要读配置
-        AndroidAppContext.install(this)
+        AndroidAppContext.install(this, mapOf(
+            "brain.provider" to "deepseek",
+            "baseUrl:deepseek" to BuildConfig.DEV_DEEPSEEK_BASE_URL,
+            "apikey:deepseek" to BuildConfig.DEV_DEEPSEEK_API_KEY,
+            "voice.mimo.baseUrl" to BuildConfig.DEV_MIMO_BASE_URL,
+            "voice.mimo.apiKey" to BuildConfig.DEV_MIMO_API_KEY,
+        ).filterValues { it.isNotBlank() })
         if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1001)
         }

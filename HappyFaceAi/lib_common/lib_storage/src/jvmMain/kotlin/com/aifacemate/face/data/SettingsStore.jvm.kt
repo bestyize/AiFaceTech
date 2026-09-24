@@ -25,6 +25,8 @@ actual object SettingsStore {
             "apikey:deepseek" -> properties.getProperty("aifacemate.dev.apiKey")
             "baseUrl:deepseek" -> properties.getProperty("aifacemate.dev.baseUrl")
             "brain.provider" -> properties.getProperty("aifacemate.dev.provider")
+            "voice.mimo.apiKey" -> properties.getProperty("aifacemate.dev.mimoApiKey")
+            "voice.mimo.baseUrl" -> properties.getProperty("aifacemate.dev.mimoBaseUrl")
             else -> null
         }
     }

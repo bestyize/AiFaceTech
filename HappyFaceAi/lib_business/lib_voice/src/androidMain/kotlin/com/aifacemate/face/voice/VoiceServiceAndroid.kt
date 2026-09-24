@@ -1,0 +1,11 @@
+package com.aifacemate.face.voice
+import android.media.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+actual fun createVoiceService(): VoiceService = object : VoiceService {
+ private var stopRequested = false
+ override suspend fun record(maxDurationMs:Long):VoiceCaptureResult=withContext(Dispatchers.IO){stopRequested=false;val rate=16000;val size=AudioRecord.getMinBufferSize(rate,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);if(size<=0)return@withContext VoiceCaptureResult.Failure("麦克风不可用");val r=AudioRecord(MediaRecorder.AudioSource.MIC,rate,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,size*2);val out=java.io.ByteArrayOutputStream();try{r.startRecording();val b=ByteArray(size);val end=System.currentTimeMillis()+maxDurationMs;while(System.currentTimeMillis()<end && !stopRequested){val n=r.read(b,0,b.size);if(n>0)out.write(b,0,n)};VoiceCaptureResult.Success(VoiceClip(out.toByteArray(),"audio/pcm"))}catch(e:Exception){VoiceCaptureResult.Failure("录音失败：${e.message}")}finally{r.stop();r.release()}}
+ override suspend fun play(clip:VoiceClip):VoicePlaybackResult=withContext(Dispatchers.IO){try{val wav=clip.bytes.size>44 && clip.bytes.copyOfRange(0,4).contentEquals(byteArrayOf(82,73,70,70));val rate=if(wav) readLeInt(clip.bytes,24) else 24000;val pcm=if(wav) clip.bytes.copyOfRange(44,clip.bytes.size) else clip.bytes;val min=AudioTrack.getMinBufferSize(rate,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT);val t=AudioTrack(android.media.AudioManager.STREAM_MUSIC,rate,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT,maxOf(min,4096),AudioTrack.MODE_STREAM);if(t.state!=AudioTrack.STATE_INITIALIZED)return@withContext VoicePlaybackResult.Failure("无法初始化扬声器");t.play();val written=t.write(pcm,0,pcm.size,AudioTrack.WRITE_BLOCKING);t.stop();t.release();if(written<0)VoicePlaybackResult.Failure("音频写入失败：$written")else VoicePlaybackResult.Complete}catch(e:Exception){VoicePlaybackResult.Failure("播放失败：${e.message}")}}
+ override fun stop(){ stopRequested=true }
+ private fun readLeInt(bytes:ByteArray,offset:Int):Int=bytes[offset].toInt() and 255 or ((bytes[offset+1].toInt() and 255) shl 8) or ((bytes[offset+2].toInt() and 255) shl 16) or ((bytes[offset+3].toInt() and 255) shl 24)
+}

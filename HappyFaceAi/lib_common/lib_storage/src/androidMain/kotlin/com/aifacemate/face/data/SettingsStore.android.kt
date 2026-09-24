@@ -10,9 +10,11 @@ import android.content.SharedPreferences
  */
 object AndroidAppContext {
     private var application: Context? = null
+    internal var defaults: Map<String, String> = emptyMap()
 
-    fun install(context: Context) {
+    fun install(context: Context, developmentDefaults: Map<String, String> = emptyMap()) {
         application = context.applicationContext
+        defaults = developmentDefaults
     }
 
     internal fun preferences(): SharedPreferences? =
@@ -21,7 +23,7 @@ object AndroidAppContext {
 
 actual object SettingsStore {
     actual fun get(key: String): String? =
-        runCatching { AndroidAppContext.preferences()?.getString(key, null) }.getOrNull()
+        runCatching { AndroidAppContext.preferences()?.getString(key, null) ?: AndroidAppContext.defaults[key] }.getOrNull()
 
     actual fun put(key: String, value: String) {
         runCatching { AndroidAppContext.preferences()?.edit()?.putString(key, value)?.apply() }

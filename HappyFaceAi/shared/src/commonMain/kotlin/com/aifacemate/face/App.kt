@@ -33,12 +33,14 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         val expression = FaceExpression.valueOf(expressionName)
         var diffuseGlow by rememberSaveable { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
         var hud by remember { mutableStateOf(false) }
+        var voiceOverlay by remember { mutableStateOf(false) }
         var petting by remember { mutableStateOf(false) }
         val changes = remember { mutableStateListOf<RecentChange>() }
         val haptic = LocalHapticFeedback.current
-        val navigate: (LifeRoute) -> Unit = { routeName = it.name; hud = false; petting = false }
-        onBackHandler(route != LifeRoute.Living || hud) {
-            if (hud) hud = false else navigate(if (route == LifeRoute.LifeCenter) LifeRoute.Living else LifeRoute.LifeCenter)
+        val navigate: (LifeRoute) -> Unit = { routeName = it.name; hud = false; petting = false; voiceOverlay = false }
+        onBackHandler(route != LifeRoute.Living || hud || voiceOverlay) {
+            if (voiceOverlay) voiceOverlay = false
+            else if (hud) hud = false else navigate(if (route == LifeRoute.LifeCenter) LifeRoute.Living else LifeRoute.LifeCenter)
         }
         LaunchedEffect(hud) { if (hud) { delay(3500); hud = false } }
         LaunchedEffect(petting) { if (petting) { delay(2400); petting = false } }
@@ -62,12 +64,17 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         .background(Color(0xEE191C24), RoundedCornerShape(28.dp)).padding(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    TextButton(onClick = { navigate(LifeRoute.Conversation) }) { Text("对话") }
+                    TextButton(onClick = { voiceOverlay = true; hud = false }) { Text("对话") }
                     TextButton(onClick = { petting = true; hud = false }) { Text("抚摸") }
                     TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }
                 }
+                if (voiceOverlay) VoiceConversationOverlay(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    onClose = { voiceOverlay = false },
+                )
             }
             LifeRoute.Conversation -> ChatScreen(onBack = { navigate(LifeRoute.Living) })
+            LifeRoute.Voice -> VoiceSettingsScreen(onBack = { navigate(LifeRoute.LifeCenter) })
             LifeRoute.LifeCenter -> LifeCenterRoute(LifeCenterUiState(recentChanges = changes.toList()), expression, diffuseGlow, navigate)
             LifeRoute.Brain -> AiBrainRoute(onBack = { navigate(LifeRoute.LifeCenter) })
             LifeRoute.Appearance -> Column(Modifier.fillMaxSize().background(AppColors.Background).safeDrawingPadding()) {

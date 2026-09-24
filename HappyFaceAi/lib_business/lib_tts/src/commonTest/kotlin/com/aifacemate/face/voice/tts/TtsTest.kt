@@ -12,7 +12,7 @@ class TtsTest {
     @Test fun includesMimoProvider() {
         val provider = defaultTtsProviders.single { it.id == "xiaomi-mimo" }
         assertEquals("小米 MiMo", provider.name)
-        assertTrue(provider.models.contains("mimo-v2-tts"))
+        assertTrue(provider.models.contains("mimo-v2.5-tts"))
     }
     @Test fun escapesSpeechText() {
         assertEquals("a\\\"b\\nc", jsonEscape("a\"b\nc"))
