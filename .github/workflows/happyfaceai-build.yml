@@ -63,17 +63,14 @@ jobs:
           - platform: Linux-deb
             runner: ubuntu-24.04
             command: './gradlew --no-daemon :desktopApp:packageDeb'
-            shell: bash
             package: deb
           - platform: Windows-msi
             runner: windows-2025
             command: '.\gradlew.bat --no-daemon :desktopApp:packageMsi'
-            shell: pwsh
             package: msi
           - platform: macOS-dmg
             runner: macos-15-intel
             command: './gradlew --no-daemon :desktopApp:packageDmg'
-            shell: bash
             package: dmg
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
@@ -104,7 +101,6 @@ jobs:
           }
       - uses: gradle/actions/setup-gradle@v6
       - name: Build installer
-        shell: ${{ matrix.shell }}
         run: ${{ matrix.command }}
       - uses: actions/upload-artifact@v4
         with:
