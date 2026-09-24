@@ -49,6 +49,12 @@ kotlin {
         jvmMain.get().dependsOn(jvmSharedMain)
         androidMain.get().dependsOn(jvmSharedMain)
 
+        // The custom JVM source set disables Kotlin's default hierarchy template.
+        // Wire iOS explicitly so iosMain actual declarations reach both iOS targets.
+        val iosMain = maybeCreate("iosMain").apply { dependsOn(commonMain.get()) }
+        iosArm64Main.get().dependsOn(iosMain)
+        iosSimulatorArm64Main.get().dependsOn(iosMain)
+
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)

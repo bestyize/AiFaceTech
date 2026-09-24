@@ -1,0 +1,153 @@
+name: Build HappyFaceAi
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'HappyFaceAi/**'
+      - '.github/workflows/happyfaceai-build.yml'
+  pull_request:
+    paths:
+      - 'HappyFaceAi/**'
+      - '.github/workflows/happyfaceai-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: happyfaceai-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: HappyFaceAi
+
+jobs:
+  android:
+    name: Android debug APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+      # API 37.0 installs as android-37.0; compileSdk = 37 can look for android-37.
+      - name: Make API 37 available to Gradle
+        shell: bash
+        run: |
+          if [[ -d "$ANDROID_SDK_ROOT/platforms/android-37.0" && ! -e "$ANDROID_SDK_ROOT/platforms/android-37" ]]; then
+            ln -s android-37.0 "$ANDROID_SDK_ROOT/platforms/android-37"
+          fi
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Test shared code and build APK
+        run: ./gradlew --no-daemon :shared:jvmTest :lib_face:jvmTest :androidApp:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HappyFaceAi-Android-debug
+          path: HappyFaceAi/androidApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  desktop:
+    name: Desktop ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux-deb
+            runner: ubuntu-24.04
+            command: './gradlew --no-daemon :desktopApp:packageDeb'
+            package: deb
+          - platform: Windows-msi
+            runner: windows-2025
+            command: '.\gradlew.bat --no-daemon :desktopApp:packageMsi'
+            package: msi
+          - platform: macOS-dmg
+            runner: macos-15-intel
+            command: './gradlew --no-daemon :desktopApp:packageDmg'
+            package: dmg
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+      - name: Make API 37 available to Gradle (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ -d "$ANDROID_SDK_ROOT/platforms/android-37.0" && ! -e "$ANDROID_SDK_ROOT/platforms/android-37" ]]; then
+            ln -s android-37.0 "$ANDROID_SDK_ROOT/platforms/android-37"
+          fi
+      - name: Make API 37 available to Gradle (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $source = Join-Path $env:ANDROID_SDK_ROOT 'platforms/android-37.0'
+          $alias = Join-Path $env:ANDROID_SDK_ROOT 'platforms/android-37'
+          if ((Test-Path $source) -and !(Test-Path $alias)) {
+            New-Item -ItemType Junction -Path $alias -Target $source | Out-Null
+          }
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build installer
+        run: ${{ matrix.command }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HappyFaceAi-${{ matrix.platform }}
+          path: HappyFaceAi/desktopApp/build/compose/binaries/main/${{ matrix.package }}/*.${{ matrix.package }}
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-simulator:
+    name: iOS Simulator app (unsigned)
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+      - name: Make API 37 available to Gradle
+        shell: bash
+        run: |
+          if [[ -d "$ANDROID_SDK_ROOT/platforms/android-37.0" && ! -e "$ANDROID_SDK_ROOT/platforms/android-37" ]]; then
+            ln -s android-37.0 "$ANDROID_SDK_ROOT/platforms/android-37"
+          fi
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build iOS Simulator app
+        run: |
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/happyface-ios" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Zip simulator app
+        run: |
+          ditto -c -k --keepParent \
+            "$RUNNER_TEMP/happyface-ios/Build/Products/Debug-iphonesimulator/HappyFaceAi.app" \
+            "$RUNNER_TEMP/HappyFaceAi-iOS-Simulator.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HappyFaceAi-iOS-Simulator
+          path: ${{ runner.temp }}/HappyFaceAi-iOS-Simulator.zip
+          if-no-files-found: error
+          retention-days: 14
