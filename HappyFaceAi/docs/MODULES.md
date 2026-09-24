@@ -12,11 +12,12 @@
 | `lib_business:lib_models` | 供应商目录、模型能力识别与平台 HTTP 请求 | Kotlin / coroutines |
 | `lib_business:lib_brains` | AI 大脑状态、设置、交互页面 | lib_models、lib_storage、lib_ui、lib_resource |
 | `lib_business:lib_lifecenter` | 生命中心页面、路由模型 | lib_face、lib_theme |
-| `lib_business:lib_voice` | 语音输入输出接口；尚无 ASR/TTS 实现 | Kotlin |
+| `lib_business:lib_realtime` | 豆包、千问端到端实时对话协议与统一事件 | Ktor WebSockets、coroutines、JSON |
+| `lib_business:lib_voice` | 聚合实时对话及独立 ASR/TTS 接口 | lib_realtime、lib_asr、lib_tts |
 | `shared` | 应用导航和三端共用页面组合 | face、brains、lifecenter、theme |
 | `androidApp` / `desktopApp` / `iosApp` | 各平台入口、窗口和安装包 | shared 等直接使用的模块 |
 
-依赖方向：入口 → shared / 业务模块 → 通用模块。通用模块不引用业务模块；模型请求模块也不引用 AI 大脑 UI。将来的语音实现应放在 lib_voice 中，再由 App 接入，不应直接塞进 shared。
+依赖方向：入口 → shared / 业务模块 → 通用模块。通用模块不引用业务模块；模型请求模块也不引用 AI 大脑 UI。实时协议实现放在 lib_realtime，由 lib_voice 对外聚合；平台采集/播放及 Face 联动在入口接入。
 
 ## 常用命令
 
@@ -43,7 +44,8 @@ AI 大脑模块按职责分包，避免页面、状态和设备存储互相引�
 
 ### 语音能力模块
 
-- `lib_business:lib_voice`：语音能力聚合入口，对外暴露 TTS / ASR 模块。
+- `lib_business:lib_voice`：语音能力聚合入口，对外暴露实时对话、TTS / ASR 模块。
+- `lib_business:lib_realtime`：可替换的长连接会话接口，豆包二进制协议与千问 JSON 事件协议，Android/Desktop 使用 CIO，iOS 使用 Darwin。
 - `lib_business:lib_tts`：文字转语音契约、供应商目录与请求实现；当前内置小米 MiMo。
 - `lib_business:lib_asr`：语音转文字契约、供应商目录与 multipart 请求实现；当前内置小米 ASR。
 
