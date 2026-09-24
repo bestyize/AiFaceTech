@@ -8,75 +8,29 @@ plugins {
 }
 
 kotlin {
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
-            baseName = "Shared"
-            isStatic = true
-        }
-    }
-    
+    iosArm64()
+    iosSimulatorArm64()
     jvm()
-    
+
     android {
-       namespace = "com.aifacemate.face.shared"
-       compileSdk = libs.versions.android.compileSdk.get().toInt()
-       minSdk = libs.versions.android.minSdk.get().toInt()
-    
-       compilerOptions {
-           jvmTarget = JvmTarget.JVM_11
-       }
-       androidResources {
-           enable = true
-       }
-       withHostTest {
-           isIncludeAndroidResources = true
-       }
-       withDeviceTestBuilder {
-           sourceSetTreeName = "test"
-       }.configure {
-           instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-       }
+        namespace = "com.aifacemate.face.shared"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        compilerOptions { jvmTarget = JvmTarget.JVM_11 }
+        withHostTest { isIncludeAndroidResources = true }
     }
-    
+
     sourceSets {
-        // androidMain 与 jvmMain 都是 JVM 平台，HTTP 实现放在中间源集里共用，避免复制两份。
-        val jvmSharedMain by creating {
-            dependsOn(commonMain.get())
-        }
-        jvmMain.get().dependsOn(jvmSharedMain)
-        androidMain.get().dependsOn(jvmSharedMain)
-
-        // The custom JVM source set disables Kotlin's default hierarchy template.
-        // Wire iOS explicitly so iosMain actual declarations reach both iOS targets.
-        val iosMain = maybeCreate("iosMain").apply { dependsOn(commonMain.get()) }
-        iosArm64Main.get().dependsOn(iosMain)
-        iosSimulatorArm64Main.get().dependsOn(iosMain)
-
-        androidMain.dependencies {
-            implementation(libs.compose.uiToolingPreview)
-            implementation(libs.compose.uiTooling)
-        }
         commonMain.dependencies {
-            implementation(project(":lib_face"))
+            implementation(project(":lib_business:lib_face"))
+            implementation(project(":lib_business:lib_brains"))
+            implementation(project(":lib_business:lib_lifecenter"))
+            implementation(project(":lib_common:lib_theme"))
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
-            implementation(libs.compose.components.resources)
-            implementation(libs.compose.uiBackhandler)
-            implementation(libs.compose.uiToolingPreview)
-            implementation(libs.androidx.lifecycle.viewmodelCompose)
-            implementation(libs.androidx.lifecycle.runtimeCompose)
         }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-        }
+        commonTest.dependencies { implementation(libs.kotlin.test) }
     }
-}
-
-dependencies {
-    androidRuntimeClasspath(libs.compose.uiTooling)
 }

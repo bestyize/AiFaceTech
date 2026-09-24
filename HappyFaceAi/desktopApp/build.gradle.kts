@@ -8,7 +8,9 @@ plugins {
 
 dependencies {
     implementation(project(":shared"))
-    implementation(project(":lib_face"))
+    implementation(project(":lib_business:lib_face"))
+    implementation(project(":lib_business:lib_brains"))
+    implementation(project(":lib_business:lib_lifecenter"))
 
     implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutinesSwing)

@@ -74,7 +74,7 @@ Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-mu
 #### 验证命令
 
 ```shell
-bash gradlew :shared:jvmTest :lib_face:jvmTest :androidApp:assembleDebug
+bash gradlew :shared:jvmTest :lib_business:lib_face:jvmTest :androidApp:assembleDebug
 bash gradlew :desktopApp:verifyAiBrainV3
 bash gradlew :desktopApp:exportAiBrain
 ```
@@ -90,3 +90,10 @@ bash gradlew :desktopApp:exportAiBrain
 
 注意：沿用现有 SettingsStore（Android SharedPreferences、JVM Preferences、iOS UserDefaults）；
 本次未改为加密存储，因此界面不会宣称密钥已加密。真实服务商连通性需使用用户自己的配置验证。
+
+## 工程模块
+
+`shared` 只组合页面与平台入口；Android、Desktop 与 iOS 共用这一层。模块目录见 [docs/MODULES.md](docs/MODULES.md)。
+
+- `lib_common/`：`lib_theme`（应用配色）、`lib_resource`（Compose 图像）、`lib_storage`（平台设置存储）、`lib_ui`（通用弹窗和提示）。
+- `lib_business/`：`lib_face`（表情渲染与动画）、`lib_models`（模型服务商目录与请求）、`lib_brains`（AI 大脑状态和页面）、`lib_lifecenter`（生命中心）、`lib_voice`（尚待接入的语音接口）。
