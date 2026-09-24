@@ -23,7 +23,7 @@
 从 `HappyFaceAi/` 执行：
 
 ```bash
-./gradlew :lib_business:lib_face:jvmTest :lib_business:lib_models:jvmTest :lib_business:lib_brains:jvmTest :shared:jvmTest
+./gradlew :lib_business:lib_face:jvmTest :lib_business:lib_models:jvmTest :lib_business:lib_brains:jvmTest :lib_business:lib_voice:compileKotlinJvm :shared:jvmTest
 ./gradlew :androidApp:assembleDebug
 ./gradlew :desktopApp:packageDistributionForCurrentOS
 ```
