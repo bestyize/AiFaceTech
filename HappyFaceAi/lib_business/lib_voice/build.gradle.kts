@@ -21,6 +21,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":lib_business:lib_tts"))
             api(project(":lib_business:lib_asr"))
+            api(project(":lib_business:lib_realtime"))
         }
     }
 }
