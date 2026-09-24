@@ -57,7 +57,11 @@ internal class QwenRealtimeSession private constructor(
         val data = Json.parseToJsonElement(frame.readText()).jsonObject
         fun value(key: String) = data[key]?.jsonPrimitive?.content.orEmpty()
         fun belongsToActiveResponse() = responses.accepts(value("response_id"))
-        QwenEventDecoder.input(data)?.let { emit(it); return }
+        val transcript = QwenEventDecoder.input(data)
+        if (transcript != null) {
+            emit(transcript)
+            return
+        }
         when (value("type")) {
             "session.updated" -> markReady()
             "input_audio_buffer.speech_started" -> {

@@ -22,13 +22,12 @@ internal class DoubaoRealtimeSession private constructor(
     client: HttpClient,
     socket: WebSocketSession,
 ) : SocketSession(client, socket) {
-    private var outputInProgress = false
-    private var suppressUntilTtsEnd = false
+    private val outputGate = DoubaoOutputGate()
     override suspend fun open() { send(Frame.Binary(true, DoubaoProtocol.encode(1, "{}".encodeToByteArray()))) }
 
     override fun audioFrame(bytes: ByteArray): Frame = Frame.Binary(true, DoubaoProtocol.encode(200, bytes, config.sessionId, audio = true))
 
-    override suspend fun cancelOutput() { if (outputInProgress) suppressUntilTtsEnd = true }
+    override suspend fun cancelOutput() { outputGate.interrupt() }
 
     override suspend fun finish() {
         send(Frame.Binary(true, DoubaoProtocol.encode(102, "{}".encodeToByteArray(), config.sessionId)))
@@ -54,7 +53,7 @@ internal class DoubaoRealtimeSession private constructor(
                 send(Frame.Binary(true, DoubaoProtocol.encode(100, payload.toString().encodeToByteArray(), config.sessionId)))
             }
             150 -> { markReady(); emit(RealtimeEvent.Listening) }
-            450 -> { if (outputInProgress) suppressUntilTtsEnd = true; emit(RealtimeEvent.InterruptPlayback); emit(RealtimeEvent.Listening) }
+            450 -> { outputGate.interrupt(); emit(RealtimeEvent.InterruptPlayback); emit(RealtimeEvent.Listening) }
             451 -> body?.get("results")?.jsonArray?.forEach { result ->
                 val item = result.jsonObject
                 val words = item["text"]?.jsonPrimitive?.content.orEmpty()
@@ -63,20 +62,15 @@ internal class DoubaoRealtimeSession private constructor(
             }
             459 -> emit(RealtimeEvent.Thinking)
             350 -> {
-                outputInProgress = true
-                if (!suppressUntilTtsEnd) {
+                if (outputGate.sentenceStarted()) {
                     emit(RealtimeEvent.Speaking)
                     if (text("text").isNotEmpty()) emit(RealtimeEvent.OutputText(text("text"), false))
                 }
             }
-            352 -> if (!suppressUntilTtsEnd) emit(RealtimeEvent.OutputAudio(message.payload, "pcm_f32le", 24000))
-            359 -> {
-                outputInProgress = false
-                if (!suppressUntilTtsEnd) emit(RealtimeEvent.OutputComplete)
-                suppressUntilTtsEnd = false
-            }
-            550 -> emit(RealtimeEvent.OutputText(text("content"), false))
-            559 -> emit(RealtimeEvent.OutputText("", true))
+            352 -> if (outputGate.accepts()) emit(RealtimeEvent.OutputAudio(message.payload, "pcm_f32le", 24000))
+            359 -> if (outputGate.ended()) emit(RealtimeEvent.OutputComplete)
+            550 -> if (outputGate.accepts()) emit(RealtimeEvent.OutputText(text("content"), false))
+            559 -> if (outputGate.accepts()) emit(RealtimeEvent.OutputText("", true))
             51, 153 -> fail(text("error").ifEmpty { "Doubao realtime error ${message.event}" })
             else -> if (message.errorCode != null) fail("Doubao error ${message.errorCode}: $raw")
         }
