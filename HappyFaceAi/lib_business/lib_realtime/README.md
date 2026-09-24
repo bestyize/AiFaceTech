@@ -16,4 +16,18 @@ session.sendAudio(RealtimeAudio(pcmFrame))
 
 调用方从运行时配置获取凭据。公开发行版应由自己的服务端签发短期凭据，避免将长期 API Key 打入客户端包。失败通过 `Failure` 事件和连接关闭通知，调用方可创建新会话重连。
 
+## 桌面端协议联调（手动运行）
+
+准备**无 WAV 文件头**、16 kHz、单声道、16-bit little-endian PCM 的 `input.pcm`。在 `HappyFaceAi/` 目录执行下面任一命令。任务会每 20 ms 发送一帧音频，等服务端 VAD 完成首轮回复后，将流式音频写入输出文件；不会启动 Compose 界面。
+
+```bash
+export DOUBAO_APP_ID=... DOUBAO_ACCESS_KEY=... DOUBAO_APP_KEY=...
+./gradlew :desktopApp:runRealtimeVoice -PvoiceProvider=doubao -PvoiceInput=/path/input.pcm -PvoiceOutput=/path/doubao.pcm
+
+export DASHSCOPE_API_KEY=... QWEN_WORKSPACE_ENDPOINT=wss://YOUR_ID.cn-beijing.maas.aliyuncs.com
+./gradlew :desktopApp:runRealtimeVoice -PvoiceProvider=qwen -PvoiceInput=/path/input.pcm -PvoiceOutput=/path/qwen.pcm
+```
+
+豆包输出为 24 kHz float32 PCM，千问输出为 24 kHz int16 PCM。例如有 `ffplay` 时，分别使用 `ffplay -f f32le -ar 24000 -ac 1 doubao.pcm` 和 `ffplay -f s16le -ar 24000 -ac 1 qwen.pcm`。命令从环境变量读取凭据，不把值写入参数或仓库。
+
 协议文档：[豆包端到端实时语音](https://www.volcengine.com/docs/6561/1594356)、[千问 Omni Realtime](https://help.aliyun.com/zh/model-studio/realtime)、[千问客户端事件](https://help.aliyun.com/zh/model-studio/client-events)。

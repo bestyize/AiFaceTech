@@ -11,10 +11,12 @@ dependencies {
     implementation(project(":lib_business:lib_face"))
     implementation(project(":lib_business:lib_brains"))
     implementation(project(":lib_business:lib_lifecenter"))
+    implementation(project(":lib_business:lib_voice"))
     implementation(project(":lib_common:lib_theme"))
 
     implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutinesSwing)
+    implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.compose.material3)
 
     implementation(libs.compose.uiToolingPreview)
@@ -65,4 +67,19 @@ tasks.register<JavaExec>("verifyAiBrainV3") {
     group = "verification"
     mainClass.set("com.aifacemate.face.tools.VerifyAiBrainV3Kt")
     classpath = sourceSets["main"].runtimeClasspath
+}
+
+// Manual network verification using raw PCM input, without the desktop UI or microphone.
+tasks.register<JavaExec>("runRealtimeVoice") {
+    group = "verification"
+    description = "Send a 16 kHz PCM file to Doubao or Qwen and save streamed output"
+    mainClass.set("com.aifacemate.face.tools.RealtimeVoiceSmokeKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    doFirst {
+        args(
+            project.providers.gradleProperty("voiceProvider").orNull ?: error("Set -PvoiceProvider=doubao|qwen"),
+            project.providers.gradleProperty("voiceInput").orNull ?: error("Set -PvoiceInput=/path/input.pcm"),
+            project.providers.gradleProperty("voiceOutput").orNull ?: error("Set -PvoiceOutput=/path/output.pcm"),
+        )
+    }
 }
