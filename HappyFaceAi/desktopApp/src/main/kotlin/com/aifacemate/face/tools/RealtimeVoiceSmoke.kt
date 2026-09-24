@@ -1,13 +1,11 @@
 package com.aifacemate.face.tools
 
 import com.aifacemate.face.voice.realtime.RealtimeAudio
-import com.aifacemate.face.voice.realtime.RealtimeConfig
 import com.aifacemate.face.voice.realtime.RealtimeConversationEngine
 import com.aifacemate.face.voice.realtime.RealtimeEvent
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -22,19 +20,7 @@ fun main(args: Array<String>) = runBlocking {
     require(args.size == 3) { "Usage: provider input.pcm output.pcm" }
     val input = File(args[1])
     require(input.isFile && input.length() > 0 && input.length() % 2L == 0L) { "Expected raw mono PCM16 input" }
-    val config = when (args[0].lowercase()) {
-        "doubao" -> RealtimeConfig.Doubao(
-            appId = credential("DOUBAO_APP_ID"),
-            accessKey = credential("DOUBAO_ACCESS_KEY"),
-            appKey = credential("DOUBAO_APP_KEY"),
-            sessionId = UUID.randomUUID().toString(),
-        )
-        "qwen" -> RealtimeConfig.Qwen(
-            apiKey = credential("DASHSCOPE_API_KEY"),
-            workspaceEndpoint = credential("QWEN_WORKSPACE_ENDPOINT"),
-        )
-        else -> error("Provider must be doubao or qwen")
-    }
+    val config = realtimeProviderConfig(args[0])
 
     FileOutputStream(args[2]).use { output ->
         val session = RealtimeConversationEngine().connect(config)
@@ -83,6 +69,3 @@ fun main(args: Array<String>) = runBlocking {
         }
     }
 }
-
-private fun credential(name: String): String = System.getenv(name)?.takeIf { it.isNotBlank() }
-    ?: error("Missing environment variable $name")
