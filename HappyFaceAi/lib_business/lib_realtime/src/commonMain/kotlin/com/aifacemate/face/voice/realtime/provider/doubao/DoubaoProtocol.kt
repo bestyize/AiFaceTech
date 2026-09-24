@@ -30,8 +30,8 @@ internal object DoubaoProtocol {
         require((frame[2].toInt() and 0xf) == 0) { "Compressed Doubao frame unsupported" }
         var offset = 4
         val code = if (kind == 15) readInt(frame, offset).also { offset += 4 } else null
-        if (flags and 3 == 1 || flags and 3 == 3) offset += 4 // sequence
-        val event = if (flags and 4 != 0) readInt(frame, offset).also { offset += 4 } else -1
+        if ((flags and 3) == 1 || (flags and 3) == 3) offset += 4 // sequence
+        val event = if ((flags and 4) != 0) readInt(frame, offset).also { offset += 4 } else -1
         // Session events (100 and above) include a length-prefixed session ID.
         if (event >= 100) {
             val idSize = readInt(frame, offset)
