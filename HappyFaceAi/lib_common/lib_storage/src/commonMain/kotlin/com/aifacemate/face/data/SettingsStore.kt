@@ -3,7 +3,7 @@ package com.aifacemate.face.data
 /**
  * 极简的本地键值存储。
  *
- * 只存字符串，不认识任何业务类型——怎么组织数据是上层的事（见 [com.aifacemate.face.feature.aibrain.AiBrainSettings]）。
+ * 只存字符串，不认识任何业务类型——怎么组织数据是上层的事（见 [com.aifacemate.face.feature.aibrain.data.AiBrainSettings]）。
  * 三端各给一份实现：桌面 `java.util.prefs`、Android `SharedPreferences`、iOS `NSUserDefaults`，
  * 所以这个文件本身零平台依赖，也不需要任何权限。
  *

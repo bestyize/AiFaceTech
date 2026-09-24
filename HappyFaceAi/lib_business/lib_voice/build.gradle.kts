@@ -17,4 +17,10 @@ kotlin {
         compilerOptions { jvmTarget = JvmTarget.JVM_11 }
     }
 
+    sourceSets {
+        commonMain.dependencies {
+            api(project(":lib_business:lib_tts"))
+            api(project(":lib_business:lib_asr"))
+        }
+    }
 }

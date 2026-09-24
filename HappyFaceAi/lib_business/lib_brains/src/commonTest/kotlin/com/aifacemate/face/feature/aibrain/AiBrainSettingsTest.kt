@@ -1,4 +1,8 @@
 package com.aifacemate.face.feature.aibrain
+import com.aifacemate.face.feature.aibrain.presentation.theme.*
+import com.aifacemate.face.feature.aibrain.data.*
+import com.aifacemate.face.feature.aibrain.domain.*
+import com.aifacemate.face.feature.aibrain.presentation.*
 
 import com.aifacemate.face.data.SettingsSandbox
 import kotlin.test.AfterTest

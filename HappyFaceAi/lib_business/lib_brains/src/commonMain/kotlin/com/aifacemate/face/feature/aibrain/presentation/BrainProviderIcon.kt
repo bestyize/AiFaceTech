@@ -1,4 +1,8 @@
-package com.aifacemate.face.feature.aibrain
+package com.aifacemate.face.feature.aibrain.presentation
+import com.aifacemate.face.feature.aibrain.presentation.theme.*
+
+import com.aifacemate.face.feature.aibrain.presentation.theme.BrainStyle
+
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size

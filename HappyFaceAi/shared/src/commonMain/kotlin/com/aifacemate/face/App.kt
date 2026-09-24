@@ -1,4 +1,6 @@
 package com.aifacemate.face
+import com.aifacemate.face.feature.aibrain.domain.*
+import com.aifacemate.face.feature.aibrain.presentation.*
 
 import com.aifacemate.face.theme.AppColors
 
@@ -16,7 +18,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
-import com.aifacemate.face.feature.aibrain.AiBrainRoute
+import com.aifacemate.face.feature.aibrain.presentation.AiBrainRoute
 import com.aifacemate.face.feature.lifecenter.*
 import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.ui.*

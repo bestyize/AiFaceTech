@@ -1,7 +1,11 @@
 package com.aifacemate.face
+import com.aifacemate.face.feature.aibrain.presentation.theme.*
+import com.aifacemate.face.feature.aibrain.data.*
+import com.aifacemate.face.feature.aibrain.domain.*
+import com.aifacemate.face.feature.aibrain.presentation.*
 
-import com.aifacemate.face.feature.aibrain.AiBrainUiState
-import com.aifacemate.face.feature.aibrain.ConnectionStatus
+import com.aifacemate.face.feature.aibrain.domain.AiBrainUiState
+import com.aifacemate.face.feature.aibrain.domain.ConnectionStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

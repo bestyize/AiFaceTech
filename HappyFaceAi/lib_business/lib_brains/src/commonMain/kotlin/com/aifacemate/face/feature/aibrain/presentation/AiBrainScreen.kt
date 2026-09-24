@@ -1,4 +1,10 @@
-package com.aifacemate.face.feature.aibrain
+package com.aifacemate.face.feature.aibrain.presentation
+
+import com.aifacemate.face.feature.aibrain.*
+import com.aifacemate.face.feature.aibrain.domain.*
+import com.aifacemate.face.feature.aibrain.data.AiBrainSettings
+import com.aifacemate.face.feature.aibrain.presentation.theme.*
+
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background

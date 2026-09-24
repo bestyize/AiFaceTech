@@ -1,74 +1,18 @@
-package com.aifacemate.face.feature.aibrain
+package com.aifacemate.face.feature.aibrain.presentation.theme
+import com.aifacemate.face.feature.aibrain.presentation.theme.*
+
+
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.geometry.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-
-internal object BrainStyle {
-    val Background = Color(0xFF0C1011)
-    val Surface = Color(0xFF191C1C)
-    val Border = Color(0xFF48443A)
-    val Gold = Color(0xFFF1C779)
-    val LightGold = Color(0xFFFFE5AA)
-    val Text = Color(0xFFF4F3EF)
-    val Muted = Color(0xFFA7AAA8)
-    val Green = Color(0xFF36D6AB)
-    val Shape = RoundedCornerShape(14.dp)
-}
-
-/** Layout is driven by available dp, never by the screen's physical inch label. */
-internal data class BrainLayout(val compact: Boolean, val labelledRail: Boolean, val artwork: Boolean)
-internal fun brainLayout(width: Float, height: Float) = BrainLayout(
-    compact = height < 400f || width < 600f,
-    labelledRail = width >= 720f,
-    artwork = width >= 1000f || (width >= 780f && width / height > 2f),
-)
-
-internal fun Modifier.brainPanel(selected: Boolean = false): Modifier = this
-    .drawBehind {
-        if (selected) {
-            for (i in 1..4) {
-                val spread = i.dp.toPx()
-                drawRoundRect(BrainStyle.Gold.copy(alpha = .035f), Offset(-spread, -spread),
-                    Size(size.width + spread * 2, size.height + spread * 2), CornerRadius(14.dp.toPx() + spread))
-            }
-        }
-    }
-    .clip(BrainStyle.Shape)
-    .background(Brush.linearGradient(if (selected) listOf(Color(0xFF494031), Color(0xFF1D2020))
-        else listOf(Color(0xFF222525), Color(0xFF131617))))
-    .border(1.dp, if (selected) BrainStyle.Gold else BrainStyle.Border, BrainStyle.Shape)
-
-@Composable
-internal fun BrainButton(text: String, modifier: Modifier = Modifier, primary: Boolean = false,
-                         enabled: Boolean = true, onClick: () -> Unit) {
-    Box(modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(10.dp))
-        .background(if (primary && enabled) Brush.linearGradient(listOf(BrainStyle.LightGold, Color(0xFFC69850)))
-            else Brush.linearGradient(listOf(BrainStyle.Surface, BrainStyle.Background)))
-        .border(1.dp, BrainStyle.Gold.copy(alpha = if (enabled) .65f else .18f), RoundedCornerShape(10.dp))
-        .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 8.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center) {
-        Text(text, color = if (!enabled) BrainStyle.Muted else if (primary) Color(0xFF221D13) else BrainStyle.Text,
-            fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-    }
-}
 
 /** Monochrome line icons instead of platform-dependent emoji. Paths use a 24-unit viewport. */
 @Composable

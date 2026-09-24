@@ -1,4 +1,10 @@
-package com.aifacemate.face.feature.aibrain
+package com.aifacemate.face.feature.aibrain.data
+import com.aifacemate.face.feature.aibrain.presentation.theme.*
+
+import com.aifacemate.face.feature.aibrain.SavedSecret
+import com.aifacemate.face.feature.aibrain.ThinkingMode
+import com.aifacemate.face.feature.aibrain.AiCapability
+
 
 import com.aifacemate.face.data.SettingsStore
 
