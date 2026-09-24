@@ -30,6 +30,7 @@ kotlin {
             implementation(project(":lib_business:lib_brains"))
             implementation(project(":lib_business:lib_lifecenter"))
             implementation(project(":lib_common:lib_theme"))
+            implementation(project(":lib_common:lib_ui"))
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
