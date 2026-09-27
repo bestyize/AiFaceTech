@@ -30,4 +30,16 @@ export DASHSCOPE_API_KEY=... QWEN_WORKSPACE_ENDPOINT=wss://YOUR_ID.cn-beijing.ma
 
 豆包输出为 24 kHz float32 PCM，千问输出为 24 kHz int16 PCM。例如有 `ffplay` 时，分别使用 `ffplay -f f32le -ar 24000 -ac 1 doubao.pcm` 和 `ffplay -f s16le -ar 24000 -ac 1 qwen.pcm`。命令从环境变量读取凭据，不把值写入参数或仓库。
 
+## 桌面端麦克风与扬声器（手动运行）
+
+与上面相同，先设置所选服务商的环境变量。在有麦克风、扬声器的桌面电脑上运行：
+
+```bash
+./gradlew :desktopApp:runRealtimeLiveVoice -PvoiceProvider=doubao -PvoiceSeconds=120
+# 或
+./gradlew :desktopApp:runRealtimeLiveVoice -PvoiceProvider=qwen -PvoiceSeconds=120
+```
+
+任务运行期间持续采集 16 kHz PCM16 麦克风音频，播放 24 kHz 回复；设备只支持 48 kHz 播放时会做简单的 2 倍采样。按回车提前结束，未连接标准输入时到达 `voiceSeconds` 自动结束（默认 120 秒）。收到打断事件会丢弃排队音频并清空扬声器缓冲，`OutputComplete` 后等待设备播完才提示继续聆听。首次使用需允许终端或 Java 进程访问麦克风。当前仅覆盖 JVM 桌面端，没有声学回声消除；用耳机联调以免扬声器声音被麦克风再次识别。Android/iOS 的硬件采集与播放仍需各自的平台实现。
+
 协议文档：[豆包端到端实时语音](https://www.volcengine.com/docs/6561/1594356)、[千问 Omni Realtime](https://help.aliyun.com/zh/model-studio/realtime)、[千问客户端事件](https://help.aliyun.com/zh/model-studio/client-events)。

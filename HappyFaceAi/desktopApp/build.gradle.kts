@@ -20,6 +20,9 @@ dependencies {
     implementation(libs.compose.material3)
 
     implementation(libs.compose.uiToolingPreview)
+
+    testImplementation(libs.kotlin.testJunit)
+    testImplementation(libs.junit)
 }
 
 /**
@@ -80,6 +83,21 @@ tasks.register<JavaExec>("runRealtimeVoice") {
             project.providers.gradleProperty("voiceProvider").orNull ?: error("Set -PvoiceProvider=doubao|qwen"),
             project.providers.gradleProperty("voiceInput").orNull ?: error("Set -PvoiceInput=/path/input.pcm"),
             project.providers.gradleProperty("voiceOutput").orNull ?: error("Set -PvoiceOutput=/path/output.pcm"),
+        )
+    }
+}
+
+// Manual live microphone/speaker check; credentials are read from environment variables.
+tasks.register<JavaExec>("runRealtimeLiveVoice") {
+    group = "verification"
+    description = "Run a timed desktop microphone/speaker conversation with Doubao or Qwen"
+    mainClass.set("com.aifacemate.face.tools.RealtimeLiveVoiceKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    standardInput = System.`in`
+    doFirst {
+        args(
+            project.providers.gradleProperty("voiceProvider").orNull ?: error("Set -PvoiceProvider=doubao|qwen"),
+            project.providers.gradleProperty("voiceSeconds").orNull ?: "120",
         )
     }
 }
