@@ -1,6 +1,8 @@
 package com.aifacemate.face
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,8 +11,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aifacemate.face.chat.ChatClient
 import com.aifacemate.face.chat.ChatConfig
 import com.aifacemate.face.chat.ChatMessage
@@ -49,10 +57,15 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
+enum class VoiceVisualState { Idle, Listening, Speaking }
+
 @Composable
-fun VoiceConversationOverlay(modifier: Modifier = Modifier, onClose: () -> Unit) {
-    ConversationPanel(modifier.fillMaxWidth().background(Color(0xF5181B23), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-        .padding(16.dp), onClose)
+fun VoiceConversationOverlay(
+    modifier: Modifier = Modifier,
+    onClose: () -> Unit,
+    onVisualStateChange: (VoiceVisualState) -> Unit = {},
+) {
+    ConversationPanel(modifier.fillMaxSize(), onClose, overlay = true, onVisualStateChange = onVisualStateChange)
 }
 
 @Composable
@@ -61,7 +74,12 @@ fun ChatScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ConversationPanel(modifier: Modifier, onClose: () -> Unit) {
+private fun ConversationPanel(
+    modifier: Modifier,
+    onClose: () -> Unit,
+    overlay: Boolean = false,
+    onVisualStateChange: (VoiceVisualState) -> Unit = {},
+) {
     val preferences = remember { VoicePreferencesStore.load().forDevice() }
     val scope = rememberCoroutineScope()
     val messages = remember { mutableStateListOf<ChatMessage>() }
@@ -74,6 +92,7 @@ private fun ConversationPanel(modifier: Modifier, onClose: () -> Unit) {
     var live by remember { mutableStateOf(false) }
     var realtimeJob by remember { mutableStateOf<Job?>(null) }
     var turnJob by remember { mutableStateOf<Job?>(null) }
+    var detailsExpanded by remember { mutableStateOf(false) }
 
     fun show(role: String, text: String) { if (text.isNotBlank()) messages.add(ChatMessage(role, text)) }
 
@@ -233,13 +252,25 @@ private fun ConversationPanel(modifier: Modifier, onClose: () -> Unit) {
 
     val currentRealtime = rememberUpdatedState(realtimeJob)
     val currentTurn = rememberUpdatedState(turnJob)
+    val currentVisualCallback = rememberUpdatedState(onVisualStateChange)
+    val visualState = when {
+        status == "正在回答" || status == "正在播放回复" -> VoiceVisualState.Speaking
+        capturing || (live && status == "实时聆听中") -> VoiceVisualState.Listening
+        else -> VoiceVisualState.Idle
+    }
+    LaunchedEffect(visualState) { if (overlay && preferences.keepFaceVisible) currentVisualCallback.value(visualState) }
     DisposableEffect(Unit) {
-        onDispose { currentRealtime.value?.cancel(); currentTurn.value?.cancel(); voice.stop(); native?.stop() }
+        onDispose {
+            currentVisualCallback.value(VoiceVisualState.Idle)
+            currentRealtime.value?.cancel(); currentTurn.value?.cancel(); voice.stop(); native?.stop()
+        }
     }
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    @Composable
+    fun FullPanel(panelModifier: Modifier) = Column(panelModifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("对话 · ${preferences.mode.label}", color = Color.White, modifier = Modifier.weight(1f))
+            if (overlay && preferences.keepFaceVisible) TextButton(onClick = { detailsExpanded = false }) { Text("收起") }
             TextButton(onClick = onClose) { Text("关闭") }
         }
         Text(status, color = AppColors.Amber)
@@ -259,6 +290,96 @@ private fun ConversationPanel(modifier: Modifier, onClose: () -> Unit) {
         } else {
             Button(onClick = ::startSingleTurn, enabled = capturing || (!busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable()))) {
                 Text(if (capturing) "结束说话" else if (busy) "处理中" else "开始说话")
+            }
+        }
+    }
+
+    if (!overlay) {
+        FullPanel(modifier)
+    } else {
+        BoxWithConstraints(modifier) {
+            if (preferences.keepFaceVisible && !detailsExpanded) {
+                val active = visualState == VoiceVisualState.Listening || visualState == VoiceVisualState.Speaking
+                Row(
+                    Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(bottom = 8.dp)
+                        .background(Color(0xE8191C24), RoundedCornerShape(24.dp))
+                        .border(1.dp, Color(0x7063E4FF), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    if (preferences.mode == VoiceMode.Realtime) {
+                        TextButton(onClick = { if (live) realtimeJob?.cancel() else startRealtime() }, enabled = realtimeAudioAvailable()) {
+                            CompactMicGlyph()
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (live) "停止" else "开始")
+                        }
+                    } else {
+                        TextButton(onClick = ::startSingleTurn, enabled = capturing || (!busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable()))) {
+                            CompactMicGlyph()
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (capturing) "结束" else if (busy) "处理中" else "说话")
+                        }
+                    }
+                    CompactVoiceIndicator(active)
+                    Text(when (visualState) {
+                        VoiceVisualState.Listening -> "倾听"
+                        VoiceVisualState.Speaking -> "说话"
+                        VoiceVisualState.Idle -> if (busy) "处理" else "待机"
+                    }, color = Color(0xFFE9FCFF), fontSize = 12.sp)
+                    TextButton(onClick = { detailsExpanded = true }) { Text("记录") }
+                    IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) { Text("×", color = Color.White) }
+                }
+                if (maxWidth >= 400.dp) messages.lastOrNull()?.let { last ->
+                    Text(
+                        "${if (last.role == "user") "我" else "小星"}：${last.content}",
+                        modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(bottom = 60.dp)
+                            .background(Color(0xE8191C24), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 12.dp, vertical = 5.dp),
+                        color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            } else {
+                FullPanel(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                        .background(Color(0xF5181B23), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                        .verticalScroll(rememberScrollState()).padding(16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactMicGlyph() {
+    Canvas(Modifier.size(width = 14.dp, height = 18.dp)) {
+        val ink = Color(0xFF63E4FF)
+        val thickness = size.width / 9f
+        drawRoundRect(ink, topLeft = Offset(size.width * 0.3f, 0f),
+            size = Size(size.width * 0.4f, size.height * 0.58f), cornerRadius = CornerRadius(size.width * 0.2f))
+        drawArc(ink, startAngle = 0f, sweepAngle = 180f, useCenter = false,
+            topLeft = Offset(thickness, size.height * 0.18f),
+            size = Size(size.width - thickness * 2f, size.height * 0.58f), style = Stroke(thickness))
+        drawLine(ink, Offset(size.width / 2f, size.height * 0.77f),
+            Offset(size.width / 2f, size.height * 0.94f), strokeWidth = thickness)
+    }
+}
+
+@Composable
+private fun CompactVoiceIndicator(active: Boolean) {
+    Canvas(Modifier.size(width = 38.dp, height = 20.dp)) {
+        val ink = Color(0xFF63E4FF)
+        if (active) {
+            val levels = listOf(0.3f, 0.55f, 0.85f, 0.5f, 1f, 0.55f, 0.35f)
+            levels.forEachIndexed { index, level ->
+                val height = size.height * level
+                drawRoundRect(ink, topLeft = Offset(index * size.width / 7f, (size.height - height) / 2f),
+                    size = Size(size.width / 12f, height), cornerRadius = CornerRadius(size.width / 24f))
+            }
+        } else {
+            repeat(5) { index ->
+                drawCircle(ink, radius = size.height / 9f,
+                    center = Offset((index + 0.5f) * size.width / 5f, size.height / 2f))
             }
         }
     }
