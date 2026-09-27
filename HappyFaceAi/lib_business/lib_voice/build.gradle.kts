@@ -25,7 +25,9 @@ kotlin {
         val iosMain = maybeCreate("iosMain").apply { dependsOn(commonMain.get()) }
         iosArm64Main.get().dependsOn(iosMain)
         iosSimulatorArm64Main.get().dependsOn(iosMain)
+        iosMain.dependencies { implementation(libs.kotlinx.coroutinesCore) }
         commonMain.dependencies {
+            implementation(project(":lib_common:lib_storage"))
             api(project(":lib_business:lib_tts"))
             api(project(":lib_business:lib_asr"))
             api(project(":lib_business:lib_realtime"))

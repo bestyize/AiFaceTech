@@ -24,6 +24,8 @@ internal class QwenRealtimeSession private constructor(
     socket: WebSocketSession,
 ) : SocketSession(client, socket) {
     private val responses = QwenResponseTracker()
+    private var pendingTool: Pair<String, String>? = null
+    private var awaitingToolId: String? = null
 
     override suspend fun open() {
         send(Frame.Text(buildJsonObject {
@@ -38,6 +40,20 @@ internal class QwenRealtimeSession private constructor(
                     putJsonObject("output") { putJsonObject("format") { put("type", "pcm"); put("sample_rate", 24000) } }
                 }
                 putJsonObject("turn_detection") { put("type", "server_vad") }
+                if (config.enableDelegation) putJsonArray("tools") {
+                    add(buildJsonObject {
+                        put("type", "function")
+                        put("name", "delegate_to_brain")
+                        put("description", "Delegate a complex reasoning or assistant task to the configured AI brain model. Return its answer to the user.")
+                        putJsonObject("parameters") {
+                            put("type", "object")
+                            putJsonObject("properties") {
+                                putJsonObject("task") { put("type", "string"); put("description", "The user's complete request") }
+                            }
+                            putJsonArray("required") { add(kotlinx.serialization.json.JsonPrimitive("task")) }
+                        }
+                    })
+                }
             }
         }.toString()))
     }
@@ -48,7 +64,19 @@ internal class QwenRealtimeSession private constructor(
     }.toString())
 
     override suspend fun cancelOutput() {
+        pendingTool = null
+        awaitingToolId = null
         if (responses.interrupt()) send(Frame.Text("""{"type":"response.cancel"}"""))
+    }
+
+    override suspend fun submitToolResult(callId: String, result: String) {
+        require(config.enableDelegation && awaitingToolId == callId) { "No matching Qwen tool call" }
+        awaitingToolId = null
+        send(Frame.Text(buildJsonObject {
+            put("type", "conversation.item.create")
+            putJsonObject("item") { put("type", "function_call_output"); put("call_id", callId); put("output", result) }
+        }.toString()))
+        send(Frame.Text("""{"type":"response.create","response":{"modalities":["text","audio"]}}"""))
     }
 
     override suspend fun finish() { send(Frame.Text("""{"type":"session.finish"}""")) }
@@ -67,6 +95,8 @@ internal class QwenRealtimeSession private constructor(
             "session.updated" -> markReady()
             "input_audio_buffer.speech_started" -> {
                 responses.interrupt()
+                pendingTool = null
+                awaitingToolId = null
                 emit(RealtimeEvent.InterruptPlayback)
                 emit(RealtimeEvent.Listening)
             }
@@ -84,11 +114,20 @@ internal class QwenRealtimeSession private constructor(
                     emit(QwenEventDecoder.outputAudio(data))
                 }
             }
+            "response.function_call_arguments.done" -> if (belongsToActiveResponse() && value("name") == "delegate_to_brain") {
+                val task = runCatching {
+                    Json.parseToJsonElement(value("arguments")).jsonObject["task"]?.jsonPrimitive?.content.orEmpty()
+                }.getOrDefault("")
+                if (value("call_id").isNotBlank() && task.isNotBlank()) pendingTool = value("call_id") to task
+            }
             "response.done" -> {
                 val response = data["response"]?.jsonObject
                 if (responses.finish(response?.get("id")?.jsonPrimitive?.content.orEmpty())) {
                     if (response?.get("status")?.jsonPrimitive?.content == "failed") emit(RealtimeEvent.Failure("Qwen response generation failed"))
-                    emit(RealtimeEvent.OutputComplete)
+                    val tool = pendingTool
+                    pendingTool = null
+                    if (tool != null) { awaitingToolId = tool.first; emit(RealtimeEvent.ToolCall(tool.first, tool.second)) }
+                    else emit(RealtimeEvent.OutputComplete)
                 }
             }
             "error" -> fail(data["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content ?: "Qwen realtime error")

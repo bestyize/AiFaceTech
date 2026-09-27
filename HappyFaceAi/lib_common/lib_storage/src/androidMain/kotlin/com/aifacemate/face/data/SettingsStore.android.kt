@@ -17,6 +17,8 @@ object AndroidAppContext {
         defaults = developmentDefaults
     }
 
+    fun context(): Context? = application
+
     internal fun preferences(): SharedPreferences? =
         application?.getSharedPreferences("aifacemate", Context.MODE_PRIVATE)
 }

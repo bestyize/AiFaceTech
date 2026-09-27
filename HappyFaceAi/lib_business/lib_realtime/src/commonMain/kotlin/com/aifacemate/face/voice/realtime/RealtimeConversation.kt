@@ -24,6 +24,7 @@ sealed interface RealtimeConfig {
         val model: String = "qwen3.5-omni-flash-realtime",
         val voice: String = "Tina",
         val instructions: String = "",
+        val enableDelegation: Boolean = false,
     ) : RealtimeConfig
 }
 
@@ -38,6 +39,8 @@ sealed interface RealtimeEvent {
     /** Recognition can fail for one utterance while the conversation remains connected. */
     data class TranscriptionFailed(val message: String) : RealtimeEvent
     data class OutputText(val text: String, val final: Boolean) : RealtimeEvent
+    /** A realtime model requests work from the selected AI brain LLM. */
+    data class ToolCall(val callId: String, val task: String) : RealtimeEvent
     /** Output format is provider-specific; pass format and sample rate to the audio decoder. */
     data class OutputAudio(val bytes: ByteArray, val format: String, val sampleRate: Int) : RealtimeEvent
     /** The server finished generating audio; switch back to Listening after the local player drains. */
@@ -52,6 +55,7 @@ interface RealtimeSession {
     suspend fun sendAudio(audio: RealtimeAudio)
     /** Cancel generated output where supported and stop local playback immediately. */
     suspend fun interrupt()
+    suspend fun submitToolResult(callId: String, result: String) { error("Tool delegation unsupported by this provider") }
     suspend fun close()
 }
 
