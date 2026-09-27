@@ -12,6 +12,7 @@ enum class RealtimeProvider(val label: String) { Doubao("豆包"), Qwen("千问"
 
 data class VoicePreferences(
     val mode: VoiceMode = VoiceMode.Realtime,
+    val keepFaceVisible: Boolean = true,
     val provider: RealtimeProvider = RealtimeProvider.Qwen,
     val qwenModel: String = "qwen3.5-omni-flash-realtime",
     val qwenEndpoint: String = "",
@@ -37,6 +38,7 @@ object VoicePreferencesStore {
     private const val PREFIX = "voice."
     fun load() = VoicePreferences(
         mode = SettingsStore.get(PREFIX + "mode")?.let { raw -> VoiceMode.entries.firstOrNull { it.name == raw } } ?: VoiceMode.Realtime,
+        keepFaceVisible = SettingsStore.get(PREFIX + "keepFaceVisible")?.toBooleanStrictOrNull() ?: true,
         provider = SettingsStore.get(PREFIX + "realtime.provider")?.let { raw -> RealtimeProvider.entries.firstOrNull { it.name == raw } } ?: RealtimeProvider.Qwen,
         qwenModel = SettingsStore.get(PREFIX + "qwen.model")?.takeIf(String::isNotBlank) ?: "qwen3.5-omni-flash-realtime",
         qwenEndpoint = SettingsStore.get(PREFIX + "qwen.endpoint").orEmpty(),
@@ -52,6 +54,7 @@ object VoicePreferencesStore {
     fun save(value: VoicePreferences) {
         val fields = mapOf(
             "mode" to value.mode.name, "realtime.provider" to value.provider.name,
+            "keepFaceVisible" to value.keepFaceVisible.toString(),
             "qwen.model" to value.qwenModel, "qwen.endpoint" to value.qwenEndpoint.trim(), "qwen.apiKey" to value.qwenApiKey.trim(),
             "doubao.appId" to value.doubaoAppId.trim(), "doubao.accessKey" to value.doubaoAccessKey.trim(), "doubao.appKey" to value.doubaoAppKey.trim(),
             "mimo.apiKey" to value.mimoApiKey.trim(), "mimo.baseUrl" to value.mimoBaseUrl.trim(), "mimo.voice" to value.mimoVoice,

@@ -34,6 +34,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var diffuseGlow by rememberSaveable { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
         var hud by remember { mutableStateOf(false) }
         var voiceOverlay by remember { mutableStateOf(false) }
+        var voiceVisualState by remember { mutableStateOf(VoiceVisualState.Idle) }
         var petting by remember { mutableStateOf(false) }
         val changes = remember { mutableStateListOf<RecentChange>() }
         val haptic = LocalHapticFeedback.current
@@ -56,7 +57,15 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                             },
                         )
                     },
-                    expression = if (petting) FaceExpression.HAPPY else expression,
+                    expression = when {
+                        petting -> FaceExpression.HAPPY
+                        voiceOverlay -> when (voiceVisualState) {
+                            VoiceVisualState.Idle -> expression
+                            VoiceVisualState.Listening -> FaceExpression.LISTENING
+                            VoiceVisualState.Speaking -> FaceExpression.SPEAKING
+                        }
+                        else -> expression
+                    },
                     diffuseGlow = diffuseGlow,
                 )
                 if (hud) Row(
@@ -71,6 +80,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                 if (voiceOverlay) VoiceConversationOverlay(
                     modifier = Modifier.align(Alignment.BottomCenter),
                     onClose = { voiceOverlay = false },
+                    onVisualStateChange = { voiceVisualState = it },
                 )
             }
             LifeRoute.Conversation -> ChatScreen(onBack = { navigate(LifeRoute.Living) })

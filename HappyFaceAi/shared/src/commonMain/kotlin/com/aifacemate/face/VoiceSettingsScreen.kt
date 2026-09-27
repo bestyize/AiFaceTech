@@ -10,6 +10,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -66,6 +67,18 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
                     Text(description, color = AppColors.Secondary, fontSize = 12.sp)
                 }
             }
+        }
+
+        Row(
+            Modifier.fillMaxWidth().background(AppColors.Card, RoundedCornerShape(16.dp))
+                .clickable { draft = draft.copy(keepFaceVisible = !draft.keepFaceVisible) }.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("对话时保持表情显示", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("开启后猫脸保持主画面，底部显示短语音条；点“记录”可查看文字和输入。关闭后显示完整对话面板。", color = AppColors.Secondary, fontSize = 12.sp)
+            }
+            Switch(checked = draft.keepFaceVisible, onCheckedChange = { draft = draft.copy(keepFaceVisible = it) })
         }
 
         when (draft.mode) {
