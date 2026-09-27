@@ -13,6 +13,11 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies { implementation(project(":lib_common:lib_network")) }
+        androidMain.dependencies {
+            implementation(project(":lib_common:lib_storage"))
+            implementation(libs.kotlinx.coroutinesCore)
+            implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8")
+        }
         commonTest.dependencies { implementation(libs.kotlin.test) }
     }
 }
