@@ -33,8 +33,10 @@ private class IosNativeSpeech : NativeSpeechEngine {
     private var request: SFSpeechAudioBufferRecognitionRequest? = null
     private var synthesizer: AVSpeechSynthesizer? = null
     private var delegate: SpeechDelegate? = null
+    private var finishRequested = false
 
     override suspend fun recognize(): String {
+        finishRequested = false
         val authorized = suspendCancellableCoroutine<Boolean> { continuation ->
             SFSpeechRecognizer.requestAuthorization { status ->
                 if (continuation.isActive) continuation.resume(status == SFSpeechRecognizerAuthorizationStatusAuthorized)
@@ -62,14 +64,23 @@ private class IosNativeSpeech : NativeSpeechEngine {
             task = recognizer.recognitionTaskWithRequest(audioRequest) { result, error ->
                 if (error != null && continuation.isActive) continuation.resumeWithException(IllegalStateException(error.localizedDescription))
                 else if (result?.isFinal == true && continuation.isActive) continuation.resume(result.bestTranscription.formattedString)
-                if (error != null || result?.isFinal == true) stopRecording()
+                if (error != null || result?.isFinal == true) stopRecognition()
             }
             audioEngine.prepare()
             if (!audioEngine.startAndReturnError(null) && continuation.isActive) {
                 continuation.resumeWithException(IllegalStateException("麦克风启动失败"))
-                stopRecording()
+                stopRecognition()
             }
-            continuation.invokeOnCancellation { stopRecording() }
+            if (finishRequested) finishRecognition()
+            continuation.invokeOnCancellation { stopRecognition() }
+        }
+    }
+
+    override fun finishRecognition() {
+        finishRequested = true
+        if (request != null) {
+            endInput()
+            task?.finish()
         }
     }
 
@@ -89,16 +100,24 @@ private class IosNativeSpeech : NativeSpeechEngine {
         synthesizer = null; delegate = null
     }
 
-    private fun stopRecording() {
-        engine?.stop()
-        engine?.inputNode?.removeTapOnBus(0u)
-        request?.endAudio()
-        task?.cancel()
-        engine = null; request = null; task = null
+    private fun endInput() {
+        val activeEngine = engine
+        val activeRequest = request
+        engine = null; request = null
+        activeEngine?.stop()
+        activeEngine?.inputNode?.removeTapOnBus(0u)
+        activeRequest?.endAudio()
+    }
+
+    private fun stopRecognition() {
+        val activeTask = task
+        task = null
+        endInput()
+        activeTask?.cancel()
     }
 
     override fun stop() {
-        stopRecording()
+        stopRecognition()
         synthesizer?.stopSpeakingAtBoundary(AVSpeechBoundaryImmediate)
         synthesizer = null; delegate = null
     }

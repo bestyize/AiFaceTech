@@ -5,6 +5,8 @@ import com.aifacemate.face.voice.realtime.RealtimeEvent
 interface NativeSpeechEngine {
     /** Recognize one utterance with the platform speech service. */
     suspend fun recognize(): String
+    /** Stop listening and await recognition of the audio already received. */
+    fun finishRecognition()
     /** Speak one answer and return after it finishes. */
     suspend fun speak(text: String)
     fun stop()
