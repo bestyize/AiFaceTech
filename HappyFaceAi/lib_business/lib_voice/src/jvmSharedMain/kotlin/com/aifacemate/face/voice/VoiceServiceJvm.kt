@@ -8,6 +8,7 @@ import javax.sound.sampled.DataLine
 import javax.sound.sampled.SourceDataLine
 import javax.sound.sampled.TargetDataLine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 actual fun createVoiceService(): VoiceService = DesktopVoiceService()
@@ -33,9 +34,14 @@ private class DesktopVoiceService : VoiceService {
                 val frame = ByteArray(640)
                 val endAt = System.currentTimeMillis() + maxDurationMs
                 while (!stopped && !finishRequested && System.currentTimeMillis() < endAt) {
-                    val count = try { line.read(frame, 0, frame.size) }
-                    catch (error: Exception) { if (stopped || finishRequested) break else throw error }
-                    if (count > 0) output.write(frame, 0, count)
+                    val ready = minOf(frame.size, line.available()) and -2
+                    if (ready == 0) {
+                        delay(10)
+                    } else {
+                        val count = line.read(frame, 0, ready)
+                        if (count > 0) output.write(frame, 0, count)
+                        else delay(10)
+                    }
                 }
                 when {
                     stopped -> VoiceCaptureResult.Failure("录音已取消")
@@ -54,7 +60,6 @@ private class DesktopVoiceService : VoiceService {
 
     override fun finishRecording() {
         finishRequested = true
-        runCatching { recording?.stop() }
     }
 
     override suspend fun play(clip: VoiceClip): VoicePlaybackResult = withContext(Dispatchers.IO) {

@@ -11,7 +11,7 @@ data class RecentChange(val title: String, val description: String)
 data class LifeCenterUiState(val profile: CompanionProfile = CompanionProfile(), val features: List<LifeCenterFeature> = defaultFeatures, val recentChanges: List<RecentChange> = emptyList())
 val defaultFeatures = listOf(
     LifeCenterFeature(LifeRoute.Brain, "AI 大脑", "模型、思考与能力配置", "◎"),
-    LifeCenterFeature(LifeRoute.Voice, "声音", "音色与语音 · 待接入", "♫"),
+    LifeCenterFeature(LifeRoute.Voice, "声音", "语音模式、模型与音色", "♫"),
     LifeCenterFeature(LifeRoute.Personality, "人格", "探索它的性格 · 待开放", "♡", AppColors.Pink),
     LifeCenterFeature(LifeRoute.Memory, "记忆", "记录相处的点滴 · 待接入", "▤"),
     LifeCenterFeature(LifeRoute.Appearance, "表情与外观", "100 个表情 / 生命感 Alpha", "✧"),
