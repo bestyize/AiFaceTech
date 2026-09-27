@@ -76,7 +76,7 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
         ) {
             Column(Modifier.weight(1f)) {
                 Text("对话时保持表情显示", color = Color.White, fontWeight = FontWeight.SemiBold)
-                Text("开启后猫脸保持主画面，底部显示短语音条；点“记录”可查看文字和输入。关闭后显示完整对话面板。", color = AppColors.Secondary, fontSize = 12.sp)
+                Text("开启后猫脸保持主画面。轻点底部语音条启停，长按查看记录、输入文字或关闭对话。", color = AppColors.Secondary, fontSize = 12.sp)
             }
             Switch(checked = draft.keepFaceVisible, onCheckedChange = { draft = draft.copy(keepFaceVisible = it) })
         }

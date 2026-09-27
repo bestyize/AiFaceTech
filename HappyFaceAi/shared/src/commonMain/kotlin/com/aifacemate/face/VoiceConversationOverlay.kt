@@ -3,6 +3,7 @@ package com.aifacemate.face
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +17,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -250,6 +258,12 @@ private fun ConversationPanel(
         }
     }
 
+    fun toggleVoice() {
+        if (preferences.mode == VoiceMode.Realtime) {
+            if (live) realtimeJob?.cancel() else startRealtime()
+        } else startSingleTurn()
+    }
+
     val currentRealtime = rememberUpdatedState(realtimeJob)
     val currentTurn = rememberUpdatedState(turnJob)
     val currentVisualCallback = rememberUpdatedState(onVisualStateChange)
@@ -300,35 +314,41 @@ private fun ConversationPanel(
         BoxWithConstraints(modifier) {
             if (preferences.keepFaceVisible && !detailsExpanded) {
                 val active = visualState == VoiceVisualState.Listening || visualState == VoiceVisualState.Speaking
-                Row(
+                val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
+                val (barWidthRatio, barHeightRatio) = when {
+                    widthPx < 400f -> .52f to .15f
+                    widthPx < 700f -> .46f to .12f
+                    else -> .40f to .09f
+                }
+                val barWidth = maxWidth * barWidthRatio
+                val barHeight = maxHeight * barHeightRatio
+                val enabled = if (preferences.mode == VoiceMode.Realtime) realtimeAudioAvailable()
+                    else capturing || (!busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable()))
+                val actionLabel = if (live || capturing) "结束说话" else "开始说话"
+                Box(
                     Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(bottom = 8.dp)
-                        .background(Color(0xE8191C24), RoundedCornerShape(24.dp))
-                        .border(1.dp, Color(0x7063E4FF), RoundedCornerShape(24.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        .width(barWidth).heightIn(min = 48.dp)
+                        .semantics {
+                            contentDescription = "语音对话"
+                            stateDescription = status
+                            onClick(label = actionLabel) { if (enabled) toggleVoice(); true }
+                            onLongClick(label = "展开对话记录和关闭按钮") { detailsExpanded = true; true }
+                        }
+                        .pointerInput(enabled, live, capturing, busy, preferences.mode) {
+                            detectTapGestures(onTap = { if (enabled) toggleVoice() }, onLongPress = { detailsExpanded = true })
+                        },
                 ) {
-                    if (preferences.mode == VoiceMode.Realtime) {
-                        TextButton(onClick = { if (live) realtimeJob?.cancel() else startRealtime() }, enabled = realtimeAudioAvailable()) {
-                            CompactMicGlyph()
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (live) "停止" else "开始")
-                        }
-                    } else {
-                        TextButton(onClick = ::startSingleTurn, enabled = capturing || (!busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable()))) {
-                            CompactMicGlyph()
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (capturing) "结束" else if (busy) "处理中" else "说话")
-                        }
+                    Row(
+                        Modifier.align(Alignment.BottomCenter).width(barWidth).height(barHeight)
+                            .background(Color(0xE8191C24), RoundedCornerShape(percent = 50))
+                            .border(1.dp, Color(0x7063E4FF), RoundedCornerShape(percent = 50)),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        CompactMicGlyph(barHeight * .38f, barHeight * .52f)
+                        Spacer(Modifier.width(barWidth * .07f))
+                        CompactVoiceIndicator(active, barWidth * .42f, barHeight * .48f)
                     }
-                    CompactVoiceIndicator(active)
-                    Text(when (visualState) {
-                        VoiceVisualState.Listening -> "倾听"
-                        VoiceVisualState.Speaking -> "说话"
-                        VoiceVisualState.Idle -> if (busy) "处理" else "待机"
-                    }, color = Color(0xFFE9FCFF), fontSize = 12.sp)
-                    TextButton(onClick = { detailsExpanded = true }) { Text("记录") }
-                    IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) { Text("×", color = Color.White) }
                 }
                 if (maxWidth >= 400.dp) messages.lastOrNull()?.let { last ->
                     Text(
@@ -351,8 +371,8 @@ private fun ConversationPanel(
 }
 
 @Composable
-private fun CompactMicGlyph() {
-    Canvas(Modifier.size(width = 14.dp, height = 18.dp)) {
+private fun CompactMicGlyph(width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
+    Canvas(Modifier.size(width = width, height = height)) {
         val ink = Color(0xFF63E4FF)
         val thickness = size.width / 9f
         drawRoundRect(ink, topLeft = Offset(size.width * 0.3f, 0f),
@@ -366,8 +386,8 @@ private fun CompactMicGlyph() {
 }
 
 @Composable
-private fun CompactVoiceIndicator(active: Boolean) {
-    Canvas(Modifier.size(width = 38.dp, height = 20.dp)) {
+private fun CompactVoiceIndicator(active: Boolean, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
+    Canvas(Modifier.size(width = width, height = height)) {
         val ink = Color(0xFF63E4FF)
         if (active) {
             val levels = listOf(0.3f, 0.55f, 0.85f, 0.5f, 1f, 0.55f, 0.35f)
