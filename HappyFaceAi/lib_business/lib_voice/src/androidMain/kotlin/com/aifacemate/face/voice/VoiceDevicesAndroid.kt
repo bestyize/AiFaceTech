@@ -41,8 +41,13 @@ private class AndroidNativeSpeech : NativeSpeechEngine {
     private val main = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
+    @Volatile private var finishRequested = false
+    private var finishSent = false
 
-    override suspend fun recognize(): String = withContext(Dispatchers.Main) {
+    override suspend fun recognize(): String {
+        finishRequested = false
+        finishSent = false
+        return withContext(Dispatchers.Main) {
         val context = AndroidAppContext.context() ?: error("Android context unavailable")
         check(SpeechRecognizer.isRecognitionAvailable(context)) { "系统语音识别不可用" }
         suspendCancellableCoroutine { continuation ->
@@ -50,7 +55,7 @@ private class AndroidNativeSpeech : NativeSpeechEngine {
             recognizer = service
             fun release() { main.post { service.destroy(); if (recognizer === service) recognizer = null } }
             service.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) = Unit
+                override fun onReadyForSpeech(params: Bundle?) { finishIfRequested(service) }
                 override fun onBeginningOfSpeech() = Unit
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
@@ -72,7 +77,20 @@ private class AndroidNativeSpeech : NativeSpeechEngine {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
             })
+            finishIfRequested(service)
         }
+        }
+    }
+
+    private fun finishIfRequested(service: SpeechRecognizer) {
+        if (finishRequested && !finishSent && recognizer === service) {
+            finishSent = runCatching { service.stopListening() }.isSuccess
+        }
+    }
+
+    override fun finishRecognition() {
+        finishRequested = true
+        main.post { recognizer?.let(::finishIfRequested) }
     }
 
     override suspend fun speak(text: String) = withContext(Dispatchers.Main) {

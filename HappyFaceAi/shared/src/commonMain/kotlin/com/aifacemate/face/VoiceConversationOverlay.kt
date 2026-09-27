@@ -39,6 +39,7 @@ import com.aifacemate.face.voice.tts.client.TtsClient
 import com.aifacemate.face.voice.tts.model.TtsRequest
 import com.aifacemate.face.voice.tts.model.TtsResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
@@ -69,6 +70,7 @@ private fun ConversationPanel(modifier: Modifier, onClose: () -> Unit) {
     var draft by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("可以开始对话") }
     var busy by remember { mutableStateOf(false) }
+    var capturing by remember { mutableStateOf(false) }
     var live by remember { mutableStateOf(false) }
     var realtimeJob by remember { mutableStateOf<Job?>(null) }
     var turnJob by remember { mutableStateOf<Job?>(null) }
@@ -105,18 +107,27 @@ private fun ConversationPanel(modifier: Modifier, onClose: () -> Unit) {
     }
 
     fun startSingleTurn() {
+        if (capturing) {
+            capturing = false
+            status = "正在结束收音"
+            if (preferences.mode == VoiceMode.Native) native?.finishRecognition()
+            else voice.finishRecording()
+            return
+        }
         if (busy) return
         busy = true
-        turnJob = scope.launch {
+        capturing = true
+        turnJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 val input = if (preferences.mode == VoiceMode.Native) {
                     check(nativeSpeechAvailable()) { "系统语音服务不可用" }
-                    status = "系统正在聆听"
-                    checkNotNull(native).recognize()
+                    status = "系统正在聆听，点结束说话提交"
+                    checkNotNull(native).recognize().also { capturing = false }
                 } else {
                     check(preferences.mimoApiKey.isNotBlank()) { "请先在声音设置中填写 MiMo API Key" }
-                    status = "正在录音（最多 6 秒）"
-                    val recorded = voice.record()
+                    status = "正在录音，点结束说话提交（最长 60 秒）"
+                    val recorded = voice.record(maxDurationMs = 60_000)
+                    capturing = false
                     val clip = when (recorded) {
                         is VoiceCaptureResult.Success -> recorded.clip
                         is VoiceCaptureResult.Failure -> error(recorded.reason)
@@ -152,7 +163,7 @@ private fun ConversationPanel(modifier: Modifier, onClose: () -> Unit) {
                 status = "可以继续对话"
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { status = error.message ?: "语音对话失败" }
-            finally { busy = false }
+            finally { capturing = false; busy = false }
         }
     }
 
@@ -246,8 +257,8 @@ private fun ConversationPanel(modifier: Modifier, onClose: () -> Unit) {
                 Text(if (live) "停止实时对话" else "开始实时对话")
             }
         } else {
-            Button(onClick = ::startSingleTurn, enabled = !busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable())) {
-                Text(if (busy) "处理中" else "说一句")
+            Button(onClick = ::startSingleTurn, enabled = capturing || (!busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable()))) {
+                Text(if (capturing) "结束说话" else if (busy) "处理中" else "开始说话")
             }
         }
     }

@@ -4,8 +4,10 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.refTo
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.AVFoundation.AVAudioPlayer
 import platform.AVFoundation.AVAudioRecorder
 import platform.AVFoundation.AVAudioSession
@@ -30,14 +32,18 @@ private class IosVoiceService : VoiceService {
     private var recorder: AVAudioRecorder? = null
     private var player: AVAudioPlayer? = null
     private var stopped = false
+    private var captureFinished = CompletableDeferred<Unit>()
 
     override suspend fun record(maxDurationMs: Long): VoiceCaptureResult {
+        stopped = false
+        captureFinished = CompletableDeferred()
         val allowed = suspendCancellableCoroutine<Boolean> { continuation ->
             AVAudioSession.sharedInstance().requestRecordPermission { granted ->
                 if (continuation.isActive) continuation.resume(granted)
             }
         }
         if (!allowed) return VoiceCaptureResult.Failure("请在系统设置中允许麦克风访问")
+        if (stopped || captureFinished.isCompleted) return VoiceCaptureResult.Failure("录音时间过短")
         val path = "${NSTemporaryDirectory()}voice-${NSUUID().UUIDString}.wav"
         try {
             AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryPlayAndRecord, error = null)
@@ -51,14 +57,14 @@ private class IosVoiceService : VoiceService {
             )
             val recording = AVAudioRecorder(NSURL.fileURLWithPath(path), settings, error = null)
             recorder = recording
-            stopped = false
             check(recording.record()) { "麦克风启动失败" }
-            delay(maxDurationMs.coerceAtLeast(1))
+            withTimeoutOrNull(maxDurationMs.coerceAtLeast(1)) { captureFinished.await() }
             recording.stop()
             if (stopped) return VoiceCaptureResult.Failure("录音已停止")
             val data = NSData.dataWithContentsOfFile(path) ?: error("无法读取录音")
             val bytes = ByteArray(data.length.toInt())
             if (bytes.isNotEmpty()) data.getBytes(bytes.refTo(0), data.length)
+            if (bytes.size <= 44) return VoiceCaptureResult.Failure("录音时间过短")
             return VoiceCaptureResult.Success(VoiceClip(bytes, "audio/wav"))
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
@@ -70,6 +76,8 @@ private class IosVoiceService : VoiceService {
             runCatching { NSFileManager.defaultManager.removeItemAtPath(path, error = null) }
         }
     }
+
+    override fun finishRecording() { captureFinished.complete(Unit) }
 
     override suspend fun play(clip: VoiceClip): VoicePlaybackResult {
         if (clip.bytes.isEmpty()) return VoicePlaybackResult.Failure("语音数据为空")
@@ -93,6 +101,7 @@ private class IosVoiceService : VoiceService {
 
     override fun stop() {
         stopped = true
+        captureFinished.complete(Unit)
         recorder?.stop()
         player?.stop()
     }

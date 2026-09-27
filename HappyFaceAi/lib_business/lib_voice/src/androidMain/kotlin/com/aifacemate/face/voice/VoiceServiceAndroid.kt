@@ -6,6 +6,7 @@ import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -14,29 +15,48 @@ actual fun createVoiceService(): VoiceService = AndroidVoiceService()
 
 private class AndroidVoiceService : VoiceService {
     @Volatile private var stopped = false
-    private var recorder: AudioRecord? = null
+    @Volatile private var finishRequested = false
+    @Volatile private var recorder: AudioRecord? = null
     private var player: AudioTrack? = null
 
-    override suspend fun record(maxDurationMs: Long): VoiceCaptureResult = withContext(Dispatchers.IO) {
+    override suspend fun record(maxDurationMs: Long): VoiceCaptureResult {
         stopped = false
-        val min = AudioRecord.getMinBufferSize(16_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        if (min <= 0) return@withContext VoiceCaptureResult.Failure("麦克风不可用")
-        val line = AudioRecord(MediaRecorder.AudioSource.MIC, 16_000, AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, 6_400))
-        recorder = line
-        try {
-            line.startRecording()
-            val output = ByteArrayOutputStream()
-            val frame = ByteArray(640)
-            val endAt = System.currentTimeMillis() + maxDurationMs
-            while (!stopped && System.currentTimeMillis() < endAt) {
-                val n = line.read(frame, 0, frame.size)
-                if (n > 0) output.write(frame, 0, n)
-                else if (n < 0) error("录音失败：$n")
+        finishRequested = false
+        return withContext(Dispatchers.IO) {
+            val min = AudioRecord.getMinBufferSize(16_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            if (min <= 0) return@withContext VoiceCaptureResult.Failure("麦克风不可用")
+            val line = AudioRecord(MediaRecorder.AudioSource.MIC, 16_000, AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, 6_400))
+            recorder = line
+            try {
+                if (!stopped && !finishRequested) line.startRecording()
+                val output = ByteArrayOutputStream()
+                val frame = ByteArray(640)
+                val endAt = System.currentTimeMillis() + maxDurationMs
+                while (!stopped && !finishRequested && System.currentTimeMillis() < endAt) {
+                    val n = try { line.read(frame, 0, frame.size, AudioRecord.READ_NON_BLOCKING) }
+                    catch (error: Exception) { if (stopped || finishRequested) break else throw error }
+                    if (n > 0) output.write(frame, 0, n)
+                    else if (n < 0 && !stopped && !finishRequested) error("录音失败：$n")
+                    else if (n == 0) delay(10)
+                }
+                when {
+                    stopped -> VoiceCaptureResult.Failure("录音已取消")
+                    output.size() == 0 -> VoiceCaptureResult.Failure("录音时间过短")
+                    else -> VoiceCaptureResult.Success(VoiceClip(wav16k(output.toByteArray()), "audio/wav"))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { VoiceCaptureResult.Failure(error.message ?: "录音失败") }
+            finally {
+                runCatching { line.stop() }
+                line.release()
+                recorder = null
             }
-            VoiceCaptureResult.Success(VoiceClip(wav16k(output.toByteArray()), "audio/wav"))
-        } catch (error: Exception) { VoiceCaptureResult.Failure(error.message ?: "录音失败") }
-        finally { runCatching { line.stop() }; line.release(); recorder = null }
+        }
+    }
+
+    override fun finishRecording() {
+        finishRequested = true
     }
 
     override suspend fun play(clip: VoiceClip): VoicePlaybackResult = withContext(Dispatchers.IO) {
@@ -65,7 +85,7 @@ private class AndroidVoiceService : VoiceService {
         } catch (error: Exception) { VoicePlaybackResult.Failure(error.message ?: "播放失败") }
     }
 
-    override fun stop() { stopped = true; runCatching { recorder?.stop() }; player?.pause(); player?.flush() }
+    override fun stop() { stopped = true; finishRequested = true; runCatching { recorder?.stop() }; player?.pause(); player?.flush() }
 
     private fun wav16k(pcm: ByteArray): ByteArray = ByteArrayOutputStream().apply {
         fun le(value: Int) { repeat(4) { write(value ushr (it * 8) and 255) } }

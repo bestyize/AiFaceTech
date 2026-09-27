@@ -6,7 +6,10 @@ sealed interface VoicePlaybackResult { data object Complete : VoicePlaybackResul
 
 interface VoiceService {
     suspend fun record(maxDurationMs: Long = 6_000): VoiceCaptureResult
+    /** End capture and return the audio recorded so far from [record]. */
+    fun finishRecording()
     suspend fun play(clip: VoiceClip): VoicePlaybackResult
+    /** Cancel capture or playback without submitting a conversation turn. */
     fun stop()
 }
 
