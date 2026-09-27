@@ -34,9 +34,11 @@ private class IosNativeSpeech : NativeSpeechEngine {
     private var synthesizer: AVSpeechSynthesizer? = null
     private var delegate: SpeechDelegate? = null
     private var finishRequested = false
+    private var recognitionGeneration = 0
 
     override suspend fun recognize(): String {
         finishRequested = false
+        val generation = ++recognitionGeneration
         val authorized = suspendCancellableCoroutine<Boolean> { continuation ->
             SFSpeechRecognizer.requestAuthorization { status ->
                 if (continuation.isActive) continuation.resume(status == SFSpeechRecognizerAuthorizationStatusAuthorized)
@@ -62,9 +64,11 @@ private class IosNativeSpeech : NativeSpeechEngine {
                 if (buffer != null) audioRequest.appendAudioPCMBuffer(buffer)
             }
             task = recognizer.recognitionTaskWithRequest(audioRequest) { result, error ->
-                if (error != null && continuation.isActive) continuation.resumeWithException(IllegalStateException(error.localizedDescription))
-                else if (result?.isFinal == true && continuation.isActive) continuation.resume(result.bestTranscription.formattedString)
-                if (error != null || result?.isFinal == true) stopRecognition()
+                if (generation == recognitionGeneration) {
+                    if (error != null && continuation.isActive) continuation.resumeWithException(IllegalStateException(error.localizedDescription))
+                    else if (result?.isFinal == true && continuation.isActive) continuation.resume(result.bestTranscription.formattedString)
+                    if (error != null || result?.isFinal == true) stopRecognition()
+                }
             }
             audioEngine.prepare()
             if (!audioEngine.startAndReturnError(null) && continuation.isActive) {
@@ -110,6 +114,7 @@ private class IosNativeSpeech : NativeSpeechEngine {
     }
 
     private fun stopRecognition() {
+        recognitionGeneration++
         val activeTask = task
         task = null
         endInput()

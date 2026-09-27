@@ -43,10 +43,12 @@ private class AndroidNativeSpeech : NativeSpeechEngine {
     private var tts: TextToSpeech? = null
     @Volatile private var finishRequested = false
     private var finishSent = false
+    private var recognitionReady = false
 
     override suspend fun recognize(): String {
         finishRequested = false
         finishSent = false
+        recognitionReady = false
         return withContext(Dispatchers.Main) {
         val context = AndroidAppContext.context() ?: error("Android context unavailable")
         check(SpeechRecognizer.isRecognitionAvailable(context)) { "系统语音识别不可用" }
@@ -55,8 +57,18 @@ private class AndroidNativeSpeech : NativeSpeechEngine {
             recognizer = service
             fun release() { main.post { service.destroy(); if (recognizer === service) recognizer = null } }
             service.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { finishIfRequested(service) }
-                override fun onBeginningOfSpeech() = Unit
+                override fun onReadyForSpeech(params: Bundle?) {
+                    if (recognizer === service) {
+                        recognitionReady = true
+                        finishIfRequested(service)
+                    }
+                }
+                override fun onBeginningOfSpeech() {
+                    if (recognizer === service) {
+                        recognitionReady = true
+                        finishIfRequested(service)
+                    }
+                }
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
                 override fun onEndOfSpeech() = Unit
@@ -77,13 +89,12 @@ private class AndroidNativeSpeech : NativeSpeechEngine {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
             })
-            finishIfRequested(service)
         }
         }
     }
 
     private fun finishIfRequested(service: SpeechRecognizer) {
-        if (finishRequested && !finishSent && recognizer === service) {
+        if (recognitionReady && finishRequested && !finishSent && recognizer === service) {
             finishSent = runCatching { service.stopListening() }.isSuccess
         }
     }
