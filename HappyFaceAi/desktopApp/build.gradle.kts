@@ -12,6 +12,7 @@ dependencies {
     implementation(project(":lib_business:lib_brains"))
     implementation(project(":lib_business:lib_lifecenter"))
     implementation(project(":lib_business:lib_voice"))
+    implementation(project(":lib_business:lib_vision"))
     implementation(project(":lib_common:lib_theme"))
 
     implementation(compose.desktop.currentOs)
@@ -98,6 +99,20 @@ tasks.register<JavaExec>("runRealtimeLiveVoice") {
         args(
             project.providers.gradleProperty("voiceProvider").orNull ?: error("Set -PvoiceProvider=doubao|qwen"),
             project.providers.gradleProperty("voiceSeconds").orNull ?: "120",
+        )
+    }
+}
+
+// Manual local-image inference; requires a separately exported YOLO26m ONNX model.
+tasks.register<JavaExec>("runYolo26m") {
+    group = "verification"
+    description = "Detect objects in a local image with a YOLO26m ONNX model"
+    mainClass.set("com.aifacemate.face.tools.RunYolo26mKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    doFirst {
+        args(
+            providers.gradleProperty("visionModel").orNull ?: error("Set -PvisionModel=/path/yolo26m.onnx"),
+            providers.gradleProperty("visionImage").orNull ?: error("Set -PvisionImage=/path/image.png"),
         )
     }
 }

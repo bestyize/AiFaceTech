@@ -93,6 +93,8 @@ bash gradlew :desktopApp:exportAiBrain
 
 ## 工程模块
 
+YOLO26m 视觉检测已加入 [`lib_business/lib_vision`](lib_business/lib_vision/README.md)：Android / Desktop 通过 ONNX Runtime 运行本地模型，模型需按说明单独导出并提供。iOS 当前只有共享检测数据契约，尚无视觉推理后端或相机页面。
+
 `shared` 只组合页面与平台入口；Android、Desktop 与 iOS 共用这一层。模块目录见 [docs/MODULES.md](docs/MODULES.md)。
 
 - `lib_common/`：`lib_theme`（应用配色）、`lib_resource`（Compose 图像）、`lib_storage`（平台设置存储）、`lib_ui`（通用弹窗和提示）。
