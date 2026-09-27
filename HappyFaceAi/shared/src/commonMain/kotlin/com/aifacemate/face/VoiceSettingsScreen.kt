@@ -28,10 +28,18 @@ import androidx.compose.ui.unit.sp
 import com.aifacemate.face.theme.AppColors
 import com.aifacemate.face.voice.nativeSpeechAvailable
 import com.aifacemate.face.voice.realtimeAudioAvailable
+import com.aifacemate.face.voice.asr.client.SenseVoiceAsr
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
 fun VoiceSettingsScreen(onBack: () -> Unit) {
     var draft by remember { mutableStateOf(VoicePreferencesStore.load().forDevice()) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var modelInstalled by remember { mutableStateOf(SenseVoiceAsr.installed()) }
+    var modelBusy by remember { mutableStateOf(false) }
+    var modelProgress by remember { mutableStateOf(0) }
+    var modelError by remember { mutableStateOf<String?>(null) }
     val nativeAvailable = remember { nativeSpeechAvailable() }
     val realtimeAvailable = remember { realtimeAudioAvailable() }
     Column(
@@ -53,7 +61,7 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
             }
             val description = when (mode) {
                 VoiceMode.Realtime -> "连续听说；对话由实时模型处理，需要的任务由 AI 大脑模型协助"
-                VoiceMode.Traditional -> "MiMo 识别和合成；AI 大脑模型负责推理"
+                VoiceMode.Traditional -> "MiMo 或 SenseVoice 识别；MiMo 合成；AI 大脑负责推理"
                 VoiceMode.Native -> if (available) "系统识别与朗读；AI 大脑模型负责推理" else "当前设备没有可用的系统语音服务"
             }
             Row(
@@ -107,8 +115,46 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
                 Text("复杂任务由 AI 大脑当前选择的 LLM 执行。千问实时模型支持任务调用；豆包仅在协议支持的范围内处理。", color = AppColors.Secondary, fontSize = 12.sp)
             }
             VoiceMode.Traditional -> {
-                SectionTitle("MiMo 语音模型")
-                Text("语音识别 mimo-v2.5-asr · 语音合成 mimo-v2.5-tts", color = Color.White)
+                SectionTitle("语音识别")
+                TraditionalAsr.entries.forEach { asr ->
+                    val enabled = asr != TraditionalAsr.SenseVoice || SenseVoiceAsr.supported()
+                    Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { draft = draft.copy(traditionalAsr = asr) },
+                        verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = draft.traditionalAsr == asr,
+                            onClick = { draft = draft.copy(traditionalAsr = asr) }, enabled = enabled)
+                        Text(asr.label, color = if (enabled) Color.White else AppColors.Secondary)
+                    }
+                }
+                if (draft.traditionalAsr == TraditionalAsr.SenseVoice) {
+                    Text(if (modelInstalled) "SenseVoiceSmall INT8 已下载，可以离线识别"
+                        else "模型约 239 MB，首次使用前需下载；不包含在安装包中",
+                        color = AppColors.Secondary, fontSize = 12.sp)
+                    if (modelBusy) Text("模型处理中 $modelProgress%", color = AppColors.Amber)
+                    modelError?.let { Text(it, color = AppColors.Amber, fontSize = 12.sp) }
+                    Button(onClick = {
+                        modelBusy = true; modelError = null
+                        scope.launch {
+                            try {
+                                if (modelInstalled) SenseVoiceAsr.remove()
+                                else {
+                                    var last = -1
+                                    SenseVoiceAsr.install { downloaded, total ->
+                                        val percent = (downloaded * 100 / total).toInt()
+                                        if (percent != last) {
+                                            last = percent
+                                            scope.launch { modelProgress = percent }
+                                        }
+                                    }
+                                }
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                            catch (error: Exception) { modelError = error.message ?: "模型操作失败" }
+                            finally { modelInstalled = SenseVoiceAsr.installed(); modelBusy = false }
+                        }
+                    }, enabled = !modelBusy) { Text(if (modelInstalled) "删除本地模型" else "下载 SenseVoice 模型") }
+                    Text("本地识别不可用时自动回退 MiMo 在线识别。", color = AppColors.Secondary, fontSize = 12.sp)
+                }
+                SectionTitle("MiMo 在线语音")
+                Text("MiMo 提供语音合成，也用于本地识别失败时回退", color = AppColors.Secondary, fontSize = 12.sp)
                 Field("MiMo API Key", draft.mimoApiKey, secret = true) { draft = draft.copy(mimoApiKey = it) }
                 Field("MiMo API Base URL", draft.mimoBaseUrl) { draft = draft.copy(mimoBaseUrl = it) }
                 Field("音色（例如 Chloe）", draft.mimoVoice) { draft = draft.copy(mimoVoice = it) }

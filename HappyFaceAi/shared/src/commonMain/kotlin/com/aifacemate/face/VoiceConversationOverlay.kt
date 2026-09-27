@@ -49,6 +49,7 @@ import com.aifacemate.face.voice.realtime.RealtimeEvent
 import com.aifacemate.face.voice.realtime.RealtimeSession
 import com.aifacemate.face.voice.realtimeAudioAvailable
 import com.aifacemate.face.voice.asr.client.AsrClient
+import com.aifacemate.face.voice.asr.client.SenseVoiceAsr
 import com.aifacemate.face.voice.asr.model.AsrRequest
 import com.aifacemate.face.voice.asr.model.AsrResult
 import com.aifacemate.face.voice.tts.client.TtsClient
@@ -159,12 +160,26 @@ private fun ConversationPanel(
                         is VoiceCaptureResult.Success -> recorded.clip
                         is VoiceCaptureResult.Failure -> error(recorded.reason)
                     }
-                    status = "MiMo 正在识别"
-                    val request = AsrRequest(apiKey = preferences.mimoApiKey, baseUrl = preferences.mimoBaseUrl,
-                        audio = clip.bytes, mimeType = clip.mimeType)
-                    when (val recognized = AsrClient(NetworkClient()).transcribe(request)) {
-                        is AsrResult.Success -> recognized.text
-                        is AsrResult.Failure -> error(recognized.message)
+                    suspend fun mimoRecognize(): String {
+                        status = "MiMo 正在识别"
+                        val request = AsrRequest(apiKey = preferences.mimoApiKey, baseUrl = preferences.mimoBaseUrl,
+                            audio = clip.bytes, mimeType = clip.mimeType)
+                        return when (val recognized = AsrClient(NetworkClient()).transcribe(request)) {
+                            is AsrResult.Success -> recognized.text
+                            is AsrResult.Failure -> error(recognized.message)
+                        }
+                    }
+                    if (preferences.traditionalAsr == TraditionalAsr.SenseVoice) {
+                        try {
+                            status = "SenseVoice 本地识别中"
+                            SenseVoiceAsr.transcribe(clip.bytes).ifBlank { error("本地未识别到声音") }
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (error: Exception) {
+                            status = "本地识别失败，正在使用 MiMo"
+                            mimoRecognize()
+                        }
+                    } else {
+                        mimoRecognize()
                     }
                 }.trim()
                 check(input.isNotEmpty()) { "没有识别到声音" }

@@ -5,10 +5,11 @@ import com.aifacemate.face.voice.nativeSpeechAvailable
 import com.aifacemate.face.voice.realtimeAudioAvailable
 
 enum class VoiceMode(val label: String) {
-    Realtime("实时对话"), Traditional("传统对话 · MiMo"), Native("系统原生语音")
+    Realtime("实时对话"), Traditional("传统对话"), Native("系统原生语音")
 }
 
 enum class RealtimeProvider(val label: String) { Doubao("豆包"), Qwen("千问") }
+enum class TraditionalAsr(val label: String) { Mimo("MiMo 在线识别"), SenseVoice("SenseVoice 本地识别") }
 
 data class VoicePreferences(
     val mode: VoiceMode = VoiceMode.Realtime,
@@ -23,14 +24,20 @@ data class VoicePreferences(
     val mimoApiKey: String = "",
     val mimoBaseUrl: String = "https://api.xiaomimimo.com/v1",
     val mimoVoice: String = "Chloe",
+    val traditionalAsr: TraditionalAsr = TraditionalAsr.Mimo,
 )
 
 /** A saved mode can be unavailable on a different device. */
-fun VoicePreferences.forDevice(): VoicePreferences = when {
+fun VoicePreferences.forDevice(): VoicePreferences {
+    val available = when {
     mode == VoiceMode.Realtime && !realtimeAudioAvailable() ->
         copy(mode = if (nativeSpeechAvailable()) VoiceMode.Native else VoiceMode.Traditional)
     mode == VoiceMode.Native && !nativeSpeechAvailable() -> copy(mode = VoiceMode.Traditional)
     else -> this
+    }
+    return if (available.traditionalAsr == TraditionalAsr.SenseVoice &&
+        !com.aifacemate.face.voice.asr.client.SenseVoiceAsr.supported()
+    ) available.copy(traditionalAsr = TraditionalAsr.Mimo) else available
 }
 
 /** Voice settings remain separate from the LLM selected in AI 大脑. */
@@ -49,6 +56,9 @@ object VoicePreferencesStore {
         mimoApiKey = SettingsStore.get(PREFIX + "mimo.apiKey").orEmpty(),
         mimoBaseUrl = SettingsStore.get(PREFIX + "mimo.baseUrl")?.takeIf(String::isNotBlank) ?: "https://api.xiaomimimo.com/v1",
         mimoVoice = SettingsStore.get(PREFIX + "mimo.voice")?.takeIf(String::isNotBlank) ?: "Chloe",
+        traditionalAsr = SettingsStore.get(PREFIX + "traditional.asr")?.let { raw ->
+            TraditionalAsr.entries.firstOrNull { it.name == raw }
+        } ?: TraditionalAsr.Mimo,
     )
 
     fun save(value: VoicePreferences) {
@@ -58,6 +68,7 @@ object VoicePreferencesStore {
             "qwen.model" to value.qwenModel, "qwen.endpoint" to value.qwenEndpoint.trim(), "qwen.apiKey" to value.qwenApiKey.trim(),
             "doubao.appId" to value.doubaoAppId.trim(), "doubao.accessKey" to value.doubaoAccessKey.trim(), "doubao.appKey" to value.doubaoAppKey.trim(),
             "mimo.apiKey" to value.mimoApiKey.trim(), "mimo.baseUrl" to value.mimoBaseUrl.trim(), "mimo.voice" to value.mimoVoice,
+            "traditional.asr" to value.traditionalAsr.name,
         )
         fields.forEach { (key, text) -> SettingsStore.put(PREFIX + key, text) }
     }
