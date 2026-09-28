@@ -17,6 +17,8 @@ kotlin {
     }
 }
 dependencies {
+    // Prefer the vision runtime over the older copy bundled with sherpa-onnx.
+    implementation(libs.onnxruntime.android)
     implementation(project(":shared"))
     implementation(project(":lib_business:lib_face"))
     implementation(project(":lib_common:lib_storage"))
@@ -44,6 +46,9 @@ android {
         buildConfigField("String", "DEV_MIMO_BASE_URL", "\"${localSecret("aifacemate.dev.mimoBaseUrl")}\"")
     }
     packaging {
+        jniLibs {
+            pickFirsts += "lib/*/libonnxruntime.so"
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }

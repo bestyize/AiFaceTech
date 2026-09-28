@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Manual desktop full-duplex microphone and speaker check. Press Enter or wait for the timer. */
-fun main(args: Array<String>) = runBlocking {
+fun main(args: Array<String>): Unit = runBlocking {
     require(args.size in 1..2) { "Usage: provider [seconds]" }
     val seconds = args.getOrNull(1)?.toLong() ?: 120L
     require(seconds in 1..3600) { "Duration must be 1..3600 seconds" }

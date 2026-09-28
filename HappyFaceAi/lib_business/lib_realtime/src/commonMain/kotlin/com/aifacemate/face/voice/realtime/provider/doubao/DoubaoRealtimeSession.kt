@@ -9,6 +9,7 @@ import com.aifacemate.face.voice.realtime.internal.openSocket
 import io.ktor.client.HttpClient
 import io.ktor.websocket.Frame
 import io.ktor.websocket.WebSocketSession
+import io.ktor.websocket.readBytes
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
