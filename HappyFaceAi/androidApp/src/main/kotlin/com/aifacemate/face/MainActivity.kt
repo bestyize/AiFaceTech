@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
             "brain.provider" to "deepseek",
             "baseUrl:deepseek" to BuildConfig.DEV_DEEPSEEK_BASE_URL,
             "apikey:deepseek" to BuildConfig.DEV_DEEPSEEK_API_KEY,
+            "brain.model:deepseek" to BuildConfig.DEV_DEEPSEEK_MODEL,
             "voice.mimo.baseUrl" to BuildConfig.DEV_MIMO_BASE_URL,
             "voice.mimo.apiKey" to BuildConfig.DEV_MIMO_API_KEY,
         ).filterValues { it.isNotBlank() })

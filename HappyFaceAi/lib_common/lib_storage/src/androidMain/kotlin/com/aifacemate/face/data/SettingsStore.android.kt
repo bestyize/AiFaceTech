@@ -25,7 +25,10 @@ object AndroidAppContext {
 
 actual object SettingsStore {
     actual fun get(key: String): String? =
-        runCatching { AndroidAppContext.preferences()?.getString(key, null) ?: AndroidAppContext.defaults[key] }.getOrNull()
+        runCatching {
+            val saved = AndroidAppContext.preferences()?.getString(key, null)
+            saved?.takeIf { it.isNotBlank() } ?: AndroidAppContext.defaults[key] ?: saved
+        }.getOrNull()
 
     actual fun put(key: String, value: String) {
         runCatching { AndroidAppContext.preferences()?.edit()?.putString(key, value)?.apply() }

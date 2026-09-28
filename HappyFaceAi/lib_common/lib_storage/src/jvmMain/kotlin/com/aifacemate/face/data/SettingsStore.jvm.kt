@@ -12,19 +12,25 @@ actual object SettingsStore {
     private val prefs: Preferences = Preferences.userRoot().node("com/aifacemate/face")
 
     actual fun get(key: String): String? = runCatching {
-        prefs.get(key, null)
-            ?: if (System.getProperty("aifacemate.devDefaults") == "true") developerDefault(key) else null
+        val saved = prefs.get(key, null)
+        saved?.takeIf { it.isNotBlank() }
+            ?: (if (System.getProperty("aifacemate.devDefaults") == "true") developerDefault(key) else null)
+            ?: saved
     }.getOrNull()
 
-    /** 本机开发配置来自被 .gitignore 忽略的 local.properties，不会进入发布包。 */
+    /** Local overrides take precedence; explicitly opted-in desktop test builds can carry defaults. */
     private fun developerDefault(key: String): String? {
         val file = sequenceOf(File("local.properties"), File("../local.properties"))
-            .firstOrNull { it.isFile } ?: return null
-        val properties = Properties().apply { file.inputStream().use(::load) }
+            .firstOrNull { it.isFile }
+        val properties = Properties().apply {
+            SettingsStore::class.java.getResourceAsStream("/aifacemate-development.properties")?.use(::load)
+            file?.inputStream()?.use(::load)
+        }
         return when (key) {
             "apikey:deepseek" -> properties.getProperty("aifacemate.dev.apiKey")
             "baseUrl:deepseek" -> properties.getProperty("aifacemate.dev.baseUrl")
             "brain.provider" -> properties.getProperty("aifacemate.dev.provider")
+            "brain.model:deepseek" -> properties.getProperty("aifacemate.dev.model")
             "voice.mimo.apiKey" -> properties.getProperty("aifacemate.dev.mimoApiKey")
             "voice.mimo.baseUrl" -> properties.getProperty("aifacemate.dev.mimoBaseUrl")
             else -> null

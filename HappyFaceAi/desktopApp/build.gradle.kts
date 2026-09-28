@@ -1,4 +1,28 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.util.Properties
+
+abstract class GenerateDevelopmentDefaults : DefaultTask() {
+    @get:Input abstract val includeCredentials: Property<Boolean>
+    @get:InputFile @get:Optional abstract val localConfig: RegularFileProperty
+    @get:OutputFile abstract val outputConfig: RegularFileProperty
+
+    @TaskAction
+    fun generate() {
+        val output = outputConfig.get().asFile
+        output.parentFile.mkdirs()
+        val defaults = Properties()
+        if (includeCredentials.get()) {
+            val source = localConfig.orNull?.asFile
+            require(source?.isFile == true) { "Set local.properties before building with includeDevApiKeys=true" }
+            val local = Properties().apply { source!!.inputStream().use(::load) }
+            listOf("provider", "apiKey", "baseUrl", "model", "mimoApiKey", "mimoBaseUrl").forEach { field ->
+                local.getProperty("aifacemate.dev.$field")?.let { defaults.setProperty("aifacemate.dev.$field", it) }
+            }
+        }
+        // Always rewrite the resource so a subsequent standard build cannot reuse embedded keys.
+        output.outputStream().use { defaults.store(it, "Explicitly opted-in development defaults") }
+    }
+}
 
 plugins {
     alias(libs.plugins.kotlinJvm)
@@ -6,8 +30,18 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+val generateDevelopmentDefaults = tasks.register<GenerateDevelopmentDefaults>("generateDevelopmentDefaults") {
+    includeCredentials.set(providers.gradleProperty("includeDevApiKeys").map(String::toBoolean).orElse(false))
+    val localFile = rootProject.layout.projectDirectory.file("local.properties")
+    if (localFile.asFile.isFile) localConfig.set(localFile)
+    outputConfig.set(layout.buildDirectory.file("generated/developmentResources/aifacemate-development.properties"))
+}
+sourceSets["main"].resources.srcDir(layout.buildDirectory.dir("generated/developmentResources"))
+tasks.named("processResources") { dependsOn(generateDevelopmentDefaults) }
+
 dependencies {
     implementation(project(":shared"))
+    implementation(project(":lib_business:lib_chat"))
     implementation(project(":lib_business:lib_face"))
     implementation(project(":lib_business:lib_brains"))
     implementation(project(":lib_business:lib_lifecenter"))
@@ -43,6 +77,9 @@ compose.desktop {
         mainClass = "com.aifacemate.face.MainKt"
 
         nativeDistributions {
+            if (providers.gradleProperty("includeDevApiKeys").orNull == "true") {
+                outputBaseDir.set(project.layout.buildDirectory.dir("compose/development"))
+            }
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "com.aifacemate.face"
             packageVersion = "1.0.0"
@@ -80,6 +117,15 @@ tasks.register<JavaExec>("exportVoiceSettings") {
     mainClass.set("com.aifacemate.face.tools.ExportVoiceSettingsKt")
     classpath = sourceSets["main"].runtimeClasspath
     args = listOf(layout.buildDirectory.dir("voice-settings").get().asFile.absolutePath)
+}
+
+// Offline full-screen conversation visual and interaction checks.
+tasks.register<JavaExec>("exportConversation") {
+    group = "verification"
+    description = "Render and exercise full-screen conversation using offline fixtures"
+    mainClass.set("com.aifacemate.face.tools.ExportConversationKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args = listOf(layout.buildDirectory.dir("conversation").get().asFile.absolutePath)
 }
 
 // Manual network verification using raw PCM input, without the desktop UI or microphone.

@@ -43,10 +43,8 @@ android {
             // Package only architectures with an isolated static speech runtime.
             abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
-        buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"${localSecret("aifacemate.dev.apiKey")}\"")
-        buildConfigField("String", "DEV_DEEPSEEK_BASE_URL", "\"${localSecret("aifacemate.dev.baseUrl")}\"")
-        buildConfigField("String", "DEV_MIMO_API_KEY", "\"${localSecret("aifacemate.dev.mimoApiKey")}\"")
-        buildConfigField("String", "DEV_MIMO_BASE_URL", "\"${localSecret("aifacemate.dev.mimoBaseUrl")}\"")
+        listOf("DEV_DEEPSEEK_API_KEY", "DEV_DEEPSEEK_BASE_URL", "DEV_DEEPSEEK_MODEL", "DEV_MIMO_API_KEY", "DEV_MIMO_BASE_URL")
+            .forEach { buildConfigField("String", it, "\"\"") }
     }
     packaging {
         jniLibs {
@@ -58,6 +56,13 @@ android {
         }
     }
     buildTypes {
+        debug {
+            buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"${localSecret("aifacemate.dev.apiKey")}\"")
+            buildConfigField("String", "DEV_DEEPSEEK_BASE_URL", "\"${localSecret("aifacemate.dev.baseUrl")}\"")
+            buildConfigField("String", "DEV_DEEPSEEK_MODEL", "\"${localSecret("aifacemate.dev.model")}\"")
+            buildConfigField("String", "DEV_MIMO_API_KEY", "\"${localSecret("aifacemate.dev.mimoApiKey")}\"")
+            buildConfigField("String", "DEV_MIMO_BASE_URL", "\"${localSecret("aifacemate.dev.mimoBaseUrl")}\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

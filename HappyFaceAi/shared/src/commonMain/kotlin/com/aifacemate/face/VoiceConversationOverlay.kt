@@ -79,7 +79,7 @@ fun VoiceConversationOverlay(
 
 @Composable
 fun ChatScreen(onBack: () -> Unit) {
-    ConversationPanel(Modifier.fillMaxSize().background(AppColors.Background).padding(20.dp), onBack)
+    ConversationPanel(Modifier.fillMaxSize(), onBack)
 }
 
 @Composable
@@ -304,32 +304,17 @@ private fun ConversationPanel(
     }
 
     @Composable
-    fun FullPanel(panelModifier: Modifier) = Column(panelModifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("对话 · ${preferences.mode.label}", color = Color.White, modifier = Modifier.weight(1f))
-            if (overlay && preferences.keepFaceVisible) TextButton(onClick = { detailsExpanded = false }) { Text("收起") }
-            TextButton(onClick = onClose) { Text("关闭") }
-        }
-        Text(status, color = AppColors.Amber)
-        Column(Modifier.fillMaxWidth().heightIn(min = 72.dp, max = 180.dp).verticalScroll(rememberScrollState())) {
-            messages.takeLast(8).forEach { msg ->
-                Text("${if (msg.role == "user") "我" else "小星"}：${msg.content}", color = Color.White, modifier = Modifier.padding(vertical = 3.dp))
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(draft, { draft = it }, label = { Text("输入文字") }, modifier = Modifier.weight(1f), singleLine = true)
-            Button(onClick = ::submitText, enabled = draft.isNotBlank() && !busy) { Text("发送") }
-        }
-        if (preferences.mode == VoiceMode.Realtime) {
-            Button(onClick = { if (live) realtimeJob?.cancel() else startRealtime() }, enabled = realtimeAudioAvailable()) {
-                Text(if (live) "停止实时对话" else "开始实时对话")
-            }
-        } else {
-            Button(onClick = ::startSingleTurn, enabled = capturing || (!busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable()))) {
-                Text(if (capturing) "结束说话" else if (busy) "处理中" else "开始说话")
-            }
-        }
-    }
+    fun FullPanel(panelModifier: Modifier) = ConversationScreenContent(
+        state = ConversationScreenState(
+            mode = preferences.mode, messages = messages.toList(), draft = draft, status = status,
+            busy = busy, voiceActive = live || capturing,
+            voiceEnabled = if (preferences.mode == VoiceMode.Realtime) realtimeAudioAvailable()
+                else capturing || (!busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable())),
+        ),
+        onDraftChange = { draft = it }, onSend = ::submitText, onVoice = ::toggleVoice, onClose = onClose,
+        modifier = panelModifier,
+        onCollapse = if (overlay && preferences.keepFaceVisible) ({ detailsExpanded = false }) else null,
+    )
 
     if (!overlay) {
         FullPanel(modifier)
@@ -384,9 +369,7 @@ private fun ConversationPanel(
                 }
             } else {
                 FullPanel(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                        .background(Color(0xF5181B23), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                        .verticalScroll(rememberScrollState()).padding(16.dp),
+                    Modifier.align(Alignment.BottomCenter).fillMaxSize(),
                 )
             }
         }
