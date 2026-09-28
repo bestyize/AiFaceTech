@@ -17,8 +17,6 @@ kotlin {
     }
 }
 dependencies {
-    // Prefer the vision runtime over the older copy bundled with sherpa-onnx.
-    implementation(libs.onnxruntime.android)
     implementation(project(":shared"))
     implementation(project(":lib_business:lib_face"))
     implementation(project(":lib_common:lib_storage"))
@@ -40,6 +38,11 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+        ndk {
+            // Upstream's static AAR still ships a shared ORT on 32-bit x86.
+            // Package only architectures with an isolated static speech runtime.
+            abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
         buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"${localSecret("aifacemate.dev.apiKey")}\"")
         buildConfigField("String", "DEV_DEEPSEEK_BASE_URL", "\"${localSecret("aifacemate.dev.baseUrl")}\"")
         buildConfigField("String", "DEV_MIMO_API_KEY", "\"${localSecret("aifacemate.dev.mimoApiKey")}\"")
@@ -47,7 +50,8 @@ android {
     }
     packaging {
         jniLibs {
-            pickFirsts += "lib/*/libonnxruntime.so"
+            // Native merging runs before ABI filtering; exclude the unsupported shared x86 build.
+            excludes += "lib/x86/**"
         }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

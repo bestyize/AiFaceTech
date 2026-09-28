@@ -25,6 +25,13 @@ dependencyResolutionManagement {
         }
         mavenCentral()
         maven("https://jitpack.io")
+        ivy {
+            name = "SherpaOnnxOfficialReleases"
+            url = uri("https://github.com/k2-fsa/sherpa-onnx/releases/download")
+            patternLayout { artifact("v[revision]/[artifact]-[revision].[ext]") }
+            metadataSources { artifact() }
+            content { includeModule("com.github.k2-fsa.sherpa-onnx", "sherpa-onnx-static-link-onnxruntime") }
+        }
     }
 }
 

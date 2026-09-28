@@ -16,7 +16,8 @@ kotlin {
         androidMain.dependencies {
             implementation(project(":lib_common:lib_storage"))
             implementation(libs.kotlinx.coroutinesCore)
-            implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8")
+            // Private, statically linked ORT avoids ABI clashes with the vision module's shared ORT.
+            implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx-static-link-onnxruntime:1.13.8@aar")
         }
         commonTest.dependencies { implementation(libs.kotlin.test) }
     }

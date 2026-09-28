@@ -73,6 +73,15 @@ tasks.register<JavaExec>("verifyAiBrainV3") {
     classpath = sourceSets["main"].runtimeClasspath
 }
 
+// Offline visual and interaction checks for voice settings across display sizes.
+tasks.register<JavaExec>("exportVoiceSettings") {
+    group = "verification"
+    description = "Render and verify responsive voice settings without saved credentials"
+    mainClass.set("com.aifacemate.face.tools.ExportVoiceSettingsKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args = listOf(layout.buildDirectory.dir("voice-settings").get().asFile.absolutePath)
+}
+
 // Manual network verification using raw PCM input, without the desktop UI or microphone.
 tasks.register<JavaExec>("runRealtimeVoice") {
     group = "verification"

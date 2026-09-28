@@ -19,8 +19,8 @@ import kotlinx.coroutines.withContext
 
 /** The pinned export is kept in noBackupFilesDir, never in APK assets. */
 actual object SenseVoiceAsr {
-    private const val REVISION = "2365baeacb507f821a0c8120fcee3d484dba7a07"
-    private const val BASE = "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/$REVISION"
+    private const val REVISION = "73eca47697f980daa3d16112404174b6b950b514"
+    private const val BASE = "https://modelscope.cn/api/v1/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/repo?Revision=$REVISION"
     private const val MODEL = "model.int8.onnx"
     private const val TOKENS = "tokens.txt"
     private const val MODEL_SIZE = 239_233_841L
@@ -87,7 +87,8 @@ actual object SenseVoiceAsr {
             val engine = recognizer ?: try {
                 OfflineRecognizer(config = config).also { recognizer = it }
             } catch (failure: LinkageError) {
-                throw IllegalStateException("当前设备缺少 SenseVoice 原生运行库", failure)
+                android.util.Log.e("SenseVoiceAsr", "Failed to load the native recognizer", failure)
+                throw IllegalStateException("SenseVoice 原生识别库加载失败，请更新应用后重试", failure)
             }
             val stream = engine.createStream()
             try {
@@ -103,7 +104,7 @@ actual object SenseVoiceAsr {
     ) {
         if (valid(target, size, sha)) { progress(offset + size, total); return }
         val temp = File(target.parentFile, "${target.name}.part")
-        val connection = URL("$BASE/${target.name}?download=true").openConnection() as HttpURLConnection
+        val connection = URL("$BASE&FilePath=${target.name}").openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 15_000
             connection.readTimeout = 30_000

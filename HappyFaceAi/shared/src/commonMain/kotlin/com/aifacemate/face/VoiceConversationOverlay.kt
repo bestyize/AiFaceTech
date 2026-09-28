@@ -152,7 +152,9 @@ private fun ConversationPanel(
                     status = "系统正在聆听，点结束说话提交"
                     checkNotNull(native).recognize().also { capturing = false }
                 } else {
-                    check(preferences.mimoApiKey.isNotBlank()) { "请先在声音设置中填写 MiMo API Key" }
+                    if (preferences.traditionalAsr == TraditionalAsr.Mimo) {
+                        check(preferences.mimoApiKey.isNotBlank()) { "请先在声音设置中填写 MiMo 在线识别的 API Key" }
+                    }
                     status = "正在录音，点结束说话提交（最长 60 秒）"
                     val recorded = voice.record(maxDurationMs = 60_000)
                     capturing = false
@@ -169,24 +171,30 @@ private fun ConversationPanel(
                             is AsrResult.Failure -> error(recognized.message)
                         }
                     }
-                    if (preferences.traditionalAsr == TraditionalAsr.SenseVoice) {
-                        try {
+                    recognizeTraditionalSpeech(
+                        asr = preferences.traditionalAsr,
+                        hasOnlineKey = preferences.mimoApiKey.isNotBlank(),
+                        local = {
                             status = "SenseVoice 本地识别中"
-                            SenseVoiceAsr.transcribe(clip.bytes).ifBlank { error("本地未识别到声音") }
-                        } catch (cancelled: CancellationException) { throw cancelled }
-                        catch (error: Exception) {
-                            status = "本地识别失败，正在使用 MiMo"
-                            mimoRecognize()
-                        }
-                    } else {
-                        mimoRecognize()
-                    }
+                            SenseVoiceAsr.transcribe(clip.bytes)
+                        },
+                        online = { mimoRecognize() },
+                        onFallback = { status = "本地识别失败，正在使用 MiMo" },
+                    )
                 }.trim()
                 check(input.isNotEmpty()) { "没有识别到声音" }
                 show("user", input)
+                if (AiBrainSettings.savedSecret(AiBrainSettings.providerId() ?: "deepseek") == null) {
+                    status = "已识别文字；配置 AI 大脑后可生成回答"
+                    return@launch
+                }
                 status = "AI 大脑正在思考"
                 val answer = askBrain(input)
                 show("assistant", answer)
+                if (preferences.mode == VoiceMode.Traditional && preferences.mimoApiKey.isBlank()) {
+                    status = "已生成文字回复；配置 MiMo 后可语音朗读"
+                    return@launch
+                }
                 status = "正在播放回复"
                 if (preferences.mode == VoiceMode.Native) {
                     checkNotNull(native).speak(answer)

@@ -93,6 +93,14 @@ bash gradlew :desktopApp:exportAiBrain
 
 ## 工程模块
 
+### 声音与对话设置
+
+- 小屏用顶部紧凑模式切换与独立滚动配置区；中屏左右分栏；大屏把服务选择与连接配置并排显示。
+- 依据安全区域内可用 dp 和字体缩放调整布局，返回与保存始终固定在顶栏；输入时避让软键盘。
+- 保留服务商与模型、MiMo 音色、本地模型下载/删除、猫脸显示和配置持久化；不支持的选项仍可见并标明设备限制。
+- Android SenseVoice 模型从魔搭兼容导出版下载，保持原有文件校验。仅本地识别无需密钥，生成回答需要 AI 大脑配置，MiMo 朗读及在线回退需要 MiMo 密钥。
+- `./gradlew :desktopApp:exportVoiceSettings` 用内存示例导出 45 张页面图，并检查九种尺寸/缩放配置上的真实 Compose 交互，不读取密钥或发起下载。图片位于 `desktopApp/build/voice-settings/`。
+
 YOLO26m 视觉检测已加入 [`lib_business/lib_vision`](lib_business/lib_vision/README.md)：Android / Desktop 通过 ONNX Runtime 运行本地模型，模型需按说明单独导出并提供。iOS 当前只有共享检测数据契约，尚无视觉推理后端或相机页面。
 
 `shared` 只组合页面与平台入口；Android、Desktop 与 iOS 共用这一层。模块目录见 [docs/MODULES.md](docs/MODULES.md)。
