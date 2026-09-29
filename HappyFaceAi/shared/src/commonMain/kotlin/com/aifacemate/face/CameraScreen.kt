@@ -44,7 +44,13 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.min
 
-data class CameraDetections(val width: Int, val height: Int, val mirrored: Boolean, val items: List<VisionDetection>)
+data class CameraDetections(
+    val width: Int,
+    val height: Int,
+    val mirrored: Boolean,
+    val items: List<VisionDetection>,
+    val local: List<LocalVisualFinding> = emptyList(),
+)
 
 @Composable
 fun CameraScreen(
@@ -80,40 +86,72 @@ fun CameraScreen(
             if (!active) {
                 controller.stop()
                 Yolo26mModel.unload()
+                LocalVisionAnalyzer.unload()
                 recognition = "相机已停止"
                 return@withLock
             }
             try {
                 controller.start(deviceId)
-                recognition = when {
-                    !preferences.yoloEnabled -> "仅预览 · YOLO 未启用"
-                    !Yolo26mModel.supported() -> "相机已接入 · 此设备 YOLO 推理后端待接入"
-                    else -> "正在加载 YOLO 模型…"
-                }
-                var failed = false
+                val localEnabled = preferences.expressionEnabled || preferences.gestureEnabled
+                val localReady =
+                    (!preferences.expressionEnabled || LocalVisionAnalyzer.modelsInstalled(LocalVisionTask.FacialExpressions)) &&
+                    (!preferences.gestureEnabled || LocalVisionAnalyzer.modelsInstalled(LocalVisionTask.HandGestures))
+                var yoloFailed = false
+                var localFailed = false
                 controller.frames.filterNotNull().conflate().collect { frame ->
-                    if (failed || !preferences.yoloEnabled || !Yolo26mModel.supported() || controller.state.value.status != CameraStatus.Running) return@collect
-                    try {
-                        val found = Yolo26mModel.detect(RgbaFrame(frame.width, frame.height, frame.rgba), preferences)
-                        detections = CameraDetections(frame.width, frame.height, frame.mirrored, found)
-                        recognition = if (found.isEmpty()) "YOLO 运行中 · 未检测到目标" else
-                            found.take(4).joinToString(" · ") { "${it.label} ${(it.confidence * 100).toInt()}%" }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (failure: LinkageError) {
-                        failed = true
-                        detections = null
-                        recognition = "YOLO 运行库不可用，请检查设备与安装包"
-                    } catch (error: Exception) {
-                        failed = true
-                        detections = null
-                        recognition = error.message ?: "YOLO 识别失败，请检查模型后重试"
+                    if (controller.state.value.status != CameraStatus.Running) return@collect
+                    val rgbaFrame = RgbaFrame(frame.width, frame.height, frame.rgba)
+                    var localFindings = emptyList<LocalVisualFinding>()
+                    var localStatus: String? = when {
+                        !localEnabled -> null
+                        !LocalVisionAnalyzer.supported() -> "设备不支持本地表情/手势识别"
+                        !localReady -> "请先下载表情或手势模型"
+                        else -> null
                     }
-                    // Preserve preview responsiveness and never queue inference requests.
+                    if (localEnabled && localReady && LocalVisionAnalyzer.supported() && !localFailed) {
+                        try {
+                            localFindings = LocalVisionAnalyzer.analyze(rgbaFrame, preferences)
+                            localStatus = localFindings.take(2).joinToString(" · ") { "${it.label} ${(it.confidence * 100).toInt()}%" }
+                                .ifBlank { "未识别到明显表情或手势" }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: LinkageError) {
+                            localFailed = true
+                            localStatus = "本地视觉运行库不可用"
+                        } catch (error: Exception) {
+                            localFailed = true
+                            localStatus = error.message ?: "本地表情/手势识别失败"
+                        }
+                    }
+                    var objects = emptyList<VisionDetection>()
+                    var yoloStatus = if (!preferences.yoloEnabled) null else when {
+                        !Yolo26mModel.supported() -> "此设备 YOLO 后端待接入"
+                        !yoloFailed -> "未检测到目标"
+                        else -> "YOLO 识别已停止"
+                    }
+                    if (preferences.yoloEnabled && Yolo26mModel.supported() && !yoloFailed) {
+                        try {
+                            objects = Yolo26mModel.detect(rgbaFrame, preferences)
+                            yoloStatus = objects.take(2).joinToString(" · ") { "${it.label} ${(it.confidence * 100).toInt()}%" }
+                                .ifBlank { "未检测到目标" }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: LinkageError) {
+                            yoloFailed = true
+                            yoloStatus = "YOLO 运行库不可用"
+                        } catch (error: Exception) {
+                            yoloFailed = true
+                            yoloStatus = error.message ?: "YOLO 识别失败，请检查模型后重试"
+                        }
+                    }
+                    detections = CameraDetections(frame.width, frame.height, frame.mirrored, objects, localFindings)
+                    recognition = listOfNotNull(localStatus, yoloStatus)
+                        .joinToString(" · ").ifBlank { "相机已启动" }
+                    // Run inference on the newest frame only. The camera stream does not build up a queue.
                     delay(150)
                 }
             } finally {
-                withContext(NonCancellable) { controller.stop(); Yolo26mModel.unload() }
+                withContext(NonCancellable) { controller.stop(); Yolo26mModel.unload(); LocalVisionAnalyzer.unload() }
             }
         }
     }
@@ -174,20 +212,24 @@ fun CameraScreenContent(
                     if (detections != null && detections.width == frame.width && detections.height == frame.height && detections.mirrored == frame.mirrored) {
                         Canvas(Modifier.fillMaxSize().testTag("camera.detections")) {
                             val transform = CameraPreviewTransform.fit(frame.width, frame.height, size.width, size.height, frame.mirrored)
-                            detections.items.forEach { detection ->
-                                val box = detection.box
+                            fun drawBox(box: PixelBox, label: String, accent: Color) {
                                 val left = transform.x(box.left)
                                 val right = transform.x(box.right)
                                 val top = transform.y(box.top)
                                 val bottom = transform.y(box.bottom)
-                                drawRect(Color(0xFF66E3AC), Offset(min(left, right), top), Size(abs(right - left), (bottom - top).coerceAtLeast(0f)),
+                                drawRect(accent, Offset(min(left, right), top), Size(abs(right - left), (bottom - top).coerceAtLeast(0f)),
                                     style = Stroke(2.dp.toPx()))
-                                val label = textMeasurer.measure("${detection.label} ${(detection.confidence * 100).toInt()}%",
+                                val measured = textMeasurer.measure(label,
                                     TextStyle(color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Medium))
-                                val labelX = min(left, right).coerceIn(0f, (size.width - label.size.width).coerceAtLeast(0f))
-                                val labelY = (top - label.size.height).coerceIn(0f, (size.height - label.size.height).coerceAtLeast(0f))
-                                drawRect(Color(0xFF66E3AC), Offset(labelX, labelY), Size(label.size.width.toFloat(), label.size.height.toFloat()))
-                                drawText(label, topLeft = Offset(labelX, labelY))
+                                val labelX = min(left, right).coerceIn(0f, (size.width - measured.size.width).coerceAtLeast(0f))
+                                val labelY = (top - measured.size.height).coerceIn(0f, (size.height - measured.size.height).coerceAtLeast(0f))
+                                drawRect(accent, Offset(labelX, labelY), Size(measured.size.width.toFloat(), measured.size.height.toFloat()))
+                                drawText(measured, topLeft = Offset(labelX, labelY))
+                            }
+                            detections.items.forEach { drawBox(it.box, "${it.label} ${(it.confidence * 100).toInt()}%", Color(0xFF66E3AC)) }
+                            detections.local.forEach { finding ->
+                                val color = if (finding.task == LocalVisionTask.FacialExpressions) Color(0xFFFFA0C9) else Color(0xFF74D5FF)
+                                drawBox(finding.box, "${finding.label} ${(finding.confidence * 100).toInt()}%", color)
                             }
                         }
                     }

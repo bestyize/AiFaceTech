@@ -14,14 +14,14 @@
 | `lib_business:lib_lifecenter` | 生命中心页面、路由模型 | lib_face、lib_theme |
 | `lib_business:lib_realtime` | 豆包、千问端到端实时对话协议与统一事件 | Ktor WebSockets、coroutines、JSON |
 | `lib_business:lib_voice` | 聚合实时对话及独立 ASR/TTS 接口 | lib_realtime、lib_asr、lib_tts |
-| `lib_business:lib_vision` | YOLO26m 帧与检测框契约、模型按需下载/加载、Android/JVM ONNX 推理、视觉配置持久化 | lib_storage、coroutines、ONNX Runtime（Android/JVM） |
+| `lib_business:lib_vision` | YOLO、表情与手势本地分析，模型按需下载/加载，视觉配置持久化 | lib_storage、coroutines、ONNX Runtime、OpenCV DNN、Apple Vision |
 | `lib_business:lib_camera` | 三端相机权限、设备选择、实时 RGBA 帧、预览位图与资源释放 | CameraX（Android）、AVFoundation（iOS）、OpenCV（Desktop）、Compose、coroutines |
 | `shared` | 应用导航和三端共用页面组合 | face、brains、lifecenter、camera、vision、theme 等 |
 | `androidApp` / `desktopApp` / `iosApp` | 各平台入口、窗口和安装包 | shared 等直接使用的模块 |
 
 依赖方向：入口 → shared / 业务模块 → 通用模块。通用模块不引用业务模块；模型请求模块也不引用 AI 大脑 UI。实时协议实现放在 lib_realtime，由 lib_voice 对外聚合；平台采集/播放及 Face 联动在入口接入。视觉模型导出与平台适配见 [`lib_vision/README.md`](../lib_business/lib_vision/README.md)。
 
-相机采集独立在 [`lib_camera`](../lib_business/lib_camera/README.md)，不依赖视觉模型。共享摄像头页面组合相机帧与 `lib_vision`，Android/Desktop 可实时调用 YOLO；iOS 已实现采集与预览，视觉推理后端仍待接入。
+相机采集独立在 [`lib_camera`](../lib_business/lib_camera/README.md)，不依赖视觉模型。共享摄像头页面组合相机帧与 `lib_vision`：Android/Desktop 支持 YOLO、本地七类表情分类和静态手势识别；iOS 使用系统 Vision 分析人脸动作线索及手势，YOLO 后端仍待接入。
 
 ## 常用命令
 

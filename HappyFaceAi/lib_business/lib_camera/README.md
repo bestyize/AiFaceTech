@@ -1,6 +1,6 @@
 # lib_camera
 
-独立的 Kotlin Multiplatform 相机模块，提供三端统一的 `CameraController`、`CameraState`、`CameraFrame` 和预览位图转换。模块负责权限、设备选择、实时采集与资源释放，不依赖 `lib_vision`；`shared/CameraScreen.kt` 负责把采集帧交给 YOLO。
+独立的 Kotlin Multiplatform 相机模块，提供三端统一的 `CameraController`、`CameraState`、`CameraFrame` 和预览位图转换。模块负责权限、设备选择、实时采集与资源释放，不依赖 `lib_vision`；`shared/CameraScreen.kt` 负责把采集帧交给 YOLO 与本地表情/手势分析。
 
 ## 使用入口
 
@@ -20,7 +20,7 @@
 
 `rememberCameraController()` 创建当前平台的控制器，并在 Compose owner 释放时关闭它。`start(deviceId)` 显式启动，`stop()` 等待资源释放，`close()` 用于非阻塞的 owner 结束。桌面工具也可显式调用 `createDesktopCameraController()`。
 
-YOLO 沿用视觉设置：Android/Desktop 在启用且模型可用时实时识别，展示框、类别和置信度；模型未下载或加载失败时继续提供相机预览并提示错误。iOS 相机预览/采集已实现，YOLO iOS 与表情识别推理后端仍待接入，页面不会显示已运行。
+YOLO 沿用视觉设置：Android/Desktop 在启用且模型可用时实时识别，展示框、类别和置信度；模型未下载或加载失败时继续提供相机预览并提示错误。表情和手势也可在视觉页分别启用；Android/Desktop 使用可单独下载的本地 ONNX 模型，iOS 使用 Vision 关键点与手部静态姿势分析。iOS 的表情输出是微笑/张嘴等动作线索，七类表情分类器仅在 Android/Desktop 提供。iOS YOLO 仍待接入。
 
 ## 验证
 

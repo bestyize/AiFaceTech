@@ -14,6 +14,14 @@
 
 进入设置页、检查下载状态或下载文件均不创建 ONNX 会话。`Yolo26mModel.detect()` 在首次实际识别时校验缓存并创建会话，后续帧复用；更换模型、关闭识别、删除正在使用的下载模型或调用 `unload()` 时关闭会话。通过 Mutex 串行化模型操作与识别，避免删除过程中继续使用模型。
 
+## 本地表情与手势分析
+
+生命中心 → 视觉中分别启用表情识别或手势识别。Android/Desktop 使用 OpenCV DNN 执行本地 ONNX 模型，模型由用户单独按需下载，不打包进应用：表情模型包包含 YuNet 人脸检测和 MobileFaceNet 七类表情分类，合计约 5.0 MB；手势模型包包含 MediaPipe 掌心检测和 21 点手部关键点模型，合计约 8.0 MB。文件下载后可离线分析。资源来自固定版本的 [OpenCV Zoo 人脸模型](https://github.com/opencv/opencv_zoo/tree/4.x/models/face_detection_yunet)、[表情分类模型](https://github.com/opencv/opencv_zoo/tree/4.x/models/facial_expression_recognition)、[掌心检测模型](https://github.com/opencv/opencv_zoo/tree/4.x/models/palm_detection_mediapipe) 和 [手部姿态模型](https://github.com/opencv/opencv_zoo/tree/4.x/models/handpose_estimation_mediapipe)，下载时核对固定长度和 SHA-256。
+
+手部关键点随后由本机几何规则识别点赞、张开手掌、握拳、V 字、指向和捏合。它识别静态手势，不识别挥手等动态动作，也不需要训练专用 YOLO。表情分类输出七类外观标签（愤怒、厌恶、恐惧、开心、平静、难过、惊讶），不能据此推断人的真实情绪或心理状态。
+
+iOS 不下载这些 ONNX 文件，而调用 Apple Vision 在本机获取人脸/手部关键点。表情页目前只显示微笑、张嘴或平静等几何动作线索，不等同于 Android/Desktop 的七类表情分类；手势使用共同的 21 点静态姿势规则。iOS YOLO 推理暂未接入。
+
 ### 自定义导出
 
 在安装了 Ultralytics 的 Python 环境手动导出官方 COCO 检测权重：
@@ -84,7 +92,7 @@ try {
 
 ## 现阶段边界
 
-- Android/JVM 已提供真实推理，桌面端提供图片验证入口；生命中心的「视觉」已提供 YOLO 与表情识别配置页。`lib_camera` 已实现三端采集，共享摄像头页面在 Android/Desktop 按保存配置实时调用 YOLO；语音/LLM 视觉工具调用尚未接入。
-- `VisionPreferencesStore` 通过 `lib_storage` 持久化两组启用偏好、ONNX 模型路径和置信度阈值；默认关闭。YOLO 空路径选用按需下载的模型，非空路径选用自定义文件。表情识别目前仅保存配置，尚无推理后端。保存只校验路径格式，实际推理时才加载并检查模型。
-- iOS 已有独立相机采集/预览及通用检测数据契约；视觉推理需要后续接入 Core ML 或 ONNX Runtime iOS 后端。
+- Android/Desktop 已提供本地 YOLO、七类表情分类和静态手势分析；生命中心视觉页为三项功能分别提供开关、阈值、按需下载与模型缓存操作，共享摄像头页面按已保存配置绘制结果。iOS 使用系统 Vision 提供表情动作线索和静态手势分析；语音/LLM 视觉工具调用尚未接入。
+- `VisionPreferencesStore` 通过 `lib_storage` 持久化 YOLO、表情和手势三组启用偏好、可选模型路径与置信度阈值；默认关闭。空路径选用按需下载的模型，非空路径选用自定义文件。保存校验路径格式，实际推理时才加载并检查模型。
+- iOS 本地分析依赖 Apple Vision；YOLO 推理后端仍需后续接入 Core ML 或 ONNX Runtime iOS。
 - 默认 COCO 80 类仅匹配官方检测权重；自训练权重的类别名称需自行适配。

@@ -130,7 +130,7 @@ internal class ManagedYolo26m(
     }
 }
 
-private fun openModelDownload(url: String): InputStream {
+internal fun openModelDownload(url: String): InputStream {
     require(URL(url).protocol == "https") { "模型下载须使用 HTTPS" }
     val connection = URL(url).openConnection() as HttpURLConnection
     try {

@@ -115,14 +115,15 @@ Android debug 包内置这些默认值；release 包保持密钥为空。桌面�
 - Android/Desktop SenseVoice 模型从魔搭兼容导出版按需下载并校验，模型保存在各自应用数据目录。仅本地识别无需密钥，生成回答需要 AI 大脑配置，MiMo 朗读及在线回退需要 MiMo 密钥；Android 与桌面端也可按需下载 Piper 中文 INT8 模型离线朗读。
 - `./gradlew :desktopApp:exportVoiceSettings` 用内存示例导出 45 张页面图，并检查九种尺寸/缩放配置上的真实 Compose 交互，不读取密钥或发起下载。图片位于 `desktopApp/build/voice-settings/`。
 
-YOLO26m 视觉检测已加入 [`lib_business/lib_vision`](lib_business/lib_vision/README.md)：Android / Desktop 通过 ONNX Runtime 运行本地模型，可在视觉设置中按需下载，也可提供自己的兼容导出。iOS 已有相机预览与采集，视觉推理后端尚未接入。
+本地视觉分析已加入 [`lib_business/lib_vision`](lib_business/lib_vision/README.md)：Android / Desktop 使用本地模型分析 YOLO 目标、人脸七类表情和静态手势；iOS 使用系统 Vision 在设备上分析人脸可见动作线索与手势。摄像头帧不上传。YOLO 与 Android/Desktop 的表情、手势模型可分别按需下载。
 
 ### 视觉配置
 
-- 从生命中心的「视觉」进入，分别配置 YOLO 目标检测和表情识别的启用偏好、本地 ONNX 模型路径与置信度阈值。
-- 点击保存后持久化到独立的 `vision.*` 设置项。YOLO 路径留空使用下载模型，也可填写自定义 `.onnx` 路径；表情识别启用时仍须填写路径。保存只校验路径格式，实际加载时检查文件与模型格式。
+- 从生命中心的「视觉」进入，在 YOLO、表情识别和手势识别三个选项卡配置启用状态、置信度阈值与可选的自定义 ONNX 模型路径。
+- 点击保存后持久化到独立的 `vision.*` 设置项。模型路径留空使用按需下载的预训练模型；保存校验自定义路径格式，推理时再校验模型文件。
 - YOLO26m 默认模型约 82 MB，在 Android/桌面端按需下载并校验固定版本的文件大小和 SHA-256。支持进度、取消、失败重试和删除；模型不打包进安装包，下载和打开设置页不会载入推理实例，首次调用检测时创建并复用实例，结束识别可通过 `Yolo26mModel.unload()` 释放内存。
-- 开关默认关闭。保存配置不会启动摄像头；点击「保存并打开摄像头」后可在相机页面显式启动。Android/Desktop 已联动 YOLO，iOS YOLO 与表情识别后端仍待接入，页面明确展示状态。
+- 表情模型包（YuNet 人脸检测 + MobileFaceNet 七类分类）约 5.0 MB；手势模型包（MediaPipe 掌心检测 + 21 点手部关键点）约 8.0 MB。Android/Desktop 下载后可离线运行；手势分类由本地关键点几何规则完成。iOS 不下载模型，使用 Vision 提供的人脸关键点/嘴部动作线索和手部关键点识别；iOS 的 YOLO 后端仍待接入。
+- 开关默认关闭。保存配置不会启动摄像头；点击「保存并打开摄像头」后可在相机页面显式启动。摄像头页面绘制各项识别框和结果，所有分析均在本机运行。
 - 返回与保存、两组配置切换固定在顶部，正文滚动；未保存编辑可在 Android 页面重建时保留，直接返回会放弃编辑。
 - `./gradlew :desktopApp:exportVisionSettings` 检查七种尺寸/缩放上的实际 Compose 交互及下载/删除/取消、忙碌/错误状态，导出 22 张页面图到 `desktopApp/build/vision-settings/`，不读取或写入用户配置。
 - `./gradlew :lib_business:lib_vision:verifyManagedYolo26m` 在隔离的构建目录实测 HTTPS 下载、完整性校验、真实 ONNX 连续推理、释放和删除，不影响用户模型目录；普通 JVM 测试保持离线。
@@ -131,9 +132,9 @@ YOLO26m 视觉检测已加入 [`lib_business/lib_vision`](lib_business/lib_visio
 
 新增独立 [`lib_camera`](lib_business/lib_camera/README.md)：Android CameraX、iOS AVFoundation、Desktop OpenCV 共用控制器、状态和 RGBA 帧接口，采集与推理模块分别维护。生命中心 → 视觉 →「保存并打开摄像头」可启动实时预览，切换移动端设备或桌面设备编号；支持权限拒绝提示、停止和重试，离开页面/进入后台后释放采集资源。
 
-Android/Desktop 在 YOLO 已启用且模型可用时绘制检测框、类别和置信度，前置预览镜像与框坐标一致；未配置模型时继续预览并提示。iOS 已接相机采集和预览，视觉推理后端仍待接入。视频帧仅在本机处理，不保存或上传。
+Android/Desktop 在相应模型已安装且功能已启用时绘制 YOLO、人脸表情和手势的检测框、类别与置信度，前置预览镜像与框坐标一致；模型未下载时继续预览并提示。iOS 使用系统 Vision 提供本地表情动作线索和静态手势识别，iOS YOLO 后端仍待接入。视频帧仅在本机处理，不保存或上传。
 
-`./gradlew :desktopApp:exportCamera` 用合成帧导出七种屏幕配置共 28 张图片，并检查实际页面交互；`./gradlew :lib_business:lib_camera:verifyDesktopCamera` 可显式验证真实采集、停止与重新打开；相机到本地 YOLO 的实测命令见模块说明。当前已验证 Android 构建与 Windows 相机/YOLO 调用，iOS 相机模块已通过 Kotlin/Native 编译，完整 Xcode 构建和真机行为仍需 Mac/iPhone 验证。
+`./gradlew :desktopApp:exportCamera` 用合成帧导出七种屏幕配置共 28 张图片，并检查实际页面交互；`./gradlew :lib_business:lib_camera:verifyDesktopCamera` 可显式验证真实采集、停止与重新打开；相机到本地 YOLO 的实测命令见模块说明。Android Debug 包、桌面共享代码及 iOS ARM64 Vision 实现均已编译；完整 Xcode 构建和 iOS 真机行为仍需 Mac/iPhone 验证。
 
 `shared` 只组合页面与平台入口；Android、Desktop 与 iOS 共用这一层。模块目录见 [docs/MODULES.md](docs/MODULES.md)。
 
