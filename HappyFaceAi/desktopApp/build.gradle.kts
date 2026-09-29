@@ -49,6 +49,7 @@ dependencies {
     implementation(project(":lib_business:lib_vision"))
     implementation(project(":lib_business:lib_camera"))
     implementation(project(":lib_common:lib_theme"))
+    implementation(project(":lib_common:lib_network"))
 
     implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutinesSwing)
@@ -168,6 +169,16 @@ tasks.register<JavaExec>("exportVoiceFaceControls") {
     mainClass.set("com.aifacemate.face.tools.ExportVoiceFaceControlsKt")
     classpath = sourceSets["main"].runtimeClasspath
     args = listOf(layout.buildDirectory.dir("voice-face-controls").get().asFile.absolutePath)
+}
+
+// Manual network verification using raw PCM input, without the desktop UI or microphone.
+tasks.register<JavaExec>("verifyStreamingSpeech") {
+    group = "verification"
+    description = "Measure installed Piper and optionally development-key MiMo streaming without speakers"
+    mainClass.set("com.aifacemate.face.tools.VerifyStreamingSpeechKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args = listOf(rootProject.layout.projectDirectory.file("local.properties").asFile.absolutePath,
+        providers.gradleProperty("streamVerifyApi").orElse("false").get())
 }
 
 // Manual network verification using raw PCM input, without the desktop UI or microphone.

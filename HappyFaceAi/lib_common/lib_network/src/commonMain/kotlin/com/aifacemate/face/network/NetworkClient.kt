@@ -7,5 +7,8 @@ data class MultipartPart(val name: String, val value: String? = null, val fileNa
 expect class NetworkClient {
     suspend fun get(url: String, headers: Map<String, String> = emptyMap()): NetworkResponse
     suspend fun postJson(url: String, headers: Map<String, String>, body: String): NetworkResponse
+    /** Consume SSE data events as they arrive; returning false closes the response immediately. */
+    suspend fun postEventStream(url: String, headers: Map<String, String>, body: String,
+        onEvent: suspend (String) -> Boolean): NetworkResponse
     suspend fun postMultipart(url: String, headers: Map<String, String>, parts: List<MultipartPart>): NetworkResponse
 }

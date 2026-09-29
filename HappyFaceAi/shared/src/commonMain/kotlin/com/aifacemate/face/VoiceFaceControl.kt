@@ -36,9 +36,11 @@ data class VoiceFaceControlState(
     val realtime: Boolean = false,
     val actionEnabled: Boolean = true,
     val notice: String? = null,
+    val replyActive: Boolean = false,
 ) {
     val actionLabel: String get() = when {
         notice != null -> "查看对话提示"
+        replyActive -> "停止回复"
         realtime && phase != VoiceFacePhase.Idle -> "结束实时对话"
         phase == VoiceFacePhase.Listening -> "结束说话并提交"
         phase == VoiceFacePhase.Speaking -> "停止朗读"
@@ -58,23 +60,15 @@ fun VoiceFaceControl(
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val compact = maxWidth.value / fontScale < 400f || maxHeight.value / fontScale < 220f
         val spacious = !compact && maxWidth >= 700.dp
-        val label = if (compact) {
-            when {
-                state.notice != null -> "详情"
-                !state.actionEnabled && state.phase == VoiceFacePhase.Idle -> "不可用"
-                state.phase == VoiceFacePhase.Idle -> "说话"
-                state.phase == VoiceFacePhase.Listening -> "聆听"
-                state.phase == VoiceFacePhase.Processing -> "处理中"
-                else -> "回答"
-            }
-        } else state.notice ?: when (state.phase) {
+        val label = state.notice ?: when (state.phase) {
             VoiceFacePhase.Idle -> if (state.actionEnabled) "点击说话" else "暂不可用"
-            VoiceFacePhase.Listening -> "正在聆听"
-            VoiceFacePhase.Processing -> "正在处理"
-            VoiceFacePhase.Speaking -> "正在回答"
+            VoiceFacePhase.Listening -> if (compact) "聆听中" else "正在聆听"
+            VoiceFacePhase.Processing -> if (compact) "处理中" else "正在处理"
+            VoiceFacePhase.Speaking -> if (compact) "回答中" else "正在回答"
         }
         val hint = when {
             state.notice != null -> "点击查看详情"
+            state.replyActive -> "再次点击，停止回复"
             !state.actionEnabled && state.phase == VoiceFacePhase.Idle -> "长按查看详情"
             state.phase == VoiceFacePhase.Idle -> "长按查看对话记录"
             state.realtime -> "再次点击，结束对话"
@@ -88,7 +82,7 @@ fun VoiceFaceControl(
             state.phase == VoiceFacePhase.Speaking -> Color(0xFFD3F1F4)
             else -> Color(0xFFCDD8DB)
         }
-        val width = if (compact) (280f + 120f * (fontScale - 1f)).dp
+        val width = if (compact) (148f + 64f * (fontScale - 1f)).dp
             else (maxWidth * .4f).coerceIn(220.dp, 320.dp)
         val primary = rememberUpdatedState(onVoice)
         val open = rememberUpdatedState(onOpenConversation)
@@ -119,24 +113,24 @@ fun VoiceFaceControl(
                         onLongPress = { open.value() },
                     )
                 }
-                .padding(horizontal = if (compact) 8.dp else 20.dp, vertical = 8.dp),
+                .padding(horizontal = if (compact) 16.dp else 20.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp)) {
-                VoiceFaceMic(ink, Modifier.size(if (compact) 16.dp else if (spacious) 26.dp else 24.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp)) {
+                VoiceFaceMic(ink, Modifier.size(if (compact) 20.dp else if (spacious) 26.dp else 24.dp))
                 if (!compact && state.notice == null && state.phase != VoiceFacePhase.Idle) {
                     VoiceFaceActivity(state.phase, ink, Modifier.size(width = 28.dp, height = 22.dp).testTag("voice.face.activity"))
                 }
-                Text(label, Modifier.testTag("voice.face.label").widthIn(max = if (compact) (220f + 20f * (fontScale - 1f)).dp else 320.dp), color = ink,
-                    fontSize = if (compact) (6f / fontScale).sp else if (spacious) 24.sp else 18.sp,
-                    lineHeight = if (compact) (8f / fontScale).sp else if (spacious) 29.sp else 23.sp,
+                Text(label, Modifier.testTag("voice.face.label"), color = ink,
+                    fontSize = if (compact) 14.sp else if (spacious) 24.sp else 18.sp,
+                    lineHeight = if (compact) 20.sp else if (spacious) 29.sp else 23.sp,
                     fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (!compact) {
                 Spacer(Modifier.height(3.dp))
-                Text(hint.take(8), Modifier.testTag("voice.face.hint"), color = Color(0xFF8A9B9F), fontSize = 11.sp,
-                    lineHeight = 15.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+                Text(hint, Modifier.testTag("voice.face.hint"), color = Color(0xFF8A9B9F), fontSize = 11.sp,
+                    lineHeight = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

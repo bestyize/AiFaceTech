@@ -40,7 +40,6 @@ fun main(args: Array<String>) {
         val expanded = mutableStateOf(false)
         var voiced = 0
         var opened = 0
-        var compactMode = true
         val messages = listOf(ChatMessage("user", "你好，小星。"), ChatMessage("assistant", "你好呀，今天想聊些什么？"))
         val scene = ImageComposeScene(viewport.width, viewport.height, Density(viewport.density, viewport.font)) {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -64,9 +63,14 @@ fun main(args: Array<String>) {
                 }
             }
         }
+        var primaryFailure: Throwable? = null
         try {
             var time = 0L
-            fun frames() { repeat(3) { time += 100_000_000L; scene.render(time).close() } }
+            fun frames() { repeat(3) {
+                time += 100_000_000L; scene.render(time).close()
+                // Rect/position callbacks are also throttled by wall-clock time in Compose Desktop.
+                Thread.sleep(20)
+            } }
             fun nodes(): List<SemanticsNode> {
                 fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap { visit(it) }
                 return scene.semanticsOwners.flatMap { visit(it.unmergedRootSemanticsNode) }
@@ -85,7 +89,14 @@ fun main(args: Array<String>) {
                     val layouts = mutableListOf<TextLayoutResult>()
                     node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(layouts)
                     if (tag != "voice.face.activity") check(layouts.isNotEmpty()) { "Missing text measurement: $tag" }
-                    check(layouts.none { it.hasVisualOverflow } || (viewport.name in setOf("2.8-320x240", "4.3-800x480", "small-font150", "small-density150", "large-density150", "large-font150", "phone-2400x1080", "portrait-390x844") && tag in setOf("voice.face.label", "voice.face.hint"))) {
+                    // Skia's fractional paragraph width can exceed its rounded IntSize by < 1 px.
+                    // Check ellipsis and actual line bounds instead of suppressing checks per viewport.
+                    check(layouts.all { layout ->
+                        !layout.didOverflowHeight && (0 until layout.lineCount).all { line ->
+                            !layout.isLineEllipsized(line) && layout.getLineLeft(line) >= -1f &&
+                                layout.getLineRight(line) <= layout.size.width + 1f
+                        }
+                    }) {
                         "$tag truncated in ${viewport.name}: bounds=$bounds layouts=${layouts.map { "${it.layoutInput.text} size=${it.size} lines=${it.lineCount} width=${it.didOverflowWidth} height=${it.didOverflowHeight} constraints=${it.layoutInput.constraints}" }}"
                     }
                 }
@@ -131,8 +142,19 @@ fun main(args: Array<String>) {
             check(!tagged("voice.face.control").config.contains(SemanticsActions.OnClick))
             check(tagged("voice.face.control").config[SemanticsActions.OnLongClick].action?.invoke() == true)
             frames(); check(expanded.value && opened == 5)
+            check(tagged("chat.collapse").config[SemanticsActions.OnClick].action?.invoke() == true)
+            state.value = VoiceFaceControlState(VoiceFacePhase.Processing, "AI 大脑正在思考", replyActive = true)
+            frames(); visible()
+            check(tagged("voice.face.control").config[SemanticsActions.OnClick].label == "停止回复")
+            click(); check(voiced == 5)
+            state.value = state.value.copy(phase = VoiceFacePhase.Speaking, status = "正在播放回复")
+            frames(); visible(); click(); check(voiced == 6)
             println("PASS ${viewport.name}: state labels, touch bounds, start/stop, processing lock, history/collapse, notices")
-        } finally { scene.close() }
+        } catch (failure: Throwable) { primaryFailure = failure; throw failure }
+        finally {
+            try { scene.close() }
+            catch (failure: Throwable) { if (primaryFailure != null) primaryFailure.addSuppressed(failure) else throw failure }
+        }
     }
     println("Exported $screenshots voice face screenshots to ${output.absolutePath}")
 }

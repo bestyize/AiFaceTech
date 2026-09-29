@@ -1,8 +1,12 @@
 package com.aifacemate.face.voice.tts.client
 
 import com.aifacemate.face.voice.tts.model.TtsResult
+import com.aifacemate.face.voice.tts.model.SpeechAudioChunk
 
 actual object PiperTts {
+    actual suspend fun stream(text: String, onAudio: suspend (SpeechAudioChunk) -> Unit) {
+        error("Piper 本地语音目前仅支持 Android 与桌面端")
+    }
     actual fun supported(): Boolean = false
     actual fun prepareRuntime(): Boolean = false
     actual fun installed(): Boolean = false

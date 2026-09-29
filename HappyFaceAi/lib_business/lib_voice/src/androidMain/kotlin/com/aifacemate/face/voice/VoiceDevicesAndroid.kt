@@ -108,45 +108,61 @@ private class AndroidNativeSpeech : NativeSpeechEngine {
         main.post { recognizer?.let(::finishIfRequested) }
     }
 
-    override suspend fun speak(text: String) = withContext(Dispatchers.Main) {
+    private suspend fun readySpeechEngine(): TextToSpeech {
+        tts?.let { return it }
         val context = AndroidAppContext.context() ?: error("Android context unavailable")
         suspendCancellableCoroutine<Unit> { continuation ->
-            val id = UUID.randomUUID().toString()
             val engine = TextToSpeech(context) { status ->
-                // Some engines invoke onInit before the constructor returns. Post until tts is assigned.
                 main.post {
+                    if (!continuation.isActive) return@post
                     val speech = tts ?: return@post
-                    if (status != TextToSpeech.SUCCESS) {
-                        if (continuation.isActive) continuation.resumeWithException(IllegalStateException("系统朗读不可用"))
-                        speech.shutdown(); tts = null
-                    } else if (speech.setLanguage(Locale.getDefault()) < TextToSpeech.LANG_AVAILABLE) {
-                        if (continuation.isActive) continuation.resumeWithException(IllegalStateException("系统未安装当前语言的语音"))
-                        speech.shutdown(); tts = null
+                    val error = when {
+                        status != TextToSpeech.SUCCESS -> "系统朗读不可用"
+                        speech.setLanguage(Locale.getDefault()) < TextToSpeech.LANG_AVAILABLE -> "系统未安装当前语言的语音"
+                        else -> null
+                    }
+                    if (error == null) {
+                        if (continuation.isActive) continuation.resume(Unit)
                     } else {
-                        speech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                            override fun onStart(utteranceId: String?) = Unit
-                            override fun onDone(utteranceId: String?) {
-                                if (continuation.isActive) continuation.resume(Unit)
-                                main.post { speech.shutdown(); if (tts === speech) tts = null }
-                            }
-                            override fun onError(utteranceId: String?) {
-                                if (continuation.isActive) continuation.resumeWithException(IllegalStateException("系统朗读失败"))
-                                main.post { speech.shutdown(); if (tts === speech) tts = null }
-                            }
-                        })
-                        if (speech.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) == TextToSpeech.ERROR) {
-                            if (continuation.isActive) continuation.resumeWithException(IllegalStateException("系统朗读启动失败"))
-                            speech.shutdown(); tts = null
-                        }
+                        if (continuation.isActive) continuation.resumeWithException(IllegalStateException(error))
+                        speech.shutdown(); if (tts === speech) tts = null
                     }
                 }
             }
             tts = engine
-            continuation.invokeOnCancellation { main.post { engine.stop(); engine.shutdown(); if (tts === engine) tts = null } }
+            continuation.invokeOnCancellation {
+                main.post { engine.stop(); engine.shutdown(); if (tts === engine) tts = null }
+            }
+        }
+        return checkNotNull(tts) { "系统朗读已停止" }
+    }
+
+    override suspend fun speak(text: String) = withContext(Dispatchers.Main) {
+        val engine = readySpeechEngine()
+        suspendCancellableCoroutine<Unit> { continuation ->
+            val id = UUID.randomUUID().toString()
+            engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) = Unit
+                override fun onDone(utteranceId: String?) {
+                    if (utteranceId == id && continuation.isActive) continuation.resume(Unit)
+                }
+                override fun onError(utteranceId: String?) {
+                    if (utteranceId == id && continuation.isActive) continuation.resumeWithException(IllegalStateException("系统朗读失败"))
+                }
+            })
+            // Keep the initialized engine for later phrases instead of cold-starting it per sentence.
+            if (engine.speak(text, TextToSpeech.QUEUE_ADD, null, id) == TextToSpeech.ERROR) {
+                if (continuation.isActive) continuation.resumeWithException(IllegalStateException("系统朗读启动失败"))
+            }
+            continuation.invokeOnCancellation { main.post { engine.stop() } }
         }
     }
 
-    override fun stop() { main.post { recognizer?.cancel(); recognizer?.destroy(); recognizer = null; tts?.stop(); tts?.shutdown(); tts = null } }
+    override fun stop() {
+        val recognition = recognizer; recognizer = null
+        val speech = tts; tts = null
+        main.post { recognition?.cancel(); recognition?.destroy(); speech?.stop(); speech?.shutdown() }
+    }
 }
 
 actual fun realtimeAudioAvailable(): Boolean = AndroidAppContext.context() != null &&

@@ -26,6 +26,8 @@ dependencies {
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
+    androidTestImplementation(project(":lib_business:lib_voice"))
+    androidTestImplementation(libs.kotlinx.coroutinesCore)
 }
 
 android {
@@ -34,6 +36,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aifacemate.face"
+        testInstrumentationRunner = "com.aifacemate.face.PiperStreamingInstrumentation"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1

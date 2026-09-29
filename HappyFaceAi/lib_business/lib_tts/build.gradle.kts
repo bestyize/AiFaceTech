@@ -12,7 +12,10 @@ kotlin {
         compilerOptions { jvmTarget = JvmTarget.JVM_11 }
     }
     sourceSets {
-        commonMain.dependencies { implementation(project(":lib_common:lib_network")) }
+        commonMain.dependencies {
+            implementation(project(":lib_common:lib_network"))
+            implementation(libs.kotlinx.serialization.json)
+        }
         androidMain.dependencies {
             implementation(project(":lib_common:lib_storage"))
             implementation(libs.kotlinx.coroutinesCore)

@@ -1,6 +1,7 @@
 package com.aifacemate.face.voice.tts.client
 
 import com.aifacemate.face.voice.tts.model.TtsResult
+import com.aifacemate.face.voice.tts.model.SpeechAudioChunk
 
 /** Optional, on-device Chinese Piper TTS. Android and desktop support the local runtime; iOS is not yet available. */
 expect object PiperTts {
@@ -11,4 +12,5 @@ expect object PiperTts {
     suspend fun install(onProgress: (Long, Long) -> Unit = { _, _ -> })
     suspend fun remove()
     suspend fun synthesize(text: String): TtsResult
+    suspend fun stream(text: String, onAudio: suspend (SpeechAudioChunk) -> Unit)
 }

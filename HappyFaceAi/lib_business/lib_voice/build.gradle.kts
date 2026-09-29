@@ -27,6 +27,7 @@ kotlin {
         iosSimulatorArm64Main.get().dependsOn(iosMain)
         iosMain.dependencies { implementation(libs.kotlinx.coroutinesCore) }
         commonMain.dependencies {
+            implementation(libs.kotlinx.coroutinesCore)
             implementation(project(":lib_common:lib_storage"))
             api(project(":lib_business:lib_tts"))
             api(project(":lib_business:lib_asr"))

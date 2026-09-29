@@ -11,8 +11,9 @@ import com.aifacemate.face.feature.aibrain.data.AiBrainSettings
 import com.aifacemate.face.feature.aibrain.defaultAiProviders
 import com.aifacemate.face.network.NetworkClient
 import com.aifacemate.face.voice.VoiceCaptureResult
-import com.aifacemate.face.voice.VoiceClip
-import com.aifacemate.face.voice.VoicePlaybackResult
+import com.aifacemate.face.voice.SpeechPcmPlayer
+import com.aifacemate.face.voice.createSpeechPcmPlayer
+import com.aifacemate.face.voice.streamSpokenReply
 import com.aifacemate.face.voice.createNativeSpeechEngine
 import com.aifacemate.face.voice.createRealtimeAudioDevice
 import com.aifacemate.face.voice.createVoiceService
@@ -30,11 +31,12 @@ import com.aifacemate.face.voice.asr.model.AsrResult
 import com.aifacemate.face.voice.tts.client.TtsClient
 import com.aifacemate.face.voice.tts.client.PiperTts
 import com.aifacemate.face.voice.tts.model.TtsRequest
-import com.aifacemate.face.voice.tts.model.TtsResult
+import com.aifacemate.face.voice.tts.model.SpeechAudioChunk
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -43,6 +45,11 @@ import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 enum class VoiceVisualState { Idle, Listening, Speaking }
+
+private sealed interface ReplyPlayback {
+    data class Audio(val chunk: SpeechAudioChunk) : ReplyPlayback
+    data class SystemText(val text: String) : ReplyPlayback
+}
 
 @Composable
 fun VoiceConversationOverlay(
@@ -81,6 +88,84 @@ private fun ConversationPanel(
     var facePhase by remember { mutableStateOf(VoiceFacePhase.Idle) }
     var notice by remember { mutableStateOf<String?>(null) }
     var stoppingRealtime by remember { mutableStateOf(false) }
+    var replyStreaming by remember { mutableStateOf(false) }
+    var pcmPlayer by remember { mutableStateOf<SpeechPcmPlayer?>(null) }
+
+    suspend fun answerWithSpeech() {
+        replyStreaming = true
+        status = "AI 大脑正在思考"
+        val providerId = AiBrainSettings.providerId() ?: "deepseek"
+        val provider = defaultAiProviders.firstOrNull { it.id == providerId }
+        val secret = AiBrainSettings.savedSecret(providerId) ?: error("请先配置 AI 大脑")
+        val model = AiBrainSettings.modelId(providerId)?.takeIf(String::isNotBlank)
+            ?: provider?.models?.firstOrNull()?.id ?: error("请先在 AI 大脑选择模型")
+        val context = messages.toList() // Capture history before adding the streaming assistant row.
+        val index = messages.size
+        messages.add(ChatMessage("assistant", ""))
+        val brain = ChatClient(NetworkClient())
+        val ttsClient = TtsClient(NetworkClient())
+        var player: SpeechPcmPlayer? = null
+        suspend fun updateText(text: String) = withContext(Dispatchers.Main) {
+            messages[index] = ChatMessage("assistant", text)
+        }
+        suspend fun generate(onDelta: suspend (String) -> Unit) {
+            when (val result = brain.stream(ChatConfig(secret.baseUrl, secret.apiKey, model), context, onDelta)) {
+                is ChatResult.Success -> Unit
+                is ChatResult.Failure -> error(result.message)
+            }
+        }
+        try {
+            if (preferences.traditionalTts == TraditionalTts.Mimo && preferences.mimoApiKey.isBlank()) {
+                val text = StringBuilder()
+                generate { text.append(it); updateText(text.toString()) }
+                status = "已生成文字回复；配置 MiMo 或选择系统 / Piper 本地语音合成后可朗读"
+                notice = "查看回复"
+                return
+            }
+            val result = streamSpokenReply<ReplyPlayback>(
+                generate = ::generate,
+                onText = ::updateText,
+                synthesize = { sentence, emit ->
+                    when (preferences.traditionalTts) {
+                        TraditionalTts.System -> {
+                            check(systemTtsAvailable()) { "系统语音合成不可用" }
+                            emit(ReplyPlayback.SystemText(sentence))
+                        }
+                        TraditionalTts.Piper -> PiperTts.stream(sentence) { emit(ReplyPlayback.Audio(it)) }
+                        TraditionalTts.Mimo -> ttsClient.stream(TtsRequest(apiKey = preferences.mimoApiKey,
+                            baseUrl = preferences.mimoBaseUrl, text = sentence, voice = preferences.mimoVoice)) {
+                            emit(ReplyPlayback.Audio(it))
+                        }
+                    }
+                },
+                play = { part ->
+                    when (part) {
+                        is ReplyPlayback.SystemText -> checkNotNull(native).speak(part.text)
+                        is ReplyPlayback.Audio -> {
+                            val output = player ?: createSpeechPcmPlayer().also { player = it; pcmPlayer = it }
+                            output.write(part.chunk)
+                        }
+                    }
+                },
+                drain = { player?.drain() },
+                onSpeechStart = { status = "正在播放回复"; facePhase = VoiceFacePhase.Speaking },
+                onSpeechFailure = { failure ->
+                    player?.close(); native?.stop()
+                    facePhase = VoiceFacePhase.Processing
+                    status = "朗读失败，正在接收文字：${failure.message.orEmpty()}"
+                },
+            )
+            val speechFailure = result.speechFailure
+            if (speechFailure != null) {
+                status = "朗读失败：${speechFailure.message.orEmpty()}；文字回复已保留"
+                notice = "查看回复"
+            } else status = "可以继续对话"
+        } finally {
+            player?.close(); pcmPlayer = null
+            if (messages.getOrNull(index)?.content?.isBlank() == true) messages.removeAt(index)
+            replyStreaming = false
+        }
+    }
 
     fun show(role: String, text: String) { if (text.isNotBlank()) messages.add(ChatMessage(role, text)) }
 
@@ -174,54 +259,10 @@ private fun ConversationPanel(
                     notice = "查看文字"
                     return@launch
                 }
-                status = "AI 大脑正在思考"
-                val answer = askBrain(input)
-                show("assistant", answer)
-                if (preferences.mode == VoiceMode.Traditional && preferences.traditionalTts == TraditionalTts.Mimo && preferences.mimoApiKey.isBlank()) {
-                    status = "已生成文字回复；配置 MiMo 或选择系统 / Piper 本地语音合成后可朗读"
-                    notice = "查看回复"
-                    return@launch
-                }
-                when {
-                    preferences.mode == VoiceMode.Traditional && preferences.traditionalTts == TraditionalTts.System -> {
-                        check(systemTtsAvailable()) { "系统语音合成不可用" }
-                        status = "正在播放回复"
-                        facePhase = VoiceFacePhase.Speaking
-                        checkNotNull(native).speak(answer)
-                    }
-                    preferences.mode == VoiceMode.Traditional && preferences.traditionalTts == TraditionalTts.Piper -> {
-                        status = "Piper 正在本地合成"
-                        val audio = when (val result = PiperTts.synthesize(answer)) {
-                            is TtsResult.Success -> result.audio
-                            is TtsResult.Failure -> error(result.message)
-                        }
-                        status = "正在播放回复"
-                        facePhase = VoiceFacePhase.Speaking
-                        when (val result = voice.play(VoiceClip(audio, "audio/wav"))) {
-                            VoicePlaybackResult.Complete -> Unit
-                            is VoicePlaybackResult.Failure -> error(result.reason)
-                        }
-                    }
-                    else -> {
-                        status = "MiMo 正在合成回复"
-                        val response = TtsClient(NetworkClient()).synthesize(TtsRequest(apiKey = preferences.mimoApiKey,
-                            baseUrl = preferences.mimoBaseUrl, text = answer, voice = preferences.mimoVoice, format = "wav"))
-                        val audio = when (response) {
-                            is TtsResult.Success -> response.audio
-                            is TtsResult.Failure -> error(response.message)
-                        }
-                        status = "正在播放回复"
-                        facePhase = VoiceFacePhase.Speaking
-                        when (val result = voice.play(VoiceClip(audio, "audio/wav"))) {
-                            VoicePlaybackResult.Complete -> Unit
-                            is VoicePlaybackResult.Failure -> error(result.reason)
-                        }
-                    }
-                }
-                status = "可以继续对话"
+                answerWithSpeech()
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { status = error.message ?: "语音对话失败"; notice = "查看提示" }
-            finally { capturing = false; busy = false; facePhase = VoiceFacePhase.Idle }
+            finally { capturing = false; busy = false; replyStreaming = false; facePhase = VoiceFacePhase.Idle }
         }
     }
 
@@ -302,13 +343,14 @@ private fun ConversationPanel(
                     realtimeJob?.cancel()
                 }
             } else startRealtime()
-        } else if (facePhase == VoiceFacePhase.Speaking) {
-            turnJob?.cancel(); voice.stop(); native?.stop(); status = "已停止朗读"
+        } else if (replyStreaming || facePhase == VoiceFacePhase.Speaking) {
+            turnJob?.cancel(); pcmPlayer?.close(); voice.stop(); native?.stop(); status = "已停止回复"
         } else startSingleTurn()
     }
 
     val currentRealtime = rememberUpdatedState(realtimeJob)
     val currentTurn = rememberUpdatedState(turnJob)
+    val currentPcmPlayer = rememberUpdatedState(pcmPlayer)
     val currentVisualCallback = rememberUpdatedState(onVisualStateChange)
     val visualState = when (facePhase) {
         VoiceFacePhase.Speaking -> VoiceVisualState.Speaking
@@ -316,13 +358,14 @@ private fun ConversationPanel(
         else -> VoiceVisualState.Idle
     }
     val voiceEnabled = if (preferences.mode == VoiceMode.Realtime) realtimeAudioAvailable() && !stoppingRealtime
-        else capturing || facePhase == VoiceFacePhase.Speaking ||
+        else capturing || replyStreaming || facePhase == VoiceFacePhase.Speaking ||
             (!busy && (preferences.traditionalAsr != TraditionalAsr.System || systemAsrAvailable()))
     LaunchedEffect(visualState) { if (overlay && preferences.keepFaceVisible) currentVisualCallback.value(visualState) }
     DisposableEffect(Unit) {
         onDispose {
             currentVisualCallback.value(VoiceVisualState.Idle)
             currentRealtime.value?.cancel(); currentTurn.value?.cancel(); voice.stop(); native?.stop()
+            currentPcmPlayer.value?.close()
         }
     }
 
@@ -330,9 +373,9 @@ private fun ConversationPanel(
     fun FullPanel(panelModifier: Modifier) = ConversationScreenContent(
         state = ConversationScreenState(
             mode = preferences.mode, messages = messages.toList(), draft = draft, status = status,
-            busy = busy, voiceActive = live || capturing || facePhase == VoiceFacePhase.Speaking,
+            busy = busy, voiceActive = live || capturing || replyStreaming || facePhase == VoiceFacePhase.Speaking,
             voiceEnabled = voiceEnabled,
-            voiceActionLabel = if (preferences.mode == VoiceMode.Traditional && facePhase == VoiceFacePhase.Speaking) "停止朗读" else null,
+            voiceActionLabel = if (replyStreaming) "停止回复" else null,
         ),
         onDraftChange = { draft = it }, onSend = ::submitText, onVoice = ::toggleVoice, onClose = onClose,
         modifier = panelModifier,
@@ -343,7 +386,8 @@ private fun ConversationPanel(
         FullPanel(modifier)
     } else if (preferences.keepFaceVisible && !detailsExpanded) {
         VoiceFaceControl(
-            state = VoiceFaceControlState(facePhase, status, preferences.mode == VoiceMode.Realtime, voiceEnabled, notice),
+            state = VoiceFaceControlState(facePhase, status, preferences.mode == VoiceMode.Realtime, voiceEnabled, notice,
+                replyActive = replyStreaming),
             onVoice = ::toggleVoice,
             onOpenConversation = { detailsExpanded = true },
             modifier = modifier,

@@ -72,7 +72,7 @@ fun ConversationScreenContent(
             val listState = rememberLazyListState()
             var previousCount by remember { mutableIntStateOf(0) }
             var previousStatus by remember { mutableStateOf(state.status) }
-            LaunchedEffect(state.messages.size, state.status) {
+            LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.content, state.status) {
                 val visibleEnd = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
                 val follow = previousCount == 0 || visibleEnd >= previousCount - 1
                 if (follow && (state.messages.isNotEmpty() || state.status != previousStatus)) {
@@ -195,7 +195,7 @@ fun ConversationScreenContent(
                             if (state.voiceEnabled) Color(0xFF221D13) else ChatMuted, Modifier.size(18.dp))
                         Spacer(Modifier.width(5.dp))
                         Text(if (small) when {
-                            state.voiceActionLabel == "停止朗读" -> "停止"
+                            state.voiceActionLabel?.startsWith("停止") == true -> "停止"
                             state.voiceActive -> "结束"
                             processing -> "处理"
                             else -> "说话"

@@ -2,6 +2,11 @@ package com.aifacemate.face.voice.tts.client
 
 import com.aifacemate.face.data.AndroidAppContext
 import com.aifacemate.face.voice.tts.model.TtsResult
+import com.aifacemate.face.voice.tts.model.SpeechAudioChunk
+import com.aifacemate.face.voice.tts.model.floatSamplesToPcm16
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.isActive
+import kotlin.coroutines.ContinuationInterceptor
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
@@ -87,18 +92,7 @@ actual object PiperTts {
         require(text.isNotBlank()) { "请输入要合成的文字" }
         gate.withLock {
             withContext(Dispatchers.Default) {
-                check(installed()) { "请先在声音设置中下载 Piper 中文语音模型" }
-                val dir = directory()
-                if (!verified) {
-                    check(files.all { valid(File(dir, it.name), it.size, it.sha256) }) {
-                        "Piper 模型校验失败，请删除后重新下载"
-                    }
-                    verified = true
-                }
-                val engine = tts ?: try { createEngine(dir).also { tts = it } }
-                    catch (failure: LinkageError) {
-                        throw IllegalStateException("Piper Android 原生运行库加载失败，请更新应用后重试", failure)
-                    }
+                val engine = readyEngine()
                 val audio = engine.generate(text, sid = 0, speed = 1.0f)
                 TtsResult.Success(floatSamplesToWav(audio.samples, audio.sampleRate), "audio/wav")
             }
@@ -107,6 +101,55 @@ actual object PiperTts {
         throw cancelled
     } catch (error: Exception) {
         TtsResult.Failure(error.message ?: "Piper 语音合成失败")
+    }
+
+    actual suspend fun stream(text: String, onAudio: suspend (SpeechAudioChunk) -> Unit) {
+        require(text.isNotBlank()) { "请输入要合成的文字" }
+        gate.withLock {
+            withContext(Dispatchers.Default) {
+                val engine = readyEngine()
+                val context = currentCoroutineContext()
+                val sampleRate = engine.sampleRate()
+                var callbackFailure: Throwable? = null
+                var received = false
+                val callback = PiperAudioCallback { samples ->
+                    if (!context.isActive) 0 else try {
+                        // Convert/copy JNI-owned samples before returning from this callback.
+                        val pcm = floatSamplesToPcm16(samples)
+                        runBlocking(context.minusKey(ContinuationInterceptor)) {
+                            var offset = 0
+                            while (offset < pcm.size) {
+                                ensureActive()
+                                val end = minOf(offset + (sampleRate / 4) * 2, pcm.size)
+                                onAudio(SpeechAudioChunk(pcm.copyOfRange(offset, end), sampleRate))
+                                received = true; offset = end
+                            }
+                        }
+                        1
+                    } catch (failure: Throwable) { callbackFailure = failure; 0 }
+                }
+                engine.generateWithCallback(text, sid = 0, speed = 1.0f, callback = callback)
+                context.ensureActive()
+                callbackFailure?.let { throw it }
+                check(received) { "Piper 没有生成有效音频" }
+            }
+        }
+    }
+
+    private fun readyEngine(): OfflineTts {
+        check(installed()) { "请先在声音设置中下载 Piper 中文语音模型" }
+        val dir = directory()
+        if (!verified) {
+            check(files.all { valid(File(dir, it.name), it.size, it.sha256) }) {
+                "Piper 模型校验失败，请删除后重新下载"
+            }
+            verified = true
+        }
+        val engine = tts ?: try { createEngine(dir).also { tts = it } }
+            catch (failure: LinkageError) {
+                throw IllegalStateException("Piper Android 原生运行库加载失败，请更新应用后重试", failure)
+            }
+        return engine
     }
 
     private fun createEngine(dir: File): OfflineTts {
