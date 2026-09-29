@@ -37,14 +37,14 @@ Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-mu
 
 - 首页轻点显示临时操作层，3.5 秒后自动收起；长按进入生命中心。
 - 抚摸会短暂切换开心表情；对话入口明确提示语音尚未接入。
-- 生命中心包含角色卡、八个能力入口和本次运行中的表情变化记录。
+- 生命中心包含角色卡、九个能力入口和本次运行中的表情变化记录。
 - 顶栏按设计稿收窄（常规 44dp / 小横屏 36dp）：返回是矢量箭头加「返回」两字的胶囊按钮；竖屏放在标题左侧，横屏收到右上角；待接入详情页共用这一套顶栏。
 - 「表情与外观」复用原有调试台，右上角保留「返回上一页」胶囊，本身没有整行标题栏，因此不加返回图标顶栏。
-- 「AI 大脑」已实现独立配置页；声音、人格、记忆、能力、生活节律和设备系统仍为待接入详情页。
+- 「AI 大脑」「声音」「视觉」已实现独立配置页；人格、记忆、能力、生活节律和设备系统仍为待接入详情页。
 - Android 仅允许左右横屏（`sensorLandscape`）；宽屏双栏、窄屏纵向滚动，小横屏保留双栏。
 - 当前角色资料为默认本地资料，变化记录不持久化，不展示虚构的陪伴天数。
 
-共享页面位于 `shared/src/commonMain/kotlin/com/aifacemate/face/feature/lifecenter/`。
+生命中心页面位于 `lib_business/lib_lifecenter/src/commonMain/kotlin/com/aifacemate/face/feature/lifecenter/`。
 运行 `./gradlew :desktopApp:exportLifeCenter` 可渲染宽屏、小横屏和手机窄屏，用于视觉检查。
 
 ### AI 大脑 · v3
@@ -112,12 +112,30 @@ Android debug 包内置这些默认值；release 包保持密钥为空。桌面�
 - 小屏用顶部紧凑模式切换与独立滚动配置区；中屏左右分栏；大屏把服务选择与连接配置并排显示。
 - 依据安全区域内可用 dp 和字体缩放调整布局，返回与保存始终固定在顶栏；输入时避让软键盘。
 - 保留服务商与模型、MiMo 音色、本地模型下载/删除、猫脸显示和配置持久化；不支持的选项仍可见并标明设备限制。
-- Android SenseVoice 模型从魔搭兼容导出版下载，保持原有文件校验。仅本地识别无需密钥，生成回答需要 AI 大脑配置，MiMo 朗读及在线回退需要 MiMo 密钥。
+- Android/Desktop SenseVoice 模型从魔搭兼容导出版按需下载并校验，模型保存在各自应用数据目录。仅本地识别无需密钥，生成回答需要 AI 大脑配置，MiMo 朗读及在线回退需要 MiMo 密钥；Android 与桌面端也可按需下载 Piper 中文 INT8 模型离线朗读。
 - `./gradlew :desktopApp:exportVoiceSettings` 用内存示例导出 45 张页面图，并检查九种尺寸/缩放配置上的真实 Compose 交互，不读取密钥或发起下载。图片位于 `desktopApp/build/voice-settings/`。
 
-YOLO26m 视觉检测已加入 [`lib_business/lib_vision`](lib_business/lib_vision/README.md)：Android / Desktop 通过 ONNX Runtime 运行本地模型，模型需按说明单独导出并提供。iOS 当前只有共享检测数据契约，尚无视觉推理后端或相机页面。
+YOLO26m 视觉检测已加入 [`lib_business/lib_vision`](lib_business/lib_vision/README.md)：Android / Desktop 通过 ONNX Runtime 运行本地模型，可在视觉设置中按需下载，也可提供自己的兼容导出。iOS 已有相机预览与采集，视觉推理后端尚未接入。
+
+### 视觉配置
+
+- 从生命中心的「视觉」进入，分别配置 YOLO 目标检测和表情识别的启用偏好、本地 ONNX 模型路径与置信度阈值。
+- 点击保存后持久化到独立的 `vision.*` 设置项。YOLO 路径留空使用下载模型，也可填写自定义 `.onnx` 路径；表情识别启用时仍须填写路径。保存只校验路径格式，实际加载时检查文件与模型格式。
+- YOLO26m 默认模型约 82 MB，在 Android/桌面端按需下载并校验固定版本的文件大小和 SHA-256。支持进度、取消、失败重试和删除；模型不打包进安装包，下载和打开设置页不会载入推理实例，首次调用检测时创建并复用实例，结束识别可通过 `Yolo26mModel.unload()` 释放内存。
+- 开关默认关闭。保存配置不会启动摄像头；点击「保存并打开摄像头」后可在相机页面显式启动。Android/Desktop 已联动 YOLO，iOS YOLO 与表情识别后端仍待接入，页面明确展示状态。
+- 返回与保存、两组配置切换固定在顶部，正文滚动；未保存编辑可在 Android 页面重建时保留，直接返回会放弃编辑。
+- `./gradlew :desktopApp:exportVisionSettings` 检查七种尺寸/缩放上的实际 Compose 交互及下载/删除/取消、忙碌/错误状态，导出 22 张页面图到 `desktopApp/build/vision-settings/`，不读取或写入用户配置。
+- `./gradlew :lib_business:lib_vision:verifyManagedYolo26m` 在隔离的构建目录实测 HTTPS 下载、完整性校验、真实 ONNX 连续推理、释放和删除，不影响用户模型目录；普通 JVM 测试保持离线。
+
+### 三端摄像头
+
+新增独立 [`lib_camera`](lib_business/lib_camera/README.md)：Android CameraX、iOS AVFoundation、Desktop OpenCV 共用控制器、状态和 RGBA 帧接口，采集与推理模块分别维护。生命中心 → 视觉 →「保存并打开摄像头」可启动实时预览，切换移动端设备或桌面设备编号；支持权限拒绝提示、停止和重试，离开页面/进入后台后释放采集资源。
+
+Android/Desktop 在 YOLO 已启用且模型可用时绘制检测框、类别和置信度，前置预览镜像与框坐标一致；未配置模型时继续预览并提示。iOS 已接相机采集和预览，视觉推理后端仍待接入。视频帧仅在本机处理，不保存或上传。
+
+`./gradlew :desktopApp:exportCamera` 用合成帧导出七种屏幕配置共 28 张图片，并检查实际页面交互；`./gradlew :lib_business:lib_camera:verifyDesktopCamera` 可显式验证真实采集、停止与重新打开；相机到本地 YOLO 的实测命令见模块说明。当前已验证 Android 构建与 Windows 相机/YOLO 调用，iOS 相机模块已通过 Kotlin/Native 编译，完整 Xcode 构建和真机行为仍需 Mac/iPhone 验证。
 
 `shared` 只组合页面与平台入口；Android、Desktop 与 iOS 共用这一层。模块目录见 [docs/MODULES.md](docs/MODULES.md)。
 
 - `lib_common/`：`lib_theme`（应用配色）、`lib_resource`（Compose 图像）、`lib_storage`（平台设置存储）、`lib_ui`（通用弹窗和提示）。
-- `lib_business/`：`lib_face`（表情渲染与动画）、`lib_models`（模型服务商目录与请求）、`lib_brains`（AI 大脑状态和页面）、`lib_lifecenter`（生命中心）、`lib_voice`（尚待接入的语音接口）。
+- `lib_business/`：`lib_face`（表情渲染与动画）、`lib_models`（模型服务商目录与请求）、`lib_brains`（AI 大脑状态和页面）、`lib_lifecenter`（生命中心）、`lib_voice`（实时对话、平台音频和 ASR/TTS 聚合接口）、`lib_camera`（三端相机采集与权限）、`lib_vision`（视觉模型与推理）。

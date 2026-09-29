@@ -1,0 +1,9 @@
+# Copy to local.properties and retain your own sdk.dir if present.
+# Android embeds these defaults only in debug builds.
+# Desktop embeds them only when -PincludeDevApiKeys=true is explicitly set.
+aifacemate.dev.provider=deepseek
+aifacemate.dev.apiKey=
+aifacemate.dev.baseUrl=https://api.deepseek.com/v1
+aifacemate.dev.model=deepseek-flash
+aifacemate.dev.mimoApiKey=
+aifacemate.dev.mimoBaseUrl=https://api.xiaomimimo.com/v1

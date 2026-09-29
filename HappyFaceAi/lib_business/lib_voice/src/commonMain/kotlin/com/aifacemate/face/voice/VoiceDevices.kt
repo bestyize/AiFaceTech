@@ -12,7 +12,8 @@ interface NativeSpeechEngine {
     fun stop()
 }
 
-expect fun nativeSpeechAvailable(): Boolean
+expect fun systemAsrAvailable(): Boolean
+expect fun systemTtsAvailable(): Boolean
 expect fun createNativeSpeechEngine(): NativeSpeechEngine
 
 interface RealtimeAudioDevice : AutoCloseable {

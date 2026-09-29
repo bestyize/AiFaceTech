@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -204,7 +205,7 @@ private fun FeatureGrid(features: List<LifeCenterFeature>, onNavigate: (LifeRout
 
 @Composable
 private fun FeatureCard(feature: LifeCenterFeature, modifier: Modifier, compact: Boolean = false, onClick: () -> Unit) {
-    Surface(onClick = onClick, modifier = modifier.heightIn(min = if (compact) 56.dp else 104.dp), shape = RoundedCornerShape(20.dp), color = AppColors.Card, border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border)) {
+    Surface(onClick = onClick, modifier = modifier.heightIn(min = if (compact) 56.dp else 104.dp).testTag("life.feature.${feature.route.name}"), shape = RoundedCornerShape(20.dp), color = AppColors.Card, border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Border)) {
         Row(Modifier.padding(if (compact) 8.dp else 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
             Text(feature.symbol, color = feature.accent, fontSize = if (compact) 20.sp else 28.sp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 6.dp)) {

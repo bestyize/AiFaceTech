@@ -11,6 +11,9 @@ import androidx.compose.ui.window.rememberWindowState
 fun main() = application {
     // 仅桌面本地开发启用被 .gitignore 忽略的 local.properties 默认配置。
     System.setProperty("aifacemate.devDefaults", "true")
+    if (!com.aifacemate.face.voice.tts.client.PiperTts.prepareRuntime()) {
+        System.err.println("Piper/SenseVoice 本地语音运行库不可用；可使用 MiMo 在线服务。")
+    }
     Window(
         onCloseRequest = ::exitApplication,
         title = "灵伴科技 · RoboCat 脸部表情系统（Alpha 1）",

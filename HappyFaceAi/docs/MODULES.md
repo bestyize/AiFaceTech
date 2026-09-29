@@ -14,11 +14,14 @@
 | `lib_business:lib_lifecenter` | 生命中心页面、路由模型 | lib_face、lib_theme |
 | `lib_business:lib_realtime` | 豆包、千问端到端实时对话协议与统一事件 | Ktor WebSockets、coroutines、JSON |
 | `lib_business:lib_voice` | 聚合实时对话及独立 ASR/TTS 接口 | lib_realtime、lib_asr、lib_tts |
-| `lib_business:lib_vision` | YOLO26m 帧与检测框契约、Android/JVM ONNX 推理 | ONNX Runtime（Android/JVM） |
-| `shared` | 应用导航和三端共用页面组合 | face、brains、lifecenter、theme |
+| `lib_business:lib_vision` | YOLO26m 帧与检测框契约、模型按需下载/加载、Android/JVM ONNX 推理、视觉配置持久化 | lib_storage、coroutines、ONNX Runtime（Android/JVM） |
+| `lib_business:lib_camera` | 三端相机权限、设备选择、实时 RGBA 帧、预览位图与资源释放 | CameraX（Android）、AVFoundation（iOS）、OpenCV（Desktop）、Compose、coroutines |
+| `shared` | 应用导航和三端共用页面组合 | face、brains、lifecenter、camera、vision、theme 等 |
 | `androidApp` / `desktopApp` / `iosApp` | 各平台入口、窗口和安装包 | shared 等直接使用的模块 |
 
 依赖方向：入口 → shared / 业务模块 → 通用模块。通用模块不引用业务模块；模型请求模块也不引用 AI 大脑 UI。实时协议实现放在 lib_realtime，由 lib_voice 对外聚合；平台采集/播放及 Face 联动在入口接入。视觉模型导出与平台适配见 [`lib_vision/README.md`](../lib_business/lib_vision/README.md)。
+
+相机采集独立在 [`lib_camera`](../lib_business/lib_camera/README.md)，不依赖视觉模型。共享摄像头页面组合相机帧与 `lib_vision`，Android/Desktop 可实时调用 YOLO；iOS 已实现采集与预览，视觉推理后端仍待接入。
 
 ## 常用命令
 
@@ -47,7 +50,7 @@ AI 大脑模块按职责分包，避免页面、状态和设备存储互相引�
 
 - `lib_business:lib_voice`：语音能力聚合入口，对外暴露实时对话、TTS / ASR 模块。
 - `lib_business:lib_realtime`：可替换的长连接会话接口，豆包二进制协议与千问 JSON 事件协议，Android/Desktop 使用 CIO，iOS 使用 Darwin。
-- `lib_business:lib_tts`：文字转语音契约、供应商目录与请求实现；当前内置小米 MiMo。
+- `lib_business:lib_tts`：在线小米 MiMo TTS 请求实现，以及 Android/桌面端按需下载的 sherpa-onnx Piper 中文离线 TTS。
 - `lib_business:lib_asr`：语音转文字契约、供应商目录与 multipart 请求实现；当前内置小米 ASR。
 
 两个模块都采用 `Provider + Request + Result` 结构。Android/Desktop 已提供 HTTP 实现，iOS 保留同一 expect/actual 接口，待补 NSURLSession 网络实现。供应商地址、模型和音色均可在请求层替换，不把具体服务商写死在 UI 中。

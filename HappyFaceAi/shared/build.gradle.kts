@@ -32,6 +32,7 @@ kotlin {
             implementation(project(":lib_business:lib_chat"))
             implementation(project(":lib_business:lib_voice"))
             implementation(project(":lib_business:lib_vision"))
+            implementation(project(":lib_business:lib_camera"))
             implementation(project(":lib_common:lib_network"))
             implementation(project(":lib_common:lib_storage"))
             implementation(project(":lib_common:lib_theme"))
@@ -41,6 +42,7 @@ kotlin {
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
             implementation(libs.kotlinx.coroutinesCore)
+            implementation(libs.androidx.lifecycle.runtimeCompose)
         }
         commonTest.dependencies { implementation(libs.kotlin.test) }
     }

@@ -29,10 +29,14 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-actual fun nativeSpeechAvailable(): Boolean {
+actual fun systemAsrAvailable(): Boolean {
     val context = AndroidAppContext.context() ?: return false
-    return SpeechRecognizer.isRecognitionAvailable(context) &&
-        context.packageManager.queryIntentServices(Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0).isNotEmpty()
+    return SpeechRecognizer.isRecognitionAvailable(context)
+}
+
+actual fun systemTtsAvailable(): Boolean {
+    val context = AndroidAppContext.context() ?: return false
+    return context.packageManager.queryIntentServices(Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0).isNotEmpty()
 }
 
 actual fun createNativeSpeechEngine(): NativeSpeechEngine = AndroidNativeSpeech()
