@@ -3,9 +3,12 @@ package com.aifacemate.face.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.render.FaceSurface
 
@@ -24,11 +27,12 @@ fun FaceDisplay(
     expression: FaceExpression = FaceExpression.IDLE,
     animate: Boolean = true,
     diffuseGlow: Float = DEFAULT_DIFFUSE_GLOW,
+    contentOffsetY: Dp = 0.dp,
 ) {
     Box(modifier.fillMaxSize().background(Color.Black)) {
         FaceStage(
             expression = expression,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().offset(y = contentOffsetY),
             animate = animate,
             surface = FaceSurface.DEVICE_SCREEN,
             diffuseGlow = diffuseGlow,

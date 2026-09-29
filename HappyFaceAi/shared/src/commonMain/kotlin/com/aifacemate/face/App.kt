@@ -71,6 +71,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         else -> expression
                     },
                     diffuseGlow = diffuseGlow,
+                    contentOffsetY = if (voiceOverlay) VOICE_FACE_OFFSET_Y else 0.dp,
                 )
                 if (hud) Row(
                     Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(16.dp)

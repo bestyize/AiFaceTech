@@ -43,6 +43,7 @@ data class ConversationScreenState(
     val busy: Boolean = false,
     val voiceActive: Boolean = false,
     val voiceEnabled: Boolean = true,
+    val voiceActionLabel: String? = null,
 )
 
 /** Presentation only: previews cannot open a microphone, contact a service or load stored keys. */
@@ -162,7 +163,7 @@ fun ConversationScreenContent(
                 }
 
                 val processing = state.busy && !state.voiceActive && state.mode != VoiceMode.Realtime
-                val voiceLabel = when {
+                val voiceLabel = state.voiceActionLabel ?: when {
                     state.voiceActive -> if (state.mode == VoiceMode.Realtime) "停止实时对话" else "结束说话"
                     processing -> "正在处理"
                     state.mode == VoiceMode.Realtime -> "开始实时对话"
@@ -194,6 +195,7 @@ fun ConversationScreenContent(
                             if (state.voiceEnabled) Color(0xFF221D13) else ChatMuted, Modifier.size(18.dp))
                         Spacer(Modifier.width(5.dp))
                         Text(if (small) when {
+                            state.voiceActionLabel == "停止朗读" -> "停止"
                             state.voiceActive -> "结束"
                             processing -> "处理"
                             else -> "说话"

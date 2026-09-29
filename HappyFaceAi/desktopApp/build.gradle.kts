@@ -161,6 +161,15 @@ tasks.register<JavaExec>("exportConversation") {
     args = listOf(layout.buildDirectory.dir("conversation").get().asFile.absolutePath)
 }
 
+// Offline face control visual and interaction checks, including 320 x 240 displays.
+tasks.register<JavaExec>("exportVoiceFaceControls") {
+    group = "verification"
+    description = "Render and exercise face voice controls at small display sizes without audio or network"
+    mainClass.set("com.aifacemate.face.tools.ExportVoiceFaceControlsKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args = listOf(layout.buildDirectory.dir("voice-face-controls").get().asFile.absolutePath)
+}
+
 // Manual network verification using raw PCM input, without the desktop UI or microphone.
 tasks.register<JavaExec>("runRealtimeVoice") {
     group = "verification"

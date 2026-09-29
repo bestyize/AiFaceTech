@@ -1,41 +1,15 @@
 package com.aifacemate.face
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.onLongClick
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aifacemate.face.chat.ChatClient
 import com.aifacemate.face.chat.ChatConfig
 import com.aifacemate.face.chat.ChatMessage
 import com.aifacemate.face.chat.ChatResult
-import com.aifacemate.face.data.SettingsStore
 import com.aifacemate.face.feature.aibrain.data.AiBrainSettings
 import com.aifacemate.face.feature.aibrain.defaultAiProviders
 import com.aifacemate.face.network.NetworkClient
-import com.aifacemate.face.theme.AppColors
 import com.aifacemate.face.voice.VoiceCaptureResult
 import com.aifacemate.face.voice.VoiceClip
 import com.aifacemate.face.voice.VoicePlaybackResult
@@ -104,6 +78,9 @@ private fun ConversationPanel(
     var realtimeJob by remember { mutableStateOf<Job?>(null) }
     var turnJob by remember { mutableStateOf<Job?>(null) }
     var detailsExpanded by remember { mutableStateOf(false) }
+    var facePhase by remember { mutableStateOf(VoiceFacePhase.Idle) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    var stoppingRealtime by remember { mutableStateOf(false) }
 
     fun show(role: String, text: String) { if (text.isNotBlank()) messages.add(ChatMessage(role, text)) }
 
@@ -126,19 +103,22 @@ private fun ConversationPanel(
         val question = draft.trim()
         if (question.isEmpty() || busy) return
         busy = true
+        notice = null
+        if (!live) facePhase = VoiceFacePhase.Processing
         draft = ""; show("user", question)
         turnJob = scope.launch {
             status = "AI 大脑正在思考"
             try { show("assistant", askBrain(question)); status = "可以继续对话" }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { status = error.message ?: "对话失败" }
-            finally { busy = false }
+            catch (error: Exception) { status = error.message ?: "对话失败"; notice = "查看提示" }
+            finally { busy = false; if (!live) facePhase = VoiceFacePhase.Idle }
         }
     }
 
     fun startSingleTurn() {
         if (capturing) {
             capturing = false
+            facePhase = VoiceFacePhase.Processing
             status = "正在结束收音"
             if (preferences.mode == VoiceMode.Traditional && preferences.traditionalAsr == TraditionalAsr.System) native?.finishRecognition()
             else voice.finishRecording()
@@ -147,12 +127,14 @@ private fun ConversationPanel(
         if (busy) return
         busy = true
         capturing = true
+        notice = null
+        facePhase = VoiceFacePhase.Listening
         turnJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 val input = if (preferences.mode == VoiceMode.Traditional && preferences.traditionalAsr == TraditionalAsr.System) {
                     check(systemAsrAvailable()) { "系统语音识别不可用" }
                     status = "系统正在聆听，点结束说话提交"
-                    checkNotNull(native).recognize().also { capturing = false }
+                    checkNotNull(native).recognize().also { capturing = false; facePhase = VoiceFacePhase.Processing }
                 } else {
                     if (preferences.traditionalAsr == TraditionalAsr.Mimo) {
                         check(preferences.mimoApiKey.isNotBlank()) { "请先在声音设置中填写 MiMo 在线识别的 API Key" }
@@ -160,6 +142,7 @@ private fun ConversationPanel(
                     status = "正在录音，点结束说话提交（最长 60 秒）"
                     val recorded = voice.record(maxDurationMs = 60_000)
                     capturing = false
+                    facePhase = VoiceFacePhase.Processing
                     val clip = when (recorded) {
                         is VoiceCaptureResult.Success -> recorded.clip
                         is VoiceCaptureResult.Failure -> error(recorded.reason)
@@ -188,6 +171,7 @@ private fun ConversationPanel(
                 show("user", input)
                 if (AiBrainSettings.savedSecret(AiBrainSettings.providerId() ?: "deepseek") == null) {
                     status = "已识别文字；配置 AI 大脑后可生成回答"
+                    notice = "查看文字"
                     return@launch
                 }
                 status = "AI 大脑正在思考"
@@ -195,12 +179,14 @@ private fun ConversationPanel(
                 show("assistant", answer)
                 if (preferences.mode == VoiceMode.Traditional && preferences.traditionalTts == TraditionalTts.Mimo && preferences.mimoApiKey.isBlank()) {
                     status = "已生成文字回复；配置 MiMo 或选择系统 / Piper 本地语音合成后可朗读"
+                    notice = "查看回复"
                     return@launch
                 }
-                status = "正在播放回复"
                 when {
                     preferences.mode == VoiceMode.Traditional && preferences.traditionalTts == TraditionalTts.System -> {
                         check(systemTtsAvailable()) { "系统语音合成不可用" }
+                        status = "正在播放回复"
+                        facePhase = VoiceFacePhase.Speaking
                         checkNotNull(native).speak(answer)
                     }
                     preferences.mode == VoiceMode.Traditional && preferences.traditionalTts == TraditionalTts.Piper -> {
@@ -210,18 +196,22 @@ private fun ConversationPanel(
                             is TtsResult.Failure -> error(result.message)
                         }
                         status = "正在播放回复"
+                        facePhase = VoiceFacePhase.Speaking
                         when (val result = voice.play(VoiceClip(audio, "audio/wav"))) {
                             VoicePlaybackResult.Complete -> Unit
                             is VoicePlaybackResult.Failure -> error(result.reason)
                         }
                     }
                     else -> {
+                        status = "MiMo 正在合成回复"
                         val response = TtsClient(NetworkClient()).synthesize(TtsRequest(apiKey = preferences.mimoApiKey,
                             baseUrl = preferences.mimoBaseUrl, text = answer, voice = preferences.mimoVoice, format = "wav"))
                         val audio = when (response) {
                             is TtsResult.Success -> response.audio
                             is TtsResult.Failure -> error(response.message)
                         }
+                        status = "正在播放回复"
+                        facePhase = VoiceFacePhase.Speaking
                         when (val result = voice.play(VoiceClip(audio, "audio/wav"))) {
                             VoicePlaybackResult.Complete -> Unit
                             is VoicePlaybackResult.Failure -> error(result.reason)
@@ -230,18 +220,21 @@ private fun ConversationPanel(
                 }
                 status = "可以继续对话"
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { status = error.message ?: "语音对话失败" }
-            finally { capturing = false; busy = false }
+            catch (error: Exception) { status = error.message ?: "语音对话失败"; notice = "查看提示" }
+            finally { capturing = false; busy = false; facePhase = VoiceFacePhase.Idle }
         }
     }
 
     fun startRealtime() {
         if (live || !realtimeAudioAvailable()) return
-        realtimeJob = scope.launch {
-            live = true; status = "正在连接实时语音"
+        realtimeJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            live = true; status = "正在连接实时语音"; notice = null; facePhase = VoiceFacePhase.Processing
             var session: RealtimeSession? = null
             val device = try { createRealtimeAudioDevice() }
-            catch (error: Exception) { status = error.message ?: "音频设备不可用"; live = false; return@launch }
+            catch (error: Exception) {
+                status = error.message ?: "音频设备不可用"; notice = "查看提示"
+                live = false; facePhase = VoiceFacePhase.Idle; return@launch
+            }
             var capture: Job? = null
             try {
                 val config = when (preferences.provider) {
@@ -266,6 +259,7 @@ private fun ConversationPanel(
                     }
                 }
                 status = "实时聆听中"
+                facePhase = VoiceFacePhase.Listening
                 connected.events.collect { event ->
                     when (event) {
                         is RealtimeEvent.InputText -> if (event.final) show("user", event.text)
@@ -273,46 +267,57 @@ private fun ConversationPanel(
                         is RealtimeEvent.OutputAudio -> device.play(event)
                         is RealtimeEvent.ToolCall -> {
                             status = "AI 大脑正在处理任务"
+                            facePhase = VoiceFacePhase.Processing
                             val answer = try { askBrain(event.task) }
                             catch (cancelled: CancellationException) { throw cancelled }
                             catch (error: Exception) { "任务执行失败：${error.message}" }
                             connected.submitToolResult(event.callId, answer)
                         }
-                        RealtimeEvent.InterruptPlayback -> { device.interrupt(); status = "实时聆听中" }
-                        RealtimeEvent.OutputComplete -> { device.drain(); status = "实时聆听中" }
-                        RealtimeEvent.Speaking -> status = "正在回答"
+                        RealtimeEvent.InterruptPlayback -> { device.interrupt(); status = "实时聆听中"; facePhase = VoiceFacePhase.Listening }
+                        RealtimeEvent.OutputComplete -> { device.drain(); status = "实时聆听中"; facePhase = VoiceFacePhase.Listening }
+                        RealtimeEvent.Speaking -> { status = "正在回答"; facePhase = VoiceFacePhase.Speaking }
                         is RealtimeEvent.Failure -> error(event.message)
                         RealtimeEvent.Closed -> error("实时连接已关闭")
                         else -> Unit
                     }
                 }
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { status = error.message ?: "实时对话失败" }
+            } catch (cancelled: CancellationException) { status = "对话已结束"; throw cancelled }
+            catch (error: Exception) { status = error.message ?: "实时对话失败"; notice = "查看提示" }
             finally {
                 runCatching { device.close() }
                 withContext(NonCancellable) {
                     withTimeoutOrNull(2_000) { capture?.cancelAndJoin() }
                     runCatching { session?.close() }
                 }
-                live = false
+                live = false; stoppingRealtime = false; facePhase = VoiceFacePhase.Idle
             }
         }
     }
 
     fun toggleVoice() {
         if (preferences.mode == VoiceMode.Realtime) {
-            if (live) realtimeJob?.cancel() else startRealtime()
+            if (live) {
+                if (!stoppingRealtime) {
+                    stoppingRealtime = true; status = "正在结束对话"; facePhase = VoiceFacePhase.Processing
+                    realtimeJob?.cancel()
+                }
+            } else startRealtime()
+        } else if (facePhase == VoiceFacePhase.Speaking) {
+            turnJob?.cancel(); voice.stop(); native?.stop(); status = "已停止朗读"
         } else startSingleTurn()
     }
 
     val currentRealtime = rememberUpdatedState(realtimeJob)
     val currentTurn = rememberUpdatedState(turnJob)
     val currentVisualCallback = rememberUpdatedState(onVisualStateChange)
-    val visualState = when {
-        status == "正在回答" || status == "正在播放回复" -> VoiceVisualState.Speaking
-        capturing || (live && status == "实时聆听中") -> VoiceVisualState.Listening
+    val visualState = when (facePhase) {
+        VoiceFacePhase.Speaking -> VoiceVisualState.Speaking
+        VoiceFacePhase.Listening -> VoiceVisualState.Listening
         else -> VoiceVisualState.Idle
     }
+    val voiceEnabled = if (preferences.mode == VoiceMode.Realtime) realtimeAudioAvailable() && !stoppingRealtime
+        else capturing || facePhase == VoiceFacePhase.Speaking ||
+            (!busy && (preferences.traditionalAsr != TraditionalAsr.System || systemAsrAvailable()))
     LaunchedEffect(visualState) { if (overlay && preferences.keepFaceVisible) currentVisualCallback.value(visualState) }
     DisposableEffect(Unit) {
         onDispose {
@@ -325,9 +330,9 @@ private fun ConversationPanel(
     fun FullPanel(panelModifier: Modifier) = ConversationScreenContent(
         state = ConversationScreenState(
             mode = preferences.mode, messages = messages.toList(), draft = draft, status = status,
-            busy = busy, voiceActive = live || capturing,
-            voiceEnabled = if (preferences.mode == VoiceMode.Realtime) realtimeAudioAvailable()
-                else capturing || (!busy && (preferences.traditionalAsr != TraditionalAsr.System || systemAsrAvailable())),
+            busy = busy, voiceActive = live || capturing || facePhase == VoiceFacePhase.Speaking,
+            voiceEnabled = voiceEnabled,
+            voiceActionLabel = if (preferences.mode == VoiceMode.Traditional && facePhase == VoiceFacePhase.Speaking) "停止朗读" else null,
         ),
         onDraftChange = { draft = it }, onSend = ::submitText, onVoice = ::toggleVoice, onClose = onClose,
         modifier = panelModifier,
@@ -336,96 +341,15 @@ private fun ConversationPanel(
 
     if (!overlay) {
         FullPanel(modifier)
+    } else if (preferences.keepFaceVisible && !detailsExpanded) {
+        VoiceFaceControl(
+            state = VoiceFaceControlState(facePhase, status, preferences.mode == VoiceMode.Realtime, voiceEnabled, notice),
+            onVoice = ::toggleVoice,
+            onOpenConversation = { detailsExpanded = true },
+            modifier = modifier,
+        )
     } else {
-        BoxWithConstraints(modifier) {
-            if (preferences.keepFaceVisible && !detailsExpanded) {
-                val active = visualState == VoiceVisualState.Listening || visualState == VoiceVisualState.Speaking
-                val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
-                val (barWidthRatio, barHeightRatio) = when {
-                    widthPx < 400f -> .52f to .15f
-                    widthPx < 700f -> .46f to .12f
-                    else -> .40f to .09f
-                }
-                val barWidth = maxWidth * barWidthRatio
-                val barHeight = maxHeight * barHeightRatio
-                val enabled = if (preferences.mode == VoiceMode.Realtime) realtimeAudioAvailable()
-                    else capturing || (!busy && (preferences.traditionalAsr != TraditionalAsr.System || systemAsrAvailable()))
-                val actionLabel = if (live || capturing) "结束说话" else "开始说话"
-                Box(
-                    Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(bottom = 8.dp)
-                        .width(barWidth).heightIn(min = 48.dp)
-                        .semantics {
-                            contentDescription = "语音对话"
-                            stateDescription = status
-                            onClick(label = actionLabel) { if (enabled) toggleVoice(); true }
-                            onLongClick(label = "展开对话记录和关闭按钮") { detailsExpanded = true; true }
-                        }
-                        .pointerInput(enabled, live, capturing, busy, preferences.mode) {
-                            detectTapGestures(onTap = { if (enabled) toggleVoice() }, onLongPress = { detailsExpanded = true })
-                        },
-                ) {
-                    Row(
-                        Modifier.align(Alignment.BottomCenter).width(barWidth).height(barHeight)
-                            .background(Color(0xE8191C24), RoundedCornerShape(percent = 50))
-                            .border(1.dp, Color(0x7063E4FF), RoundedCornerShape(percent = 50)),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        CompactMicGlyph(barHeight * .38f, barHeight * .52f)
-                        Spacer(Modifier.width(barWidth * .07f))
-                        CompactVoiceIndicator(active, barWidth * .42f, barHeight * .48f)
-                    }
-                }
-                if (maxWidth >= 400.dp) messages.lastOrNull()?.let { last ->
-                    Text(
-                        "${if (last.role == "user") "我" else "小星"}：${last.content}",
-                        modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(bottom = 60.dp)
-                            .background(Color(0xE8191C24), RoundedCornerShape(16.dp))
-                            .padding(horizontal = 12.dp, vertical = 5.dp),
-                        color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            } else {
-                FullPanel(
-                    Modifier.align(Alignment.BottomCenter).fillMaxSize(),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CompactMicGlyph(width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
-    Canvas(Modifier.size(width = width, height = height)) {
-        val ink = Color(0xFF63E4FF)
-        val thickness = size.width / 9f
-        drawRoundRect(ink, topLeft = Offset(size.width * 0.3f, 0f),
-            size = Size(size.width * 0.4f, size.height * 0.58f), cornerRadius = CornerRadius(size.width * 0.2f))
-        drawArc(ink, startAngle = 0f, sweepAngle = 180f, useCenter = false,
-            topLeft = Offset(thickness, size.height * 0.18f),
-            size = Size(size.width - thickness * 2f, size.height * 0.58f), style = Stroke(thickness))
-        drawLine(ink, Offset(size.width / 2f, size.height * 0.77f),
-            Offset(size.width / 2f, size.height * 0.94f), strokeWidth = thickness)
-    }
-}
-
-@Composable
-private fun CompactVoiceIndicator(active: Boolean, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
-    Canvas(Modifier.size(width = width, height = height)) {
-        val ink = Color(0xFF63E4FF)
-        if (active) {
-            val levels = listOf(0.3f, 0.55f, 0.85f, 0.5f, 1f, 0.55f, 0.35f)
-            levels.forEachIndexed { index, level ->
-                val height = size.height * level
-                drawRoundRect(ink, topLeft = Offset(index * size.width / 7f, (size.height - height) / 2f),
-                    size = Size(size.width / 12f, height), cornerRadius = CornerRadius(size.width / 24f))
-            }
-        } else {
-            repeat(5) { index ->
-                drawCircle(ink, radius = size.height / 9f,
-                    center = Offset((index + 0.5f) * size.width / 5f, size.height / 2f))
-            }
-        }
+        FullPanel(modifier)
     }
 }
 
