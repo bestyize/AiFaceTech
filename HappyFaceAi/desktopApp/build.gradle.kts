@@ -47,11 +47,13 @@ dependencies {
     implementation(project(":lib_business:lib_lifecenter"))
     implementation(project(":lib_business:lib_voice"))
     implementation(project(":lib_business:lib_vision"))
+    implementation(project(":lib_business:lib_camera"))
     implementation(project(":lib_common:lib_theme"))
 
     implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutinesSwing)
     implementation(libs.kotlinx.coroutinesCore)
+    implementation(libs.androidx.lifecycle.runtimeCompose)
     implementation(libs.compose.material3)
 
     implementation(libs.compose.uiToolingPreview)
@@ -83,6 +85,12 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "com.aifacemate.face"
             packageVersion = "1.0.0"
+            macOS {
+                infoPlist {
+                    extraKeysRawXml = "<key>NSCameraUsageDescription</key><string>需要摄像头以便让小星看到周围环境并进行本地视觉识别。</string>"
+                }
+                entitlementsFile.set(project.layout.projectDirectory.file("camera-entitlements.plist"))
+            }
         }
     }
 }
@@ -117,6 +125,31 @@ tasks.register<JavaExec>("exportVoiceSettings") {
     mainClass.set("com.aifacemate.face.tools.ExportVoiceSettingsKt")
     classpath = sourceSets["main"].runtimeClasspath
     args = listOf(layout.buildDirectory.dir("voice-settings").get().asFile.absolutePath)
+}
+
+// Offline visual and interaction checks for vision settings.
+tasks.register<JavaExec>("exportVisionSettings") {
+    group = "verification"
+    description = "Render and exercise vision configuration with in-memory settings"
+    mainClass.set("com.aifacemate.face.tools.ExportVisionSettingsKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args = listOf(layout.buildDirectory.dir("vision-settings").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("exportCamera") {
+    group = "verification"
+    description = "Render and exercise responsive camera controls with synthetic frames and no hardware access"
+    mainClass.set("com.aifacemate.face.tools.ExportCameraKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args = listOf(layout.buildDirectory.dir("camera").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("verifyCameraVision") {
+    group = "verification"
+    description = "Explicitly run three live desktop camera frames through a provided local YOLO model"
+    mainClass.set("com.aifacemate.face.tools.RunCameraVisionKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args = listOf(providers.gradleProperty("visionModel").orElse("").get(), providers.gradleProperty("cameraDevice").orElse("0").get())
 }
 
 // Offline full-screen conversation visual and interaction checks.

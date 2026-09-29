@@ -41,7 +41,11 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         val navigate: (LifeRoute) -> Unit = { routeName = it.name; hud = false; petting = false; voiceOverlay = false }
         onBackHandler(route != LifeRoute.Living || hud || voiceOverlay) {
             if (voiceOverlay) voiceOverlay = false
-            else if (hud) hud = false else navigate(if (route == LifeRoute.LifeCenter) LifeRoute.Living else LifeRoute.LifeCenter)
+            else if (hud) hud = false else navigate(when (route) {
+                LifeRoute.LifeCenter -> LifeRoute.Living
+                LifeRoute.Camera -> LifeRoute.Vision
+                else -> LifeRoute.LifeCenter
+            })
         }
         LaunchedEffect(hud) { if (hud) { delay(3500); hud = false } }
         LaunchedEffect(petting) { if (petting) { delay(2400); petting = false } }
@@ -85,6 +89,8 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             }
             LifeRoute.Conversation -> ChatScreen(onBack = { navigate(LifeRoute.Living) })
             LifeRoute.Voice -> VoiceSettingsScreen(onBack = { navigate(LifeRoute.LifeCenter) })
+            LifeRoute.Vision -> VisionSettingsScreen(onBack = { navigate(LifeRoute.LifeCenter) }, onOpenCamera = { navigate(LifeRoute.Camera) })
+            LifeRoute.Camera -> CameraScreen(onBack = { navigate(LifeRoute.Vision) })
             LifeRoute.LifeCenter -> LifeCenterRoute(LifeCenterUiState(recentChanges = changes.toList()), expression, diffuseGlow, navigate)
             LifeRoute.Brain -> AiBrainRoute(onBack = { navigate(LifeRoute.LifeCenter) })
             LifeRoute.Appearance -> Column(Modifier.fillMaxSize().background(AppColors.Background).safeDrawingPadding()) {
