@@ -30,8 +30,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aifacemate.face.theme.AppColors
 import com.aifacemate.face.voice.asr.client.SenseVoiceAsr
-import com.aifacemate.face.voice.nativeSpeechAvailable
+import com.aifacemate.face.voice.systemAsrAvailable
+import com.aifacemate.face.voice.systemTtsAvailable
 import com.aifacemate.face.voice.realtimeAudioAvailable
+import com.aifacemate.face.voice.tts.client.PiperTts
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -50,18 +52,55 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
     var modelBusy by remember { mutableStateOf(false) }
     var modelProgress by remember { mutableStateOf(0) }
     var modelError by remember { mutableStateOf<String?>(null) }
+    var piperInstalled by remember { mutableStateOf(PiperTts.installed()) }
+    var piperBusy by remember { mutableStateOf(false) }
+    var piperProgress by remember { mutableStateOf(0) }
+    var piperError by remember { mutableStateOf<String?>(null) }
     VoiceSettingsContent(
         preferences = draft,
         onPreferencesChange = { draft = it },
         onBack = onBack,
         onSave = { VoicePreferencesStore.save(draft); onBack() },
-        nativeAvailable = nativeSpeechAvailable(),
+        systemAsrAvailable = systemAsrAvailable(),
+        systemTtsAvailable = systemTtsAvailable(),
+        piperSupported = PiperTts.supported(),
         realtimeAvailable = realtimeAudioAvailable(),
         senseVoiceSupported = SenseVoiceAsr.supported(),
         modelInstalled = modelInstalled,
         modelBusy = modelBusy,
         modelProgress = modelProgress,
         modelError = modelError,
+        piperInstalled = piperInstalled,
+        piperBusy = piperBusy,
+        piperProgress = piperProgress,
+        piperError = piperError,
+        onPiperAction = {
+            piperBusy = true
+            piperProgress = 0
+            piperError = null
+            scope.launch {
+                try {
+                    if (piperInstalled) PiperTts.remove()
+                    else {
+                        var last = -1
+                        PiperTts.install { downloaded, total ->
+                            val percent = (downloaded * 100 / total).toInt()
+                            if (percent != last) {
+                                last = percent
+                                scope.launch { piperProgress = percent }
+                            }
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    piperError = error.message ?: "Piper 模型操作失败"
+                } finally {
+                    piperInstalled = PiperTts.installed()
+                    piperBusy = false
+                }
+            }
+        },
         onModelAction = {
             modelBusy = true
             modelProgress = 0
@@ -99,13 +138,20 @@ fun VoiceSettingsContent(
     onPreferencesChange: (VoicePreferences) -> Unit,
     onBack: () -> Unit,
     onSave: () -> Unit,
-    nativeAvailable: Boolean,
+    systemAsrAvailable: Boolean,
+    systemTtsAvailable: Boolean,
+    piperSupported: Boolean = false,
     realtimeAvailable: Boolean,
     senseVoiceSupported: Boolean,
     modelInstalled: Boolean = false,
     modelBusy: Boolean = false,
     modelProgress: Int = 0,
     modelError: String? = null,
+    piperInstalled: Boolean = false,
+    piperBusy: Boolean = false,
+    piperProgress: Int = 0,
+    piperError: String? = null,
+    onPiperAction: () -> Unit = {},
     onModelAction: () -> Unit = {},
 ) {
     val colors = darkColorScheme(
@@ -167,7 +213,6 @@ fun VoiceSettingsContent(
                         val available = when (mode) {
                             VoiceMode.Realtime -> realtimeAvailable
                             VoiceMode.Traditional -> true
-                            VoiceMode.Native -> nativeAvailable
                         }
                         VoiceChoice(
                             label = mode.shortLabel(),
@@ -177,6 +222,31 @@ fun VoiceSettingsContent(
                             modifier = Modifier.testTag("voice.mode.${mode.name}").fillMaxWidth(),
                             onClick = { onPreferencesChange(preferences.copy(mode = mode)) },
                         )
+                    }
+                }
+
+                @Composable
+                fun FlowPreview() {
+                    val route = if (preferences.mode == VoiceMode.Realtime) {
+                        if (preferences.provider == RealtimeProvider.Qwen) "千问实时服务" else "豆包实时服务"
+                    } else {
+                        val asr = when (preferences.traditionalAsr) {
+                            TraditionalAsr.System -> "系统识别"
+                            TraditionalAsr.Mimo -> "MiMo 识别"
+                            TraditionalAsr.SenseVoice -> "SenseVoice 本地识别"
+                        }
+                        val tts = when (preferences.traditionalTts) {
+                            TraditionalTts.System -> "系统朗读"
+                            TraditionalTts.Mimo -> "MiMo 朗读"
+                            TraditionalTts.Piper -> "Piper 本地朗读"
+                        }
+                        "$asr → AI 大脑 → $tts"
+                    }
+                    VoicePanel(Modifier.fillMaxWidth().testTag("voice.flow.preview"), "当前语音流程", compact) {
+                        Text(route, color = VoiceGold, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        VoiceHint(if (preferences.mode == VoiceMode.Realtime)
+                            "实时服务负责连续聆听、理解并生成语音；独立识别与朗读选项不会参与此模式。"
+                        else "AI 大脑负责生成回复；语音识别与朗读分别配置，可自由组合。")
                     }
                 }
 
@@ -192,10 +262,10 @@ fun VoiceSettingsContent(
                                 Text(preferences.mode.shortLabel(), color = VoiceText, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                                 Text(preferences.mode.summary(), color = VoiceMuted, fontSize = 13.sp)
                             }
+                            FlowPreview()
                             @Composable
                             fun SelectionCard(modifier: Modifier) {
-                                VoicePanel(modifier, if (preferences.mode == VoiceMode.Realtime) "实时语音服务"
-                                    else if (preferences.mode == VoiceMode.Traditional) "语音识别" else "系统语音", compact) {
+                                VoicePanel(modifier, if (preferences.mode == VoiceMode.Realtime) "实时语音服务" else "语音输入 · ASR", compact) {
                                     when (preferences.mode) {
                                         VoiceMode.Realtime -> {
                                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -221,12 +291,22 @@ fun VoiceSettingsContent(
                                         VoiceMode.Traditional -> {
                                             TraditionalAsr.entries.forEach { asr ->
                                                 VoiceChoice(asr.label,
-                                                    description = if (asr == TraditionalAsr.Mimo) "无需下载模型，联网识别"
-                                                        else if (senseVoiceSupported) "下载后可在本机识别" else "仅 Android 支持",
+                                                    description = when (asr) {
+                                                        TraditionalAsr.System -> if (systemAsrAvailable) "使用设备提供的识别服务" else "此设备不可用"
+                                                        TraditionalAsr.Mimo -> "在线识别，需要 MiMo API Key"
+                                                        TraditionalAsr.SenseVoice -> if (senseVoiceSupported) "下载模型后在本机识别" else "此设备暂不可用"
+                                                    },
                                                     selected = preferences.traditionalAsr == asr,
-                                                    enabled = asr != TraditionalAsr.SenseVoice || senseVoiceSupported,
+                                                    enabled = when (asr) {
+                                                        TraditionalAsr.System -> systemAsrAvailable
+                                                        TraditionalAsr.SenseVoice -> senseVoiceSupported
+                                                        TraditionalAsr.Mimo -> true
+                                                    },
                                                     modifier = Modifier.fillMaxWidth().testTag("voice.asr.${asr.name}"),
                                                     onClick = { onPreferencesChange(preferences.copy(traditionalAsr = asr)) })
+                                            }
+                                            if (preferences.traditionalAsr == TraditionalAsr.System) {
+                                                VoiceHint("系统服务可能需要网络，具体识别能力取决于设备设置。")
                                             }
                                             if (preferences.traditionalAsr == TraditionalAsr.SenseVoice) {
                                                 VoiceHint(if (modelInstalled) "SenseVoiceSmall INT8 已下载"
@@ -240,14 +320,9 @@ fun VoiceSettingsContent(
                                                     modifier = Modifier.testTag("voice.model.action").heightIn(min = 48.dp)) {
                                                     Text(if (modelInstalled) "删除本地模型" else "下载本地模型")
                                                 }
-                                                VoiceHint("本地识别无需密钥；配置 MiMo 后可在线回退并朗读回复。")
+                                                VoiceHint("本地识别无需密钥；配置 MiMo 后可在线回退。")
                                             }
-                                            VoiceHint("先返回识别文字；已配置 AI 大脑时继续生成回答。")
-                                        }
-                                        VoiceMode.Native -> {
-                                            VoiceHint(if (nativeAvailable) "使用设备自带的语音识别和朗读，无需语音服务密钥。"
-                                                else "当前设备没有可用的系统语音服务。")
-                                            VoiceHint("回答仍由 AI 大脑生成，请先在 AI 大脑中保存模型配置。")
+                                            VoiceHint("识别完成后，由 AI 大脑生成回复。")
                                         }
                                     }
                                 }
@@ -255,7 +330,7 @@ fun VoiceSettingsContent(
 
                             @Composable
                             fun ConnectionCard(modifier: Modifier) {
-                                VoicePanel(modifier, if (preferences.mode == VoiceMode.Traditional) "MiMo 语音合成与回退" else "连接配置", compact) {
+                                VoicePanel(modifier, if (preferences.mode == VoiceMode.Traditional) "语音输出 · TTS" else "服务连接", compact) {
                                     key(preferences.mode, preferences.provider) {
                                         if (preferences.mode == VoiceMode.Realtime) {
                                             if (preferences.provider == RealtimeProvider.Qwen) {
@@ -267,25 +342,70 @@ fun VoiceSettingsContent(
                                                 VoiceField("App Key", preferences.doubaoAppKey, "voice.doubao.appKey", secret = true) { onPreferencesChange(preferences.copy(doubaoAppKey = it)) }
                                             }
                                         } else {
-                                            VoiceHint(if (preferences.traditionalAsr == TraditionalAsr.SenseVoice)
-                                                "可选配置：开启语音朗读和在线识别回退。"
-                                                else "MiMo 在线识别与朗读使用同一份配置。")
-                                            VoiceField("MiMo API Key", preferences.mimoApiKey, "voice.mimo.key", secret = true) { onPreferencesChange(preferences.copy(mimoApiKey = it)) }
-                                            VoiceField("API Base URL", preferences.mimoBaseUrl, "voice.mimo.baseUrl") { onPreferencesChange(preferences.copy(mimoBaseUrl = it)) }
-                                            VoiceField("音色", preferences.mimoVoice, "voice.mimo.voice", placeholder = "例如 Chloe") { onPreferencesChange(preferences.copy(mimoVoice = it)) }
+                                            TraditionalTts.entries.forEach { tts ->
+                                                val description = when (tts) {
+                                                    TraditionalTts.System -> if (systemTtsAvailable) "使用设备已安装的语音引擎" else "此设备不可用"
+                                                    TraditionalTts.Mimo -> "在线合成，可选择 MiMo 音色"
+                                                    TraditionalTts.Piper -> if (piperSupported) "中文离线合成；首次需下载约 21 MB 模型文件" else "此设备暂不可用"
+                                                }
+                                                VoiceChoice(tts.label, description = description,
+                                                    selected = preferences.traditionalTts == tts,
+                                                    enabled = when (tts) {
+                                                        TraditionalTts.System -> systemTtsAvailable
+                                                        TraditionalTts.Mimo -> true
+                                                        TraditionalTts.Piper -> piperSupported
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth().testTag("voice.tts.${tts.name}"),
+                                                    onClick = { onPreferencesChange(preferences.copy(traditionalTts = tts)) })
+                                            }
+                                            if (preferences.traditionalTts == TraditionalTts.Piper) {
+                                                VoiceHint(if (piperInstalled) "Piper 中文 Chaowen INT8 模型已下载；合成在本机离线运行。"
+                                                    else "采用 sherpa-onnx Piper 中文单说话人 INT8 模型，不占用 APK 空间。")
+                                                if (piperBusy) {
+                                                    LinearProgressIndicator(progress = { piperProgress / 100f }, modifier = Modifier.fillMaxWidth())
+                                                    VoiceHint("Piper 模型处理中 · $piperProgress%")
+                                                }
+                                                piperError?.let { Text(it, color = AppColors.Amber, fontSize = 13.sp) }
+                                                OutlinedButton(onClick = onPiperAction, enabled = !piperBusy,
+                                                    modifier = Modifier.testTag("voice.piper.action").heightIn(min = 48.dp)) {
+                                                    Text(if (piperInstalled) "删除 Piper 模型" else "下载 Piper 模型")
+                                                }
+                                            }
+                                            if (preferences.traditionalAsr == TraditionalAsr.Mimo ||
+                                                preferences.traditionalTts == TraditionalTts.Mimo ||
+                                                (preferences.traditionalAsr == TraditionalAsr.SenseVoice && preferences.mimoApiKey.isNotBlank())) {
+                                                val mimoUses = buildList {
+                                                    when (preferences.traditionalAsr) {
+                                                        TraditionalAsr.Mimo -> add("在线识别")
+                                                        TraditionalAsr.SenseVoice -> if (preferences.mimoApiKey.isNotBlank()) add("本地失败时在线回退识别")
+                                                        TraditionalAsr.System -> Unit
+                                                    }
+                                                    if (preferences.traditionalTts == TraditionalTts.Mimo) add("在线朗读")
+                                                }.joinToString("与")
+                                                VoiceHint("MiMo API Key：用于$mimoUses。")
+                                                VoiceField("MiMo API Key", preferences.mimoApiKey, "voice.mimo.key", secret = true) { onPreferencesChange(preferences.copy(mimoApiKey = it)) }
+                                                VoiceField("MiMo API Base URL", preferences.mimoBaseUrl, "voice.mimo.baseUrl") { onPreferencesChange(preferences.copy(mimoBaseUrl = it)) }
+                                            } else if (preferences.traditionalAsr == TraditionalAsr.SenseVoice) {
+                                                VoiceHint("如需 SenseVoice 识别失败时在线回退，可配置 MiMo API Key。")
+                                                VoiceField("MiMo API Key（可选）", preferences.mimoApiKey, "voice.mimo.key", secret = true) { onPreferencesChange(preferences.copy(mimoApiKey = it)) }
+                                                VoiceField("MiMo API Base URL", preferences.mimoBaseUrl, "voice.mimo.baseUrl") { onPreferencesChange(preferences.copy(mimoBaseUrl = it)) }
+                                            }
+                                            if (preferences.traditionalTts == TraditionalTts.Mimo) {
+                                                VoiceField("MiMo 音色", preferences.mimoVoice, "voice.mimo.voice", placeholder = "例如 Chloe") { onPreferencesChange(preferences.copy(mimoVoice = it)) }
+                                            }
                                         }
                                     }
                                 }
                             }
 
-                            if (spacious && preferences.mode != VoiceMode.Native) {
+                            if (spacious) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                                     SelectionCard(Modifier.weight(1f))
                                     ConnectionCard(Modifier.weight(1f))
                                 }
                             } else {
                                 SelectionCard(Modifier.fillMaxWidth())
-                                if (preferences.mode != VoiceMode.Native) ConnectionCard(Modifier.fillMaxWidth())
+                                ConnectionCard(Modifier.fillMaxWidth())
                             }
                             VoicePanel(Modifier.fillMaxWidth(), "对话与表情", compact) {
                                 Row(
@@ -325,7 +445,6 @@ fun VoiceSettingsContent(
                             val available = when (mode) {
                                 VoiceMode.Realtime -> realtimeAvailable
                                 VoiceMode.Traditional -> true
-                                VoiceMode.Native -> nativeAvailable
                             }
                             VoiceChoice(mode.shortLabel(), description = if (!available) "此设备不可用" else null,
                                 selected = preferences.mode == mode, enabled = available,
@@ -341,15 +460,13 @@ fun VoiceSettingsContent(
 }
 
 private fun VoiceMode.shortLabel() = when (this) {
-    VoiceMode.Realtime -> "实时对话"
-    VoiceMode.Traditional -> "传统对话"
-    VoiceMode.Native -> "系统语音"
+    VoiceMode.Realtime -> "实时语音"
+    VoiceMode.Traditional -> "分段语音"
 }
 
 private fun VoiceMode.summary() = when (this) {
     VoiceMode.Realtime -> "连续聆听，自然接话"
-    VoiceMode.Traditional -> "识别、思考，再朗读回答"
-    VoiceMode.Native -> "使用设备自带的听与说"
+    VoiceMode.Traditional -> "说完后识别 → AI 大脑回复 → 语音朗读"
 }
 
 @Composable

@@ -12,7 +12,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
-actual fun nativeSpeechAvailable(): Boolean = false
+actual fun systemAsrAvailable(): Boolean = false
+actual fun systemTtsAvailable(): Boolean = false
 actual fun createNativeSpeechEngine(): NativeSpeechEngine = error("Desktop system speech service is unavailable")
 
 actual fun realtimeAudioAvailable(): Boolean = runCatching {

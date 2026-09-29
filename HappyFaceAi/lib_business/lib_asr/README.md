@@ -3,9 +3,9 @@
 语音转文字模块，按 `catalog`、`model`、`client`、`internal` 分包。
 当前内置小米 ASR（`mimo-v2.5-asr`）。Android/Desktop 使用 multipart HTTP 实现，iOS 保留同一接口。
 
-## SenseVoiceSmall INT8（Android）
+## SenseVoiceSmall INT8（Android / Desktop）
 
-声音设置 → 传统对话 → SenseVoice 本地识别，可主动下载或删除模型。模型不打包进 APK；从
+声音设置 → 分段语音 → SenseVoice 本地识别，可主动下载或删除模型。模型不打包进 APK 或桌面发行包；从
 魔搭社区 [`pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue`](https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue) 的固定提交
 `73eca47697f980daa3d16112404174b6b950b514` 下载 `model.int8.onnx` 与 `tokens.txt`，
 校验文件长度和 SHA-256 后保存在应用私有的 `noBackupFilesDir`。模型约 239 MB。
@@ -20,4 +20,4 @@
 当前按现有单次录音流程识别 16 kHz 单声道 PCM16 WAV。SenseVoice 无需识别 API Key；
 MiMo 仍用于语音合成；仅在已配置 MiMo API Key 时提供在线识别回退。
 未配置密钥也可使用 SenseVoice 返回识别文字；生成回答需要 AI 大脑配置，MiMo 朗读回复需要 MiMo 密钥。
-iOS 与桌面不能选择本地识别，并在界面标明平台限制。
+iOS 暂不提供 SenseVoice 后端并在界面标明平台限制；Android 与桌面版均使用官方 sherpa-onnx 运行时。

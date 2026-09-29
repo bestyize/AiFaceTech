@@ -42,7 +42,8 @@ import com.aifacemate.face.voice.VoicePlaybackResult
 import com.aifacemate.face.voice.createNativeSpeechEngine
 import com.aifacemate.face.voice.createRealtimeAudioDevice
 import com.aifacemate.face.voice.createVoiceService
-import com.aifacemate.face.voice.nativeSpeechAvailable
+import com.aifacemate.face.voice.systemAsrAvailable
+import com.aifacemate.face.voice.systemTtsAvailable
 import com.aifacemate.face.voice.realtime.RealtimeConfig
 import com.aifacemate.face.voice.realtime.RealtimeConversationEngine
 import com.aifacemate.face.voice.realtime.RealtimeEvent
@@ -53,6 +54,7 @@ import com.aifacemate.face.voice.asr.client.SenseVoiceAsr
 import com.aifacemate.face.voice.asr.model.AsrRequest
 import com.aifacemate.face.voice.asr.model.AsrResult
 import com.aifacemate.face.voice.tts.client.TtsClient
+import com.aifacemate.face.voice.tts.client.PiperTts
 import com.aifacemate.face.voice.tts.model.TtsRequest
 import com.aifacemate.face.voice.tts.model.TtsResult
 import kotlinx.coroutines.CancellationException
@@ -93,7 +95,7 @@ private fun ConversationPanel(
     val scope = rememberCoroutineScope()
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val voice = remember { createVoiceService() }
-    val native = remember { if (nativeSpeechAvailable()) createNativeSpeechEngine() else null }
+    val native = remember { if (systemAsrAvailable() || systemTtsAvailable()) createNativeSpeechEngine() else null }
     var draft by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("可以开始对话") }
     var busy by remember { mutableStateOf(false) }
@@ -138,7 +140,7 @@ private fun ConversationPanel(
         if (capturing) {
             capturing = false
             status = "正在结束收音"
-            if (preferences.mode == VoiceMode.Native) native?.finishRecognition()
+            if (preferences.mode == VoiceMode.Traditional && preferences.traditionalAsr == TraditionalAsr.System) native?.finishRecognition()
             else voice.finishRecording()
             return
         }
@@ -147,8 +149,8 @@ private fun ConversationPanel(
         capturing = true
         turnJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                val input = if (preferences.mode == VoiceMode.Native) {
-                    check(nativeSpeechAvailable()) { "系统语音服务不可用" }
+                val input = if (preferences.mode == VoiceMode.Traditional && preferences.traditionalAsr == TraditionalAsr.System) {
+                    check(systemAsrAvailable()) { "系统语音识别不可用" }
                     status = "系统正在聆听，点结束说话提交"
                     checkNotNull(native).recognize().also { capturing = false }
                 } else {
@@ -191,23 +193,39 @@ private fun ConversationPanel(
                 status = "AI 大脑正在思考"
                 val answer = askBrain(input)
                 show("assistant", answer)
-                if (preferences.mode == VoiceMode.Traditional && preferences.mimoApiKey.isBlank()) {
-                    status = "已生成文字回复；配置 MiMo 后可语音朗读"
+                if (preferences.mode == VoiceMode.Traditional && preferences.traditionalTts == TraditionalTts.Mimo && preferences.mimoApiKey.isBlank()) {
+                    status = "已生成文字回复；配置 MiMo 或选择系统 / Piper 本地语音合成后可朗读"
                     return@launch
                 }
                 status = "正在播放回复"
-                if (preferences.mode == VoiceMode.Native) {
-                    checkNotNull(native).speak(answer)
-                } else {
-                    val response = TtsClient(NetworkClient()).synthesize(TtsRequest(apiKey = preferences.mimoApiKey,
-                        baseUrl = preferences.mimoBaseUrl, text = answer, voice = preferences.mimoVoice, format = "wav"))
-                    val audio = when (response) {
-                        is TtsResult.Success -> response.audio
-                        is TtsResult.Failure -> error(response.message)
+                when {
+                    preferences.mode == VoiceMode.Traditional && preferences.traditionalTts == TraditionalTts.System -> {
+                        check(systemTtsAvailable()) { "系统语音合成不可用" }
+                        checkNotNull(native).speak(answer)
                     }
-                    when (val result = voice.play(VoiceClip(audio, "audio/wav"))) {
-                        VoicePlaybackResult.Complete -> Unit
-                        is VoicePlaybackResult.Failure -> error(result.reason)
+                    preferences.mode == VoiceMode.Traditional && preferences.traditionalTts == TraditionalTts.Piper -> {
+                        status = "Piper 正在本地合成"
+                        val audio = when (val result = PiperTts.synthesize(answer)) {
+                            is TtsResult.Success -> result.audio
+                            is TtsResult.Failure -> error(result.message)
+                        }
+                        status = "正在播放回复"
+                        when (val result = voice.play(VoiceClip(audio, "audio/wav"))) {
+                            VoicePlaybackResult.Complete -> Unit
+                            is VoicePlaybackResult.Failure -> error(result.reason)
+                        }
+                    }
+                    else -> {
+                        val response = TtsClient(NetworkClient()).synthesize(TtsRequest(apiKey = preferences.mimoApiKey,
+                            baseUrl = preferences.mimoBaseUrl, text = answer, voice = preferences.mimoVoice, format = "wav"))
+                        val audio = when (response) {
+                            is TtsResult.Success -> response.audio
+                            is TtsResult.Failure -> error(response.message)
+                        }
+                        when (val result = voice.play(VoiceClip(audio, "audio/wav"))) {
+                            VoicePlaybackResult.Complete -> Unit
+                            is VoicePlaybackResult.Failure -> error(result.reason)
+                        }
                     }
                 }
                 status = "可以继续对话"
@@ -309,7 +327,7 @@ private fun ConversationPanel(
             mode = preferences.mode, messages = messages.toList(), draft = draft, status = status,
             busy = busy, voiceActive = live || capturing,
             voiceEnabled = if (preferences.mode == VoiceMode.Realtime) realtimeAudioAvailable()
-                else capturing || (!busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable())),
+                else capturing || (!busy && (preferences.traditionalAsr != TraditionalAsr.System || systemAsrAvailable())),
         ),
         onDraftChange = { draft = it }, onSend = ::submitText, onVoice = ::toggleVoice, onClose = onClose,
         modifier = panelModifier,
@@ -331,7 +349,7 @@ private fun ConversationPanel(
                 val barWidth = maxWidth * barWidthRatio
                 val barHeight = maxHeight * barHeightRatio
                 val enabled = if (preferences.mode == VoiceMode.Realtime) realtimeAudioAvailable()
-                    else capturing || (!busy && (preferences.mode != VoiceMode.Native || nativeSpeechAvailable()))
+                    else capturing || (!busy && (preferences.traditionalAsr != TraditionalAsr.System || systemAsrAvailable()))
                 val actionLabel = if (live || capturing) "结束说话" else "开始说话"
                 Box(
                     Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(bottom = 8.dp)

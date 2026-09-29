@@ -47,7 +47,7 @@ AI 大脑模块按职责分包，避免页面、状态和设备存储互相引�
 
 - `lib_business:lib_voice`：语音能力聚合入口，对外暴露实时对话、TTS / ASR 模块。
 - `lib_business:lib_realtime`：可替换的长连接会话接口，豆包二进制协议与千问 JSON 事件协议，Android/Desktop 使用 CIO，iOS 使用 Darwin。
-- `lib_business:lib_tts`：文字转语音契约、供应商目录与请求实现；当前内置小米 MiMo。
+- `lib_business:lib_tts`：在线小米 MiMo TTS 请求实现，以及 Android/桌面端按需下载的 sherpa-onnx Piper 中文离线 TTS。
 - `lib_business:lib_asr`：语音转文字契约、供应商目录与 multipart 请求实现；当前内置小米 ASR。
 
 两个模块都采用 `Provider + Request + Result` 结构。Android/Desktop 已提供 HTTP 实现，iOS 保留同一 expect/actual 接口，待补 NSURLSession 网络实现。供应商地址、模型和音色均可在请求层替换，不把具体服务商写死在 UI 中。

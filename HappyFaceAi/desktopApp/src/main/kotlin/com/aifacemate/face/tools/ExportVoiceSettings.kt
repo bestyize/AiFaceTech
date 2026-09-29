@@ -34,10 +34,11 @@ fun main(args: Array<String>) {
         var saved: VoicePreferences? = null
         var backed = 0
         var modelActions = 0
+        var piperActions = 0
         val scene = ImageComposeScene(viewport.width, viewport.height, Density(viewport.density, viewport.font)) {
             VoiceSettingsContent(state.value, { state.value = it }, { backed++ }, { saved = state.value },
-                nativeAvailable = true, realtimeAvailable = true, senseVoiceSupported = true,
-                onModelAction = { modelActions++ })
+                systemAsrAvailable = true, systemTtsAvailable = true, realtimeAvailable = true, senseVoiceSupported = true,
+                piperSupported = true, onPiperAction = { piperActions++ }, onModelAction = { modelActions++ })
         }
         try {
             var time = 0L
@@ -99,14 +100,25 @@ fun main(args: Array<String>) {
             scrollTo("voice.mimo.voice")
             check(tagged("voice.mimo.voice").config[SemanticsActions.SetText].action?.invoke(AnnotatedString("ExampleVoice")) == true)
             frame(); check(state.value.mimoVoice == "ExampleVoice")
+            click("voice.asr.System", scroll = true)
+            check(state.value.traditionalAsr == TraditionalAsr.System)
+            click("voice.tts.System", scroll = true)
+            check(state.value.traditionalTts == TraditionalTts.System)
+            click("voice.tts.Piper", scroll = true)
+            check(state.value.traditionalTts == TraditionalTts.Piper)
+            click("voice.piper.action", scroll = true); check(piperActions == 1)
             click("voice.asr.SenseVoice", scroll = true)
             check(state.value.traditionalAsr == TraditionalAsr.SenseVoice)
+            check(state.value.traditionalTts == TraditionalTts.Piper)
+            click("voice.tts.Mimo", scroll = true)
+            check(state.value.traditionalTts == TraditionalTts.Mimo)
             shot("sensevoice")
             click("voice.model.action", scroll = true); check(modelActions == 1)
             click("voice.keepFaceVisible", scroll = true); check(!state.value.keepFaceVisible)
             click("voice.save"); check(saved == state.value)
-            click("voice.mode.Native"); check(state.value.mode == VoiceMode.Native)
-            shot("native")
+            click("voice.asr.System", scroll = true); check(state.value.traditionalAsr == TraditionalAsr.System)
+            click("voice.tts.System", scroll = true); check(state.value.traditionalTts == TraditionalTts.System)
+            shot("system-services")
             click("voice.mode.Realtime"); check(state.value.doubaoAppId == "example-app")
             click("voice.back"); check(backed == 1)
             println("PASS ${viewport.name}: fixed actions, modes, providers, form edits, model action, display toggle, save/back")
@@ -115,13 +127,14 @@ fun main(args: Array<String>) {
     // Unsupported providers remain discoverable but cannot be selected or downloaded.
     val unavailable = ImageComposeScene(800, 480, Density(1f)) {
         VoiceSettingsContent(VoicePreferences(mode = VoiceMode.Traditional), {}, {}, {},
-            nativeAvailable = false, realtimeAvailable = false, senseVoiceSupported = false)
+            systemAsrAvailable = false, systemTtsAvailable = false, realtimeAvailable = false, senseVoiceSupported = false,
+            piperSupported = false)
     }
     try {
         unavailable.render().encodeToData(EncodedImageFormat.PNG)!!.use { File(output, "unavailable-desktop.png").writeBytes(it.bytes) }
         fun collect(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap { collect(it) }
         val nodes = unavailable.semanticsOwners.flatMap { collect(it.rootSemanticsNode) }
-        for (tag in listOf("voice.mode.Native", "voice.mode.Realtime", "voice.asr.SenseVoice")) {
+        for (tag in listOf("voice.mode.Realtime", "voice.asr.System", "voice.tts.System", "voice.tts.Piper", "voice.asr.SenseVoice")) {
             check(nodes.single { it.config.getOrNull(SemanticsProperties.TestTag) == tag }.config.contains(SemanticsProperties.Disabled))
         }
         println("PASS unsupported-device choices remain visible and disabled")

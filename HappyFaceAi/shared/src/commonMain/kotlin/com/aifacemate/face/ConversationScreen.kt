@@ -95,8 +95,7 @@ fun ConversationScreenContent(
                             fontSize = if (small) 18.sp else 24.sp, fontWeight = FontWeight.SemiBold)
                         if (!veryShort) Text(when (state.mode) {
                             VoiceMode.Realtime -> "实时对话"
-                            VoiceMode.Traditional -> "传统对话"
-                            VoiceMode.Native -> "系统语音"
+                            VoiceMode.Traditional -> "分段语音"
                         }, color = ChatMuted, fontSize = 12.sp)
                     }
                     if (onCollapse != null) {

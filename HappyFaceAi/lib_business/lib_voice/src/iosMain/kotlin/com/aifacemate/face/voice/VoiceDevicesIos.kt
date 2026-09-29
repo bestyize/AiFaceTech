@@ -18,8 +18,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-actual fun nativeSpeechAvailable(): Boolean =
+actual fun systemAsrAvailable(): Boolean =
     SFSpeechRecognizer(locale = NSLocale(localeIdentifier = "zh_CN")).isAvailable
+
+actual fun systemTtsAvailable(): Boolean = true
 
 actual fun createNativeSpeechEngine(): NativeSpeechEngine = IosNativeSpeech()
 
