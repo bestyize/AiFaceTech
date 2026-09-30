@@ -50,17 +50,26 @@ fun main(args: Array<String>) {
             fun tagged(tag: String) = nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
                 ?: error("${viewport.name}: missing $tag")
             fun visibleBounds(tag: String): Rect = tagged(tag).boundsInRoot
+            fun descendants(node: SemanticsNode): List<SemanticsNode> = node.children.flatMap { listOf(it) + descendants(it) }
+            fun depth(node: SemanticsNode) = generateSequence(node.parent) { it.parent }.count()
+            fun scrollContainer(tag: String) = nodes().filter {
+                it.config.contains(SemanticsProperties.VerticalScrollAxisRange) && it.config.contains(SemanticsActions.ScrollBy) &&
+                    descendants(it).any { child -> child.config.getOrNull(SemanticsProperties.TestTag) == tag }
+            }.maxByOrNull { depth(it) }
             fun fixedActions() {
                 for (tag in listOf("voice.back", "voice.save")) {
                     val bounds = visibleBounds(tag)
                     check(bounds.width >= 47 * viewport.density && bounds.height >= 47 * viewport.density) { "$tag too small: $bounds" }
                     check(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= viewport.width && bounds.bottom <= viewport.height) { "$tag outside viewport: $bounds" }
+                    check(scrollContainer(tag) == null) { "$tag must stay fixed" }
                 }
             }
             fun scrollTo(tag: String) {
-                val area = tagged("voice.configuration")
-                val range = area.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) ?: return
-                val scroll = area.config.getOrNull(SemanticsActions.ScrollBy)?.action ?: return
+                val container = scrollContainer(tag) ?: return
+                val id = container.id
+                fun area() = nodes().single { it.id == id }
+                val range = container.config[SemanticsProperties.VerticalScrollAxisRange]
+                val scroll = container.config[SemanticsActions.ScrollBy].action!!
                 fun advanceScroll(delta: Float) {
                     scroll(0f, delta)
                     // Accessibility scrolling is animated; settle it before issuing another action.
@@ -69,14 +78,14 @@ fun main(args: Array<String>) {
                 advanceScroll(-range.maxValue())
                 repeat((range.maxValue() / (24 * viewport.density)).toInt() + 4) {
                     val bounds = tagged(tag).boundsInRoot
-                    val viewportBounds = tagged("voice.configuration").boundsInRoot
+                    val viewportBounds = area().boundsInRoot
                     if (bounds.height >= 47 * viewport.density && bounds.top >= viewportBounds.top && bounds.bottom <= viewportBounds.bottom) return
                     advanceScroll(24 * viewport.density)
                 }
                 scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use { File(output, "failure-${viewport.name}.png").writeBytes(it.bytes) }
-                error("${viewport.name}: $tag cannot be reached by scrolling; bounds=${tagged(tag).boundsInRoot}, area=${tagged("voice.configuration").boundsInRoot}, scroll=${range.value()}/${range.maxValue()}")
+                error("${viewport.name}: $tag cannot be reached by scrolling; bounds=${tagged(tag).boundsInRoot}, area=${area().boundsInRoot}, scroll=${range.value()}/${range.maxValue()}")
             }
-            fun click(tag: String, scroll: Boolean = false) {
+            fun click(tag: String, scroll: Boolean = true) {
                 if (scroll) scrollTo(tag)
                 check(tagged(tag).config[SemanticsActions.OnClick].action?.invoke() == true) { "$tag click failed" }
                 frame(); fixedActions()
@@ -88,6 +97,12 @@ fun main(args: Array<String>) {
                 shots++
             }
             frame(); fixedActions(); shot("qwen")
+            if (viewport.width > viewport.height) {
+                val back = tagged("voice.back").boundsInRoot
+                val detail = tagged("voice.configuration").boundsInRoot
+                check(back.right <= detail.left && detail.top <= back.top + viewport.density) { "${viewport.name}: landscape has no top bar; back=$back detail=$detail" }
+                check(tagged("voice.mode.Traditional").boundsInRoot.left < detail.left) { "${viewport.name}: modes sit beside the configuration" }
+            }
             click("voice.provider.Doubao", scroll = true)
             check(state.value.provider == RealtimeProvider.Doubao)
             shot("doubao")

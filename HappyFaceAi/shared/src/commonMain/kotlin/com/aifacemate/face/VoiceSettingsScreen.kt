@@ -26,6 +26,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aifacemate.face.theme.AppColors
@@ -171,40 +173,24 @@ fun VoiceSettingsContent(
             val compact = maxHeight < 400.dp || maxWidth < 600.dp
             val showBackLabel = maxWidth.value / fontScale >= 420f
             val inset = if (compact) 12.dp else 20.dp
+            val landscape = maxWidth > maxHeight
+            val iconRail = maxWidth < 400.dp
+            val railWidth = if (iconRail) 64.dp else (88 * fontScale).dp
             Column(
                 Modifier.widthIn(max = 1320.dp).fillMaxSize().padding(horizontal = inset),
                 verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 16.dp),
             ) {
-                Row(
+                if (!split && !landscape) Row(
                     Modifier.fillMaxWidth().padding(top = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    OutlinedButton(
-                        onClick = onBack,
-                        modifier = Modifier.testTag("voice.back").heightIn(min = 48.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Canvas(Modifier.size(16.dp).semantics { contentDescription = "返回" }) {
-                            drawLine(VoiceGold, Offset(size.width * .75f, size.height * .12f), Offset(size.width * .3f, size.height * .5f), 2.dp.toPx())
-                            drawLine(VoiceGold, Offset(size.width * .3f, size.height * .5f), Offset(size.width * .75f, size.height * .88f), 2.dp.toPx())
-                        }
-                        if (showBackLabel) {
-                            Spacer(Modifier.width(4.dp))
-                            Text("返回", fontSize = 13.sp)
-                        }
-                    }
+                    VoiceBackButton(showBackLabel, onClick = onBack)
                     Column(Modifier.weight(1f)) {
                         Text("声音与对话", color = VoiceText, fontSize = if (compact) 18.sp else 24.sp, fontWeight = FontWeight.SemiBold)
                         if (!compact) Text("让小星用你喜欢的方式听与说", color = VoiceMuted, fontSize = 12.sp)
                     }
-                    Button(
-                        onClick = onSave,
-                        modifier = Modifier.testTag("voice.save").heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = if (compact) 14.dp else 22.dp),
-                    ) { Text("保存", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                    VoiceSaveButton(horizontalPadding = if (compact) 14.dp else 22.dp, onClick = onSave)
                 }
 
                 @Composable
@@ -428,14 +414,45 @@ fun VoiceSettingsContent(
                 }
 
                 if (split) {
-                    Row(Modifier.weight(1f).fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        Column(
-                            Modifier.width(if (spacious) 208.dp else 180.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Text("对话方式", color = VoiceMuted, fontSize = 13.sp)
-                            ModeChoices()
-                            VoiceHint("选择方式后，在右侧配置服务。保存后用于下一次对话。")
+                    Row(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        Column(Modifier.width(if (spacious) 208.dp else 180.dp).fillMaxHeight().padding(bottom = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                VoiceBackButton(showLabel = true, onClick = onBack)
+                                Text("声音与对话", color = VoiceText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("对话方式", color = VoiceMuted, fontSize = 13.sp)
+                                ModeChoices()
+                                VoiceHint("选择方式后，在右侧配置服务。保存后用于下一次对话。")
+                            }
+                            VoiceSaveButton(Modifier.fillMaxWidth(), onClick = onSave)
+                        }
+                        Configuration(Modifier.weight(1f).fillMaxHeight())
+                    }
+                } else if (landscape) {
+                    Row(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(Modifier.width(railWidth).fillMaxHeight().padding(bottom = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            VoiceBackButton(showLabel = !iconRail, Modifier.fillMaxWidth(), onClick = onBack)
+                            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).testTag("voice.rail"),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                VoiceMode.entries.forEach { mode ->
+                                    val available = when (mode) {
+                                        VoiceMode.Realtime -> realtimeAvailable
+                                        VoiceMode.Traditional -> true
+                                    }
+                                    VoiceChoice(if (iconRail) mode.tinyLabel() else mode.shortLabel(),
+                                        description = if (!available) "不可用" else null,
+                                        selected = preferences.mode == mode, enabled = available,
+                                        modifier = Modifier.fillMaxWidth().testTag("voice.mode.${mode.name}")
+                                            .semantics { contentDescription = mode.shortLabel() },
+                                        onClick = { onPreferencesChange(preferences.copy(mode = mode)) })
+                                }
+                            }
+                            VoiceSaveButton(Modifier.fillMaxWidth(), horizontalPadding = 4.dp, onClick = onSave)
                         }
                         Configuration(Modifier.weight(1f).fillMaxHeight())
                     }
@@ -459,6 +476,11 @@ fun VoiceSettingsContent(
     }
 }
 
+private fun VoiceMode.tinyLabel() = when (this) {
+    VoiceMode.Realtime -> "实时"
+    VoiceMode.Traditional -> "分段"
+}
+
 private fun VoiceMode.shortLabel() = when (this) {
     VoiceMode.Realtime -> "实时语音"
     VoiceMode.Traditional -> "分段语音"
@@ -467,6 +489,35 @@ private fun VoiceMode.shortLabel() = when (this) {
 private fun VoiceMode.summary() = when (this) {
     VoiceMode.Realtime -> "连续聆听，自然接话"
     VoiceMode.Traditional -> "说完后识别 → AI 大脑回复 → 语音朗读"
+}
+
+@Composable
+private fun VoiceBackButton(showLabel: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.testTag("voice.back").heightIn(min = 48.dp),
+        contentPadding = PaddingValues(horizontal = if (showLabel) 12.dp else 4.dp),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Canvas(Modifier.size(16.dp).semantics { contentDescription = "返回" }) {
+            drawLine(VoiceGold, Offset(size.width * .75f, size.height * .12f), Offset(size.width * .3f, size.height * .5f), 2.dp.toPx())
+            drawLine(VoiceGold, Offset(size.width * .3f, size.height * .5f), Offset(size.width * .75f, size.height * .88f), 2.dp.toPx())
+        }
+        if (showLabel) {
+            Spacer(Modifier.width(4.dp))
+            Text("返回", fontSize = 13.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun VoiceSaveButton(modifier: Modifier = Modifier, horizontalPadding: Dp = 22.dp, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.testTag("voice.save").heightIn(min = 48.dp),
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(horizontal = horizontalPadding),
+    ) { Text("保存", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
 }
 
 @Composable
