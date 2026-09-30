@@ -4,6 +4,19 @@ import com.aifacemate.face.behavior.proactive.ProactiveConversationController
 import kotlin.test.*
 
 class ProactiveConversationTest {
+    @Test fun editingCooldownReschedulesTheCurrentQuietPeriodFromItsOriginalStart() {
+        val controller = ProactiveConversationController(cooldownMillis = 60_000)
+        controller.conversationEnded(1000)
+        assertEquals("cooldown_59s", controller.status(2000))
+        controller.configureCooldown(5000)
+        assertEquals("cooldown_4s", controller.status(2000))
+        assertEquals("waiting_for_new_smile", controller.status(6000))
+        controller.configureCooldown(30_000)
+        assertEquals("cooldown_29s", controller.status(2000))
+        controller.explicitlyEnabled(4000)
+        controller.configureCooldown(15_000)
+        assertEquals("watching", controller.status(4000))
+    }
     @Test fun deliberateReenableClearsOldCooldownAndSmileLatch() {
         val controller = ProactiveConversationController()
         for (time in 0L..800L step 400) controller.observe(smile(time), true, time)
@@ -15,7 +28,7 @@ class ProactiveConversationTest {
         assertNotNull(controller.observe(smile(4200), true, 4200))
     }
     @Test fun endingLongConversationStartsANewQuietPeriod() {
-        val controller = ProactiveConversationController()
+        val controller = ProactiveConversationController(cooldownMillis = 60_000)
         for (time in 0L..800L step 400) controller.observe(smile(time), true, time)
         assertNotNull(controller.observe(smile(1200), true, 1200))
         controller.conversationEnded(100000)
@@ -34,7 +47,7 @@ class ProactiveConversationTest {
         for (time in 1600L..65000L step 400) assertNull(controller.observe(smile(time), true, time))
     }
     @Test fun busyEvidenceIsNotQueuedAndCooldownRequiresRearming() {
-        val controller = ProactiveConversationController()
+        val controller = ProactiveConversationController(cooldownMillis = 60_000)
         for (time in 0L..2000L step 400) assertNull(controller.observe(smile(time), false, time))
         for (time in 2400L..3200L step 400) assertNull(controller.observe(smile(time), true, time))
         assertNotNull(controller.observe(smile(3600), true, 3600))

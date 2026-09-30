@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aifacemate.face.theme.AppColors
 import com.aifacemate.face.voice.asr.client.SenseVoiceAsr
+import kotlin.math.roundToInt
 import com.aifacemate.face.voice.systemAsrAvailable
 import com.aifacemate.face.voice.systemTtsAvailable
 import com.aifacemate.face.voice.realtimeAudioAvailable
@@ -63,6 +64,8 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
         onPreferencesChange = {
             if (it.proactiveConversation != draft.proactiveConversation)
                 VoicePreferencesStore.setProactiveConversation(it.proactiveConversation)
+            if (it.proactiveCooldownSeconds != draft.proactiveCooldownSeconds)
+                VoicePreferencesStore.setProactiveCooldown(it.proactiveCooldownSeconds)
             draft = it
         },
         onBack = onBack,
@@ -273,13 +276,31 @@ fun VoiceSettingsContent(
                                     }
                                     VoiceHint("需要开启视觉表情识别、保持猫脸显示，并配置可用的识别和朗读服务。")
                                 }
+                                VoicePanel(Modifier.fillMaxWidth(), "主动对话间隔", compact) {
+                                    val seconds = normalizedProactiveCooldown(preferences.proactiveCooldownSeconds)
+                                    Text("冷却时间：$seconds 秒", color = VoiceGold, fontSize = 16.sp,
+                                        modifier = Modifier.testTag("voice.proactive.cooldown.label"))
+                                    Slider(value = seconds.toFloat(), valueRange = 5f..120f, steps = 114,
+                                        onValueChange = { onPreferencesChange(preferences.copy(proactiveCooldownSeconds = it.roundToInt())) },
+                                        modifier = Modifier.fillMaxWidth().testTag("voice.proactive.cooldown")
+                                            .semantics { contentDescription = "主动对话冷却时间" })
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf(5, 15, 30, 60).forEach { preset ->
+                                            VoiceChoice("${preset}秒", selected = seconds == preset,
+                                                modifier = Modifier.weight(1f).testTag("voice.proactive.cooldown.$preset"),
+                                                onClick = { onPreferencesChange(preferences.copy(proactiveCooldownSeconds = preset)) })
+                                        }
+                                    }
+                                    VoiceHint("5–120 秒可调，默认 15 秒，即时保存。控制主动开场间隔和会话结束后的安静期。")
+                                    VoiceHint("持续保持同一段微笑仍只触发一次，新的微笑确认后才会再次主动开口。")
+                                }
                                 VoicePanel(Modifier.fillMaxWidth(), "连续接话", compact) {
                                     Text("主动提问 → 倾听 → 回答 → 再次倾听", color = VoiceGold, fontSize = 14.sp)
                                     VoiceHint("每次听完回复都有约 12 秒接话窗口，不需要再点说话。分段模式说完停顿约 1.4 秒自动提交。")
                                     VoiceHint("没有回应就回到陪伴并关闭语音会话。单次收音最长 30 秒，一轮主动会话最多 3 分钟；随时可停止。")
                                 }
                                 VoicePanel(Modifier.fillMaxWidth(), "安静待机", compact) {
-                                    VoiceHint("待机不持续识别或上传语音；当前由视觉事件重新发起，主动开场至少间隔 60 秒。")
+                                    VoiceHint("待机不持续识别或上传语音；当前由视觉事件重新发起，开场间隔按上方设置。")
                                     VoiceHint("隔很久再用声音唤起需要本地唤醒词监听，暂未接入。要完全关闭麦克风，可用视觉触发或轻点猫脸的对话入口。")
                                 }
                                 VoicePanel(Modifier.fillMaxWidth(), "当前语音配置", compact) {

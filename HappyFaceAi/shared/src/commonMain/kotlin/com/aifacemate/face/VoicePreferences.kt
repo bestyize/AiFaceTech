@@ -32,7 +32,10 @@ data class VoicePreferences(
     val traditionalAsr: TraditionalAsr = TraditionalAsr.Mimo,
     val traditionalTts: TraditionalTts = TraditionalTts.Mimo,
     val proactiveConversation: Boolean = true,
+    val proactiveCooldownSeconds: Int = 15,
 )
+
+fun normalizedProactiveCooldown(seconds: Int?): Int = seconds?.coerceIn(5, 120) ?: 15
 
 /** A saved option can be unavailable on a different device. */
 fun VoicePreferences.forDevice(): VoicePreferences {
@@ -63,6 +66,9 @@ object VoicePreferencesStore {
         }
     }
     fun proactiveActivationVersion(): Long = SettingsStore.get(PREFIX + "proactiveActivationVersion")?.toLongOrNull() ?: 0L
+    fun setProactiveCooldown(seconds: Int) {
+        SettingsStore.put(PREFIX + "proactiveCooldownSeconds", normalizedProactiveCooldown(seconds).toString())
+    }
     fun load(): VoicePreferences {
         val savedMode = SettingsStore.get(PREFIX + "mode")
         val legacySystemMode = savedMode == "Native"
@@ -71,6 +77,7 @@ object VoicePreferencesStore {
                 savedMode?.let { raw -> VoiceMode.entries.firstOrNull { it.name == raw } } ?: VoiceMode.Realtime,
             keepFaceVisible = SettingsStore.get(PREFIX + "keepFaceVisible")?.toBooleanStrictOrNull() ?: true,
             proactiveConversation = SettingsStore.get(PREFIX + "proactiveConversation")?.toBooleanStrictOrNull() ?: true,
+            proactiveCooldownSeconds = normalizedProactiveCooldown(SettingsStore.get(PREFIX + "proactiveCooldownSeconds")?.toIntOrNull()),
             provider = SettingsStore.get(PREFIX + "realtime.provider")?.let { raw -> RealtimeProvider.entries.firstOrNull { it.name == raw } } ?: RealtimeProvider.Qwen,
             qwenModel = SettingsStore.get(PREFIX + "qwen.model")?.takeIf(String::isNotBlank) ?: "qwen3.5-omni-flash-realtime",
             qwenEndpoint = SettingsStore.get(PREFIX + "qwen.endpoint").orEmpty(),
@@ -93,6 +100,7 @@ object VoicePreferencesStore {
             "mode" to value.mode.name, "realtime.provider" to value.provider.name,
             "keepFaceVisible" to value.keepFaceVisible.toString(),
             "proactiveConversation" to value.proactiveConversation.toString(),
+            "proactiveCooldownSeconds" to normalizedProactiveCooldown(value.proactiveCooldownSeconds).toString(),
             "qwen.model" to value.qwenModel, "qwen.endpoint" to value.qwenEndpoint.trim(), "qwen.apiKey" to value.qwenApiKey.trim(),
             "doubao.appId" to value.doubaoAppId.trim(), "doubao.accessKey" to value.doubaoAccessKey.trim(), "doubao.appKey" to value.doubaoAppKey.trim(),
             "mimo.apiKey" to value.mimoApiKey.trim(), "mimo.baseUrl" to value.mimoBaseUrl.trim(), "mimo.voice" to value.mimoVoice,

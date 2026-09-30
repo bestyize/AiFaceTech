@@ -6,7 +6,9 @@ import com.aifacemate.face.behavior.FacialAppearance
 data class ProactiveOpening(val id: Long, val text: String)
 
 /** Independent trigger policy. Observations are visual cues, not a diagnosis of the person's emotions. */
-class ProactiveConversationController {
+class ProactiveConversationController(cooldownMillis: Long = 15_000) {
+    private var cooldownMillis = cooldownMillis.coerceIn(5000, 120_000)
+    private var cooldownAnchor: Long? = null
     private var firstSmileAt: Long? = null
     private var lastSampleAt: Long? = null
     private var confirmations = 0
@@ -28,13 +30,18 @@ class ProactiveConversationController {
         confirmations++
         if (confirmations < 3 || event.capturedAtMillis - began < 1200) return null
         armed = false
-        nextAllowedAt = nowMillis + 60_000
+        cooldownAnchor = nowMillis
+        nextAllowedAt = nowMillis + cooldownMillis
         return ProactiveOpening(++sequence, RuleOpeningTextGenerator.generate(FacialAppearance.Smile))
     }
 
     fun resetEvidence() { firstSmileAt = null; confirmations = 0 }
+    fun configureCooldown(millis: Long) {
+        cooldownMillis = millis.coerceIn(5000, 120_000)
+        cooldownAnchor?.let { nextAllowedAt = it + cooldownMillis }
+    }
     fun explicitlyEnabled(nowMillis: Long) {
-        armed = true; nextAllowedAt = nowMillis; resetEvidence()
+        armed = true; nextAllowedAt = nowMillis; cooldownAnchor = null; resetEvidence()
     }
     fun status(nowMillis: Long): String = when {
         nowMillis < nextAllowedAt -> "cooldown_${(nextAllowedAt - nowMillis + 999) / 1000}s"
@@ -43,7 +50,8 @@ class ProactiveConversationController {
         else -> "watching"
     }
     fun conversationEnded(nowMillis: Long) {
-        nextAllowedAt = maxOf(nextAllowedAt, nowMillis + 60_000)
+        cooldownAnchor = nowMillis
+        nextAllowedAt = nowMillis + cooldownMillis
         armed = false
         resetEvidence()
     }
