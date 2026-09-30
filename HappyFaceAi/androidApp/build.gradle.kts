@@ -11,6 +11,13 @@ val localSecrets = Properties().apply {
 }
 fun localSecret(name: String): String = localSecrets.getProperty(name, "").replace("\\", "\\\\").replace("\"", "\\\"")
 
+val unusedOpenCvModules = listOf(
+    "aruco", "bgsegm", "bioinspired", "dnn_superres", "face", "img_hash", "intensity_transform", "java", "mcc", "ml",
+    "optflow", "phase_unwrapping", "photo", "plot", "python3", "quality", "rapid", "saliency", "shape", "signal",
+    "stitching", "structured_light", "superres", "text", "tracking", "video", "videostab", "wechat_qrcode",
+    "xfeatures2d", "ximgproc", "xphoto",
+)
+
 // Debug and release share one key so APKs from any machine or CI can update each other in place.
 val signingFile = file("signing/signing.properties")
 val signing = Properties().apply { signingFile.takeIf { it.isFile }?.inputStream()?.use { input -> load(input) } }
@@ -46,9 +53,8 @@ android {
         versionCode = 1
         versionName = "1.0"
         ndk {
-            // Upstream's static AAR still ships a shared ORT on 32-bit x86.
-            // Package only architectures with an isolated static speech runtime.
-            abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            // 64-bit ARM phones only; x86_64 alone would add about 200 MB of native code.
+            abiFilters += setOf("arm64-v8a")
         }
         listOf("DEV_DEEPSEEK_API_KEY", "DEV_DEEPSEEK_BASE_URL", "DEV_DEEPSEEK_MODEL", "DEV_MIMO_API_KEY", "DEV_MIMO_BASE_URL")
             .forEach { buildConfigField("String", it, "\"\"") }
@@ -57,10 +63,19 @@ android {
         jniLibs {
             // Native merging runs before ABI filtering; exclude the unsupported shared x86 build.
             excludes += "lib/x86/**"
+            // Local vision loads only OpenCV core/imgproc/dnn/objdetect and their native dependencies.
+            // Using another OpenCV module on Android requires removing it here, or it fails with UnsatisfiedLinkError.
+            unusedOpenCvModules.forEach { module ->
+                excludes += "lib/*/libopencv_$module.so"
+                excludes += "lib/*/libjniopencv_$module.so"
+            }
+            excludes += "lib/*/libjniopenblas_full.so"
         }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "/META-INF/native-image/**"
+            // Headers, CMake files and sample data shipped inside the OpenCV/OpenBLAS native jars.
+            excludes += listOf("lib/*/include/**", "lib/*/lib/**", "lib/*/sdk/**")
         }
     }
     signingConfigs {

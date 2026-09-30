@@ -33,9 +33,6 @@ kotlin {
             runtimeOnly("org.bytedeco:opencv:4.13.0-1.5.13:android-arm64")
             runtimeOnly("org.bytedeco:openblas:0.3.31-1.5.13:android-arm64")
             runtimeOnly("org.bytedeco:javacpp:1.5.13:android-arm64")
-            runtimeOnly("org.bytedeco:opencv:4.13.0-1.5.13:android-x86_64")
-            runtimeOnly("org.bytedeco:openblas:0.3.31-1.5.13:android-x86_64")
-            runtimeOnly("org.bytedeco:javacpp:1.5.13:android-x86_64")
         }
 
         val iosMain = maybeCreate("iosMain").apply { dependsOn(commonMain.get()) }

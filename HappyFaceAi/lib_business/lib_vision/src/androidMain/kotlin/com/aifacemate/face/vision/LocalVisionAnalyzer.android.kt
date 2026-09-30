@@ -9,11 +9,11 @@ actual object LocalVisionAnalyzer {
             "vision/local-analysis-${LocalVisionModelCatalog.modelVersion}")
     }
     actual fun supported(): Boolean = AndroidAppContext.context() != null &&
-        android.os.Build.SUPPORTED_ABIS.any { it == "arm64-v8a" || it == "x86_64" }
+        android.os.Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
     actual fun modelsInstalled(task: LocalVisionTask) = engine.modelsInstalled(task)
     actual fun modelsAreDownloadable() = supported()
     actual suspend fun downloadModels(task: LocalVisionTask, onProgress: (Long, Long) -> Unit) {
-        check(supported()) { "本地表情和手势识别需要 Android arm64-v8a 或 x86_64" }
+        check(supported()) { "本地表情和手势识别需要 Android arm64-v8a" }
         engine.downloadModels(task, onProgress)
     }
     actual suspend fun removeModels(task: LocalVisionTask) = engine.removeModels(task)
