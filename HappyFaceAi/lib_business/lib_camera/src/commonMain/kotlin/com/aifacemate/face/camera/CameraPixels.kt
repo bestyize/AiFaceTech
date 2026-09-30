@@ -58,6 +58,12 @@ object CameraPixels {
 data class CameraPreviewTransform(val scale: Float, val left: Float, val top: Float, val sourceWidth: Int, val mirrored: Boolean) {
     fun x(value: Float): Float = left + (if (mirrored) sourceWidth - value else value) * scale
     fun y(value: Float): Float = top + value * scale
+    fun focusPoint(x: Float, y: Float, sourceHeight: Int): CameraFocusPoint {
+        require(scale > 0 && sourceHeight > 0 && x.isFinite() && y.isFinite())
+        val normalizedX = (x - left) / scale / sourceWidth
+        return CameraFocusPoint((if (mirrored) 1f - normalizedX else normalizedX).coerceIn(0f, 1f),
+            ((y - top) / scale / sourceHeight).coerceIn(0f, 1f))
+    }
 
     companion object {
         fun crop(sourceWidth: Int, sourceHeight: Int, width: Float, height: Float, mirrored: Boolean): CameraPreviewTransform {
@@ -71,6 +77,15 @@ data class CameraPreviewTransform(val scale: Float, val left: Float, val top: Fl
             return CameraPreviewTransform(scale, (width - sourceWidth * scale) / 2, (height - sourceHeight * scale) / 2, sourceWidth, mirrored)
         }
     }
+}
+
+/** Inverse of the clockwise rotation applied to a native surface to produce the upright frame. */
+internal fun CameraFocusPoint.toSurface(rotation: Int): CameraFocusPoint = when (rotation) {
+    0 -> this
+    90 -> CameraFocusPoint(y, 1f - x)
+    180 -> CameraFocusPoint(1f - x, 1f - y)
+    270 -> CameraFocusPoint(1f - y, x)
+    else -> error("Unsupported camera rotation: $rotation")
 }
 
 /** Photo pixels match the centre-cropped full-screen preview, including selfie mirroring. */

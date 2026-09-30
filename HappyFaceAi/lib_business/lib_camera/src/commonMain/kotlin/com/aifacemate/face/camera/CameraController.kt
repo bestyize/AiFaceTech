@@ -20,6 +20,13 @@ data class CameraState(
 
 data class CapturedPhoto(val location: String)
 
+/** Coordinates in the upright, unmirrored camera frame, before the preview's centre crop. */
+data class CameraFocusPoint(val x: Float, val y: Float) {
+    init { require(x.isFinite() && y.isFinite() && x in 0f..1f && y in 0f..1f) }
+}
+
+enum class CameraFocusResult { Focused, Started, ExposureAdjusted, Failed, Unsupported }
+
 /** Owned, upright RGBA8888 pixels. Only the displayed preview is mirrored for front cameras. */
 class CameraFrame(val width: Int, val height: Int, val rgba: ByteArray, val sequence: Long, val mirrored: Boolean = false) {
     init {
@@ -36,6 +43,8 @@ interface CameraController {
     suspend fun stop()
     /** Zooms the camera stream, so preview, perception and photos use the same field of view. */
     suspend fun setZoom(ratio: Float) {}
+    /** Requests focus and/or exposure metering at a frame coordinate; unsupported lenses report that explicitly. */
+    suspend fun focus(point: CameraFocusPoint): CameraFocusResult = CameraFocusResult.Unsupported
     /** Saves the current upright frame, cropped and mirrored to match the preview. */
     suspend fun capturePhoto(aspectRatio: Float? = null): CapturedPhoto {
         check(state.value.status == CameraStatus.Running) { "摄像头尚未就绪" }

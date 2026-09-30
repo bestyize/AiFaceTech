@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
@@ -41,9 +43,11 @@ fun main(args: Array<String>) {
         }
     }, 1)
     val bitmap = frame.toPreviewBitmap()
-    val viewports = listOf(CameraViewport("small", 480, 320), CameraViewport("medium", 800, 480),
+    val viewports = listOf(CameraViewport("tiny", 320, 240), CameraViewport("small", 480, 320), CameraViewport("medium", 800, 480),
         CameraViewport("wide", 1440, 900), CameraViewport("portrait", 390, 844),
-        CameraViewport("font130", 480, 320, font = 1.3f), CameraViewport("density150", 480, 320, density = 1.5f),
+        CameraViewport("font130", 480, 320, font = 1.3f), CameraViewport("tiny-font200", 320, 240, font = 2f),
+        CameraViewport("density150", 480, 320, density = 1.5f),
+        CameraViewport("tiny-density150", 320, 240, density = 1.5f),
         CameraViewport("phone", 2400, 1080, density = 2.75f))
     for (viewport in viewports) {
         val state = mutableStateOf(CameraState(status = CameraStatus.Running, deviceId = "front", maxZoomRatio = 4f,
@@ -52,6 +56,7 @@ fun main(args: Array<String>) {
         var stops = 0
         var backed = 0
         var captured = 0
+        val focusRequests = mutableListOf<CameraFocusPoint>()
         val scene = ImageComposeScene(viewport.width, viewport.height, Density(viewport.density, viewport.font)) {
             MaterialTheme(colorScheme = darkColorScheme(primary = AppColors.Amber, background = AppColors.Background, surface = AppColors.Card)) {
                 val display = CameraFrame(frame.width, frame.height, frame.rgba, frame.sequence, state.value.deviceId == "front")
@@ -68,7 +73,8 @@ fun main(args: Array<String>) {
                     { stops++; state.value = state.value.copy(status = CameraStatus.Idle) },
                     { state.value = state.value.copy(deviceId = it) },
                     onCapture = { check(it > 0); captured++ },
-                    onZoomChange = { state.value = state.value.copy(zoomRatio = it) })
+                    onZoomChange = { state.value = state.value.copy(zoomRatio = it) },
+                    focusResult = CameraFocusResult.Focused, onFocus = { focusRequests += it })
             }
         }
         try {
@@ -87,12 +93,57 @@ fun main(args: Array<String>) {
                 }
                 val preview = tagged("camera.preview").boundsInRoot
                 check(preview.width == viewport.width.toFloat() && preview.height == viewport.height.toFloat()) { "Preview must fill the screen: $preview" }
+                val compactLandscape = viewport.height / viewport.density < 400 && viewport.width > viewport.height
+                if (compactLandscape) {
+                    val shutter = tagged("camera.capture").boundsInRoot
+                    check(shutter.left >= viewport.width * .75f) { "Compact shutter must stay at the right edge: $shutter" }
+                    check(shutter.height <= 57 * viewport.density) { "Compact shutter too large: $shutter" }
+                    val status = tagged("camera.status").boundsInRoot
+                    check(status.top >= viewport.height * .65f) { "Compact status must stay at the bottom edge: $status" }
+                    val edgeControls = listOf("camera.back", "camera.flip", "camera.capture", "camera.zoomToggle")
+                        .map { tagged(it).boundsInRoot }
+                    for ((index, a) in edgeControls.withIndex()) for (b in edgeControls.drop(index + 1)) {
+                        check(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top) {
+                            "Compact controls overlap: $a, $b"
+                        }
+                    }
+                }
             }
             fun click(tag: String) { check(tagged(tag).config[SemanticsActions.OnClick].action?.invoke() == true); render() }
             fun shot(name: String) { scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use { File(output, "${viewport.name}-$name.png").writeBytes(it.bytes) } }
             render(); fixedControls(); check(starts == 0); shot("mirrored")
+            val tap = Offset(viewport.width * .45f, viewport.height * .45f)
+            scene.sendPointerEvent(PointerEventType.Press, tap); render()
+            scene.sendPointerEvent(PointerEventType.Release, tap); render()
+            val expectedFocus = CameraPreviewTransform.crop(frame.width, frame.height, viewport.width.toFloat(), viewport.height.toFloat(), true)
+                .focusPoint(tap.x, tap.y, frame.height)
+            check(focusRequests.size == 1 && kotlin.math.abs(focusRequests.single().x - expectedFocus.x) < .001f &&
+                kotlin.math.abs(focusRequests.single().y - expectedFocus.y) < .001f) { "Tap focus must map the mirrored, cropped preview" }
+            shot("focus")
             click("camera.flip"); check(state.value.deviceId == "back"); fixedControls(); shot("preview")
-            click("camera.capture"); check(captured == 1)
+            val shutter = tagged("camera.capture").boundsInRoot.center
+            scene.sendPointerEvent(PointerEventType.Press, shutter); render()
+            scene.sendPointerEvent(PointerEventType.Release, shutter); render()
+            check(captured == 1 && focusRequests.size == 1) { "Shutter taps must not also focus the underlying preview" }
+            if (viewport.height / viewport.density < 400) {
+                click("camera.status")
+                check(nodes().any { it.config.getOrNull(SemanticsProperties.TestTag) == "camera.details" })
+                check(nodes().any { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text.contains("person 85%") } == true })
+                repeat(3) { render() }
+                shot("details")
+                click("camera.detailsClose")
+                repeat(3) { render() }
+                check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "camera.zoomPanel" }) { "Small-screen zoom must start collapsed" }
+                click("camera.zoomToggle")
+            }
+            val zoomBounds = tagged("camera.zoom").boundsInRoot
+            val highZoom = Offset(zoomBounds.center.x, zoomBounds.top + 10 * viewport.density)
+            scene.sendPointerEvent(PointerEventType.Press, highZoom)
+            render()
+            scene.sendPointerEvent(PointerEventType.Release, highZoom)
+            render()
+            check(state.value.zoomRatio >= 3.8f) { "${viewport.name}: upper zoom tap did not update ${state.value.zoomRatio} at $highZoom in $zoomBounds" }
+            check(focusRequests.size == 1) { "Zoom taps must not focus the underlying preview" }
             check(tagged("camera.zoom").config[SemanticsActions.SetProgress].action?.invoke(2f) == true)
             render(); check(state.value.zoomRatio == 2f); shot("zoom")
             state.value = state.value.copy(status = CameraStatus.PermissionDenied, error = "请在系统设置中允许摄像头访问，然后重试")
@@ -146,6 +197,10 @@ private fun verifySessionLifecycle(frame: CameraFrame) {
             state.value = state.value.copy(status = CameraStatus.Idle)
             frames.value = null
         }
+        override suspend fun focus(point: CameraFocusPoint): CameraFocusResult {
+            operations += "focus:${point.x},${point.y}"
+            return CameraFocusResult.Focused
+        }
         override fun close() {
             if (closed) return
             closed = true
@@ -181,6 +236,8 @@ private fun verifySessionLifecycle(frame: CameraFrame) {
         fun click(tag: String) { check(tagged(tag).config[SemanticsActions.OnClick].action?.invoke() == true); render() }
         render(); await { camera.state.value.status == CameraStatus.Running }
         check(camera.state.value.deviceId == "front")
+        click("camera.preview")
+        await { operations.any { it.startsWith("focus:") } }
         click("camera.flip")
         await { camera.state.value.status == CameraStatus.Running && camera.state.value.deviceId == "back" }
         repeat(8) { render(); Thread.sleep(10) }

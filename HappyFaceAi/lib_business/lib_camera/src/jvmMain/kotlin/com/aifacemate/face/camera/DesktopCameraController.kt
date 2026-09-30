@@ -77,6 +77,7 @@ internal class DesktopCameraController : CameraController {
                 camera.set(CAP_PROP_FRAME_WIDTH, 640.0)
                 camera.set(CAP_PROP_FRAME_HEIGHT, 480.0)
                 camera.set(CAP_PROP_BUFFERSIZE, 1.0)
+                runCatching { camera.set(CAP_PROP_AUTOFOCUS, 1.0) }
                 val input = Mat().also { source = it }
                 val rgba = Mat().also { output = it }
                 currentCoroutineContext().ensureActive()

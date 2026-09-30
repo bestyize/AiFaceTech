@@ -75,12 +75,17 @@ object VisionPreferencesStore {
             "gesture.enabled" to config.gestureEnabled.toString(),
             "gesture.confidence" to config.gestureConfidenceThreshold.toString(),
         )
-        fields.forEach { (key, text) -> SettingsStore.put(PREFIX + key, text) }
+        fields.forEach { (key, text) ->
+            if (SettingsStore.get(PREFIX + key) != text) SettingsStore.put(PREFIX + key, text)
+        }
         capabilityIds().forEach { id ->
             val provider = config.providerIds[id]
-            if (provider == null) SettingsStore.remove(PROVIDER_PREFIX + id) else SettingsStore.put(PROVIDER_PREFIX + id, provider)
+            val key = PROVIDER_PREFIX + id
+            if (provider == null) {
+                if (SettingsStore.get(key) != null) SettingsStore.remove(key)
+            } else if (SettingsStore.get(key) != provider) SettingsStore.put(key, provider)
         }
-        retiredKeys.forEach(SettingsStore::remove)
+        retiredKeys.forEach { if (SettingsStore.get(it) != null) SettingsStore.remove(it) }
     }
 
     private fun capabilityIds() = VisionTask.entries.flatMap { it.capabilities }.map { it.id }.distinct()
