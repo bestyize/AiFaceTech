@@ -131,9 +131,11 @@ fun VisionSettingsScreen(
     onOpenCamera: () -> Unit = {},
     registry: ProviderRegistry = VisionRuntime.registry,
     store: ModelStore = VisionRuntime.modelStore,
+    initialPreferences: VisionPreferences? = null,
+    persistPreferences: (VisionPreferences) -> Unit = VisionPreferencesStore::save,
 ) {
-    val initial = remember { VisionPreferencesStore.load() }
-    // Primitive saveable fields preserve unsaved edits through Android recreation.
+    val initial = remember { initialPreferences ?: VisionPreferencesStore.load() }
+    // Changes are persisted synchronously; saveable fields also preserve the current UI through recreation.
     var yoloEnabled by rememberSaveable { mutableStateOf(initial.yoloEnabled) }
     var yoloThreshold by rememberSaveable { mutableStateOf(initial.yoloConfidenceThreshold) }
     var expressionEnabled by rememberSaveable { mutableStateOf(initial.expressionEnabled) }
@@ -157,6 +159,7 @@ fun VisionSettingsScreen(
     VisionSettingsContent(
         preferences = draft,
         onPreferencesChange = {
+            persistPreferences(it.normalized())
             yoloEnabled = it.yoloEnabled
             yoloThreshold = it.yoloConfidenceThreshold
             expressionEnabled = it.expressionEnabled
@@ -166,8 +169,7 @@ fun VisionSettingsScreen(
             providerIds = it.providerIds
         },
         onBack = onBack,
-        onSave = { VisionPreferencesStore.save(draft); onBack() },
-        onOpenCamera = { VisionPreferencesStore.save(draft); onOpenCamera() },
+        onOpenCamera = onOpenCamera,
         tasks = tasks,
         onModelAction = { task ->
             val models = registry.visionProviders(task, draft).filterNotNull().flatMap { it.models }.distinct()
@@ -205,7 +207,6 @@ fun VisionSettingsContent(
     preferences: VisionPreferences,
     onPreferencesChange: (VisionPreferences) -> Unit,
     onBack: () -> Unit,
-    onSave: () -> Unit,
     tasks: Map<VisionTask, VisionTaskState>,
     onModelAction: (VisionTask) -> Unit = {},
     onCancel: (VisionTask) -> Unit = {},
@@ -253,8 +254,7 @@ fun VisionSettingsContent(
                 verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 14.dp),
             ) {
                 val sideBySide = split || landscape
-                if (!sideBySide) VisionHeader(compact, showBackLabel = showBackLabel, saveEnabled = !anyBusy,
-                    onBack = onBack, onSave = onSave)
+                if (!sideBySide) VisionHeader(compact, showBackLabel = showBackLabel, onBack = onBack)
                 val enabledCount = VisionTab.entries.count { enabled(it) }
 
                 @Composable
@@ -280,7 +280,7 @@ fun VisionSettingsContent(
                                 onCancel = { onCancel(task) },
                             )
                             if (includeCamera) VisionCameraAction(enabledCount, !anyBusy, onClick = onOpenCamera)
-                            VisionHint("保存不会启动摄像头；打开预览后，画面只在本机分析，不保存也不上传。")
+                            VisionHint("修改立即保存。打开摄像头后自动预览，画面仅在本机分析；点击拍照才保存照片。")
                             Spacer(Modifier.height(4.dp))
                         }
                     }
@@ -302,7 +302,6 @@ fun VisionSettingsContent(
                                 }
                             }
                             VisionCameraAction(enabledCount, !anyBusy, showHint = !shortRail, onClick = onOpenCamera)
-                            VisionSaveButton(!anyBusy, Modifier.fillMaxWidth(), onClick = onSave)
                         }
                         Detail(Modifier.weight(1f).fillMaxHeight(), includeCamera = false)
                     }
@@ -319,7 +318,6 @@ fun VisionSettingsContent(
                                     VisionTaskPill(tab, status(tab), selected == tab, Modifier.fillMaxWidth(), showTitle = !iconRail) { selectedKey = tab.key }
                                 }
                             }
-                            VisionSaveButton(!anyBusy, Modifier.fillMaxWidth(), horizontalPadding = 4.dp, onClick = onSave)
                         }
                         Detail(Modifier.weight(1f).fillMaxHeight(), includeCamera = true)
                     }
@@ -337,7 +335,7 @@ fun VisionSettingsContent(
 }
 
 @Composable
-private fun VisionHeader(compact: Boolean, showBackLabel: Boolean, saveEnabled: Boolean, onBack: () -> Unit, onSave: () -> Unit) {
+private fun VisionHeader(compact: Boolean, showBackLabel: Boolean, onBack: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(top = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -346,9 +344,8 @@ private fun VisionHeader(compact: Boolean, showBackLabel: Boolean, saveEnabled: 
         VisionBackButton(showBackLabel, onClick = onBack)
         Column(Modifier.weight(1f)) {
             Text("视觉", color = VisionText, fontSize = if (compact) 18.sp else 24.sp, fontWeight = FontWeight.SemiBold)
-            if (!compact) Text("让小星看懂身边的人和手势，全部在本机完成", color = VisionMuted, fontSize = 12.sp)
+            if (!compact) Text("修改立即保存，识别在本机完成", color = VisionMuted, fontSize = 12.sp)
         }
-        VisionSaveButton(saveEnabled, horizontalPadding = if (compact) 14.dp else 22.dp, onClick = onSave)
     }
 }
 
@@ -369,17 +366,6 @@ private fun VisionBackButton(showLabel: Boolean, modifier: Modifier = Modifier, 
             Text("返回", fontSize = 13.sp, maxLines = 1)
         }
     }
-}
-
-@Composable
-private fun VisionSaveButton(enabled: Boolean, modifier: Modifier = Modifier, horizontalPadding: Dp = 22.dp, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.heightIn(min = 48.dp).testTag("vision.save"),
-        shape = RoundedCornerShape(12.dp),
-        contentPadding = PaddingValues(horizontal = horizontalPadding),
-    ) { Text("保存", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
 }
 
 @Composable
@@ -474,7 +460,7 @@ private fun VisionCameraAction(enabledCount: Int, enabled: Boolean, showHint: Bo
                 drawCircle(tint, size.width * .16f, Offset(size.width * .5f, size.height * .57f), style = stroke)
             }
             Spacer(Modifier.width(8.dp))
-            Text("保存并打开摄像头", fontSize = 14.sp, maxLines = 1)
+            Text("打开摄像头", fontSize = 14.sp, maxLines = 1)
         }
     }
 }

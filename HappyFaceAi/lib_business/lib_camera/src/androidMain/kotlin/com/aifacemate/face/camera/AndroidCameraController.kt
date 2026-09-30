@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CameraMetadata
 import android.os.SystemClock
 import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -16,6 +17,9 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.Camera
 import androidx.camera.core.ZoomState
+import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.FocusMeteringResult
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.core.CameraState as NativeCameraState
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -35,6 +39,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -79,6 +84,8 @@ private class AndroidCameraController(
     private var stateObserver: Observer<NativeCameraState>? = null
     private var zoomObserver: Observer<ZoomState>? = null
     private var boundCamera: Camera? = null
+    private var focusFlags = 0
+    @Volatile private var analysisRotation = 0
     @Volatile private var closed = false
     @Volatile private var generation = 0L
     private var sequence = 0L
@@ -121,6 +128,14 @@ private class AndroidCameraController(
                 val selected = cameras.firstOrNull { it.id == deviceId }
                     ?: if (deviceId == null) cameras.firstOrNull { it.lens == CameraLens.Front } ?: cameras.firstOrNull() else null
                 checkNotNull(selected) { "未找到所选摄像头" }
+                val characteristics = (context.getSystemService(Context.CAMERA_SERVICE) as CameraManager).getCameraCharacteristics(selected.id)
+                val modes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: intArrayOf()
+                val hasAf = characteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) != 0f &&
+                    modes.any { it == CameraMetadata.CONTROL_AF_MODE_AUTO }
+                focusFlags = 0
+                if (hasAf && (characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) ?: 0) > 0) focusFlags = focusFlags or FocusMeteringAction.FLAG_AF
+                if ((characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE) ?: 0) > 0) focusFlags = focusFlags or FocusMeteringAction.FLAG_AE
+                if ((characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AWB) ?: 0) > 0) focusFlags = focusFlags or FocusMeteringAction.FLAG_AWB
                 val selector = CameraSelector.Builder().addCameraFilter { infos ->
                     infos.filter { Camera2CameraInfo.from(it).cameraId == selected.id }
                 }.build()
@@ -134,6 +149,7 @@ private class AndroidCameraController(
                         val now = SystemClock.elapsedRealtime()
                         if (closed || token != generation || now - lastFrame < 80) return@setAnalyzer
                         lastFrame = now
+                        analysisRotation = image.imageInfo.rotationDegrees
                         val pixels = CameraPixels.yuv420(image.width, image.height, image.plane(0), image.plane(1), image.plane(2))
                         val frame = CameraPixels.upright(image.width, image.height, pixels, image.imageInfo.rotationDegrees,
                             ++sequence, selected.lens == CameraLens.Front)
@@ -145,6 +161,8 @@ private class AndroidCameraController(
                 analysis = useCase
                 val camera = cameraProvider.bindToLifecycle(owner, selector, useCase)
                 boundCamera = camera
+                // CameraX restores continuous AF through this API without interop overrides that would block tap focus.
+                camera.cameraControl.cancelFocusAndMetering()
                 observedInfo = camera.cameraInfo
                 val observer = Observer<NativeCameraState> { native ->
                     if (native.error != null) reportError(token, "摄像头连接异常，请检查设备或其它应用占用后重试")
@@ -180,12 +198,37 @@ private class AndroidCameraController(
         }
     }
 
+    override suspend fun focus(point: CameraFocusPoint): CameraFocusResult = withContext(Dispatchers.Main.immediate) {
+        val operation = gate.withLock {
+            val camera = boundCamera ?: return@withLock null
+            val useCase = analysis ?: return@withLock null
+            if (focusFlags == 0 || frames.value == null) return@withLock null
+            val surface = point.toSurface(analysisRotation)
+            val metering = SurfaceOrientedMeteringPointFactory(1f, 1f, useCase).createPoint(surface.x, surface.y)
+            val action = FocusMeteringAction.Builder(metering, focusFlags).setAutoCancelDuration(3, TimeUnit.SECONDS).build()
+            if (!camera.cameraInfo.isFocusMeteringSupported(action)) return@withLock null
+            camera.cameraControl.startFocusAndMetering(action) to (focusFlags and FocusMeteringAction.FLAG_AF != 0)
+        } ?: return@withContext CameraFocusResult.Unsupported
+        val (future, hasAf) = operation
+        // Do not hold the camera mutex while autofocus scans; zoom, switching and stopping must remain responsive.
+        val result = suspendCancellableCoroutine<FocusMeteringResult> { continuation ->
+            continuation.invokeOnCancellation { future.cancel(true) }
+            future.addListener({
+                if (continuation.isActive) try { continuation.resume(future.get()) }
+                catch (failure: Exception) { continuation.resumeWithException(failure.cause ?: failure) }
+            }, ContextCompat.getMainExecutor(context))
+        }
+        if (!hasAf) CameraFocusResult.ExposureAdjusted
+        else if (result.isFocusSuccessful) CameraFocusResult.Focused else CameraFocusResult.Failed
+    }
+
     private fun stopCapture() {
         generation++
         stateObserver?.let { observedInfo?.cameraState?.removeObserver(it) }
         zoomObserver?.let { observedInfo?.zoomState?.removeObserver(it) }
         zoomObserver = null
         boundCamera = null
+        focusFlags = 0
         stateObserver = null
         observedInfo = null
         analysis?.let { it.clearAnalyzer(); provider?.unbind(it) }

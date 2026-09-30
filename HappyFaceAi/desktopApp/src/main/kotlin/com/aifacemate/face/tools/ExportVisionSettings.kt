@@ -7,6 +7,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import com.aifacemate.face.VisionSettingsContent
+import com.aifacemate.face.VisionSettingsScreen
 import com.aifacemate.face.feature.lifecenter.*
 import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.capability.*
@@ -54,6 +55,7 @@ private fun fixtureRegistry(supported: Boolean = true, installed: (VisionTask) -
 fun main(args: Array<String>) {
     val output = File(args.firstOrNull() ?: "build/vision-settings").apply { mkdirs() }
     val viewports = listOf(
+        VisionViewport("tiny-320x240", 320, 240),
         VisionViewport("small-480x320", 480, 320),
         VisionViewport("small-640x360", 640, 360),
         VisionViewport("medium-800x480", 800, 480),
@@ -83,7 +85,7 @@ fun main(args: Array<String>) {
                     else taskState.copy(busy = busy.value, progress = 45, error = modelError.value)
                 }
             }
-            VisionSettingsContent(state.value, { state.value = it }, { backed++ }, { saved = state.value }, tasks,
+            VisionSettingsContent(state.value, { state.value = it; saved = it }, { backed++ }, tasks,
                 onModelAction = { task ->
                     if (task == VisionTask.Objects) modelActions++ else localActions++
                     installed.value = if (task in installed.value) installed.value - task else installed.value + task
@@ -107,14 +109,15 @@ fun main(args: Array<String>) {
                     descendants(it).any { child -> hasTag(child, tag) }
             }.maxByOrNull { depth(it) }
             fun fixedActions() {
-                // Back and save are never inside a scrolling area; other entries may scroll on very short screens.
-                for (tag in listOf("vision.back", "vision.save", "vision.tab.yolo", "vision.tab.expression")) {
+                // Back remains fixed; changes persist directly from the control callbacks.
+                check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "vision.save" })
+                for (tag in listOf("vision.back", "vision.tab.yolo", "vision.tab.expression")) {
                     if (tag.startsWith("vision.tab") && scrollContainer(tag) != null) continue
                     val bounds = tagged(tag).boundsInRoot
                     check(bounds.width >= 47 * viewport.density && bounds.height >= 47 * viewport.density) { "$tag too small: $bounds" }
                     check(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= viewport.width && bounds.bottom <= viewport.height) { "$tag outside viewport: $bounds" }
                 }
-                check(scrollContainer("vision.back") == null && scrollContainer("vision.save") == null) { "back/save must stay fixed" }
+                check(scrollContainer("vision.back") == null) { "back must stay fixed" }
             }
             fun scrollTo(tag: String) {
                 val container = scrollContainer(tag)
@@ -173,7 +176,6 @@ fun main(args: Array<String>) {
             click("vision.yolo.modelAction", scroll = true)
             check(VisionTask.Objects !in installed.value && modelActions == 2)
             busy.value = true; frame()
-            check(tagged("vision.save").config.contains(SemanticsProperties.Disabled))
             check(tagged("vision.camera").config.contains(SemanticsProperties.Disabled))
             check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "vision.yolo.modelAction" }) { "Cancel replaces the model action while busy" }
             scrollTo("vision.yolo.cancel"); shot("downloading")
@@ -183,9 +185,7 @@ fun main(args: Array<String>) {
             modelError.value = null; frame()
             click("vision.yolo.enabled", scroll = true)
             check(tagged("vision.tab.yolo").config[SemanticsProperties.StateDescription] == "需下载模型")
-            click("vision.save")
             check(saved?.yoloEnabled == true) { "Enabling YOLO is saved before its model is downloaded" }
-            saved = null
             check(nodes().none { node -> node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "高级" || it.text.contains("自定义") } == true }) {
                 "Custom model options are gone"
             }
@@ -193,7 +193,7 @@ fun main(args: Array<String>) {
             check(tagged("vision.tab.yolo").config[SemanticsProperties.StateDescription] == "已开启")
             scrollTo("vision.yolo.confidence")
             check(tagged("vision.yolo.confidence").config[SemanticsActions.SetProgress].action?.invoke(0.4f) == true)
-            frame(); check(state.value.yoloConfidenceThreshold == 0.4f)
+            frame(); check(state.value.yoloConfidenceThreshold == 0.4f && saved?.yoloConfidenceThreshold == 0.4f)
             click("vision.yolo.confidenceReset", scroll = true); check(state.value.yoloConfidenceThreshold == 0.25f)
             shot("yolo-configured")
             click("vision.tab.expression"); shot("expression")
@@ -204,6 +204,7 @@ fun main(args: Array<String>) {
             // Two packaged hand providers: the page offers a choice and saves the provider id.
             click("vision.provider.fixture.hands.npu", scroll = true)
             check(state.value.providerId(HandLandmarker) == "fixture.hands.npu")
+            check(saved?.providerId(HandLandmarker) == "fixture.hands.npu")
             check(tagged("vision.gesture.modelStatus").config[SemanticsProperties.Text].any { it.text == "系统内置 · 无需下载" })
             shot("gesture-provider")
             click("vision.tab.expression")
@@ -212,10 +213,10 @@ fun main(args: Array<String>) {
             frame(); check(state.value.expressionConfidenceThreshold == 0.8f)
             click("vision.tab.yolo")
             check(state.value.yoloEnabled && state.value.expressionEnabled)
-            click("vision.save"); check(saved == state.value)
+            check(saved == state.value)
             click("vision.camera", scroll = true); check(openedCamera == 1)
             click("vision.back"); check(backed == 1)
-            println("PASS ${viewport.name}: model download/delete/cancel, busy/error states, tabs, provider choice, thresholds, save/back, scroll reachability")
+            println("PASS ${viewport.name}: model actions, auto-save callbacks, no save button, open camera, back and scroll reachability")
         } finally { scene.close() }
     }
     var navigation: LifeRoute? = null
@@ -233,7 +234,7 @@ fun main(args: Array<String>) {
     } finally { center.close() }
     val unsupportedRegistry = fixtureRegistry(supported = false) { false }
     val unsupported = ImageComposeScene(800, 480, Density(1f)) {
-        VisionSettingsContent(VisionPreferences(), {}, {}, {},
+        VisionSettingsContent(VisionPreferences(), {}, {},
             VisionTask.entries.associateWith { unsupportedRegistry.settingsState(it, VisionPreferences()) })
     }
     try {
@@ -247,4 +248,55 @@ fun main(args: Array<String>) {
         println("PASS unsupported platform model action disabled")
     } finally { unsupported.close() }
     println("Exported vision settings screenshots to ${output.absolutePath}")
+    verifyImmediatePersistence()
+}
+
+/** Exercises the real screen's persistence boundary without touching the user's preferences or model files. */
+@OptIn(ExperimentalComposeUiApi::class)
+private fun verifyImmediatePersistence() {
+    var persisted = VisionPreferences()
+    var writes = 0
+    var opened: VisionPreferences? = null
+    var backed = false
+    val registry = fixtureRegistry { true }
+    val store = object : ModelStore {
+        override val supportsDownloads = false
+        override fun installed(model: ModelSpec) = true
+        override suspend fun install(models: List<ModelSpec>, onProgress: (Long, Long) -> Unit) = error("No fixture downloads")
+        override suspend fun remove(models: List<ModelSpec>) = Unit
+        override suspend fun verifiedPath(model: ModelSpec): String = error("No fixture inference")
+    }
+    fun scene() = ImageComposeScene(800, 480, Density(1f)) {
+        VisionSettingsScreen(onBack = { backed = true }, onOpenCamera = { opened = persisted }, registry = registry,
+            store = store, initialPreferences = persisted, persistPreferences = { persisted = it; writes++ })
+    }
+    fun node(scene: ImageComposeScene, tag: String): SemanticsNode {
+        fun visit(current: SemanticsNode): List<SemanticsNode> = listOf(current) + current.children.flatMap { visit(it) }
+        return scene.semanticsOwners.flatMap { visit(it.rootSemanticsNode) }
+            .single { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
+    }
+    val first = scene()
+    try {
+        first.render().close()
+        node(first, "vision.yolo.enabled").config[SemanticsActions.OnClick].action!!.invoke()
+        check(writes == 1 && persisted.yoloEnabled) { "Toggle must persist during its callback" }
+        first.render().close()
+        node(first, "vision.yolo.confidence").config[SemanticsActions.SetProgress].action!!.invoke(.4f)
+        check(writes == 2 && persisted.yoloConfidenceThreshold == .4f) { "Threshold must persist immediately" }
+        node(first, "vision.tab.gesture").config[SemanticsActions.OnClick].action!!.invoke()
+        first.render().close()
+        node(first, "vision.provider.fixture.hands.npu").config[SemanticsActions.OnClick].action!!.invoke()
+        check(writes == 3 && persisted.providerId(HandLandmarker) == "fixture.hands.npu")
+        node(first, "vision.back").config[SemanticsActions.OnClick].action!!.invoke()
+        check(backed && writes == 3)
+    } finally { first.close() }
+    val reopened = scene()
+    try {
+        reopened.render().close()
+        check(node(reopened, "vision.tab.yolo").config[SemanticsProperties.StateDescription] == "已开启")
+        check(node(reopened, "vision.yolo.confidence").config[SemanticsProperties.ProgressBarRangeInfo].current == .4f)
+        node(reopened, "vision.camera").config[SemanticsActions.OnClick].action!!.invoke()
+        check(opened == persisted && writes == 3) { "Camera must use the already persisted configuration" }
+    } finally { reopened.close() }
+    println("PASS actual vision route: immediate toggle/threshold/provider persistence, back/reentry and camera configuration")
 }

@@ -4,6 +4,26 @@ import kotlin.test.*
 
 class CameraPixelsTest {
     @Test
+    fun tapFocusUndoCropAndSelfieMirroring() {
+        val normal = CameraPreviewTransform.crop(640, 480, 300f, 600f, false)
+        val selfie = CameraPreviewTransform.crop(640, 480, 300f, 600f, true)
+        assertEquals(CameraFocusPoint(.4375f, .25f), normal.focusPoint(100f, 150f, 480))
+        assertEquals(CameraFocusPoint(.5625f, .25f), selfie.focusPoint(100f, 150f, 480))
+        assertEquals(CameraFocusPoint(.5f, .5f), selfie.focusPoint(150f, 300f, 480))
+    }
+
+    @Test
+    fun tapFocusUndoEveryNativeSurfaceRotation() {
+        val point = CameraFocusPoint(.25f, .5f)
+        assertEquals(point, point.toSurface(0))
+        assertEquals(CameraFocusPoint(.5f, .75f), point.toSurface(90))
+        assertEquals(CameraFocusPoint(.75f, .5f), point.toSurface(180))
+        assertEquals(CameraFocusPoint(.5f, .25f), point.toSurface(270))
+        assertFailsWith<IllegalArgumentException> { CameraFocusPoint(Float.NaN, .5f) }
+        assertFailsWith<IllegalArgumentException> { CameraFocusPoint(1.1f, .5f) }
+    }
+
+    @Test
     fun fullScreenCropKeepsOverlayCoordinatesAlignedForBothLenses() {
         val normal = CameraPreviewTransform.crop(640, 480, 300f, 600f, false)
         val mirrored = CameraPreviewTransform.crop(640, 480, 300f, 600f, true)

@@ -18,6 +18,7 @@ import platform.AVFoundation.*
 import platform.CoreMedia.CMSampleBufferGetImageBuffer
 import platform.CoreMedia.CMSampleBufferRef
 import platform.CoreVideo.*
+import platform.CoreGraphics.CGPoint
 import platform.Foundation.*
 import platform.QuartzCore.CACurrentMediaTime
 import platform.UIKit.*
@@ -47,6 +48,7 @@ private class IosCameraController : CameraController {
     private val frameQueue = dispatch_queue_create("com.aifacemate.camera.frames", null)
     private var session: AVCaptureSession? = null
     private var captureDevice: AVCaptureDevice? = null
+    private var focusRestore: Job? = null
     private var output: AVCaptureVideoDataOutput? = null
     private var delegate: FrameDelegate? = null
     private var sequence = 0L
@@ -115,7 +117,14 @@ private class IosCameraController : CameraController {
                     ?: if (deviceId == null) cameras.firstOrNull { it.position == AVCaptureDevicePositionFront } ?: cameras.firstOrNull() else null
                 checkNotNull(selected) { "未找到摄像头；请使用有相机的 iOS 真机" }
                 check(selected.lockForConfiguration(null)) { "摄像头配置暂不可用" }
-                try { selected.videoZoomFactor = 1.0 } finally { selected.unlockForConfiguration() }
+                try {
+                    selected.videoZoomFactor = 1.0
+                    val centre = cValue<CGPoint> { x = .5; y = .5 }
+                    if (selected.isFocusPointOfInterestSupported()) selected.focusPointOfInterest = centre
+                    if (selected.isExposurePointOfInterestSupported()) selected.exposurePointOfInterest = centre
+                    if (selected.isFocusModeSupported(AVCaptureFocusModeContinuousAutoFocus)) selected.focusMode = AVCaptureFocusModeContinuousAutoFocus
+                    if (selected.isExposureModeSupported(AVCaptureExposureModeContinuousAutoExposure)) selected.exposureMode = AVCaptureExposureModeContinuousAutoExposure
+                } finally { selected.unlockForConfiguration() }
                 captureDevice = selected
                 val capture = AVCaptureSession().also { session = it }
                 capture.beginConfiguration()
@@ -173,6 +182,8 @@ private class IosCameraController : CameraController {
     }
 
     private fun stopCapture() {
+        focusRestore?.cancel()
+        focusRestore = null
         generation.value++
         output?.setSampleBufferDelegate(null, null)
         session?.stopRunning()
@@ -192,6 +203,41 @@ private class IosCameraController : CameraController {
             check(device.lockForConfiguration(null)) { "摄像头变焦暂不可用" }
             try { device.videoZoomFactor = zoom.toDouble() } finally { device.unlockForConfiguration() }
             mutableState.update { it.copy(zoomRatio = zoom) }
+        }
+    }
+    override suspend fun focus(point: CameraFocusPoint): CameraFocusResult = withContext(Dispatchers.Default) {
+        gate.withLock {
+            val device = captureDevice ?: return@withLock CameraFocusResult.Unsupported
+            val af = device.isFocusPointOfInterestSupported() && device.isFocusModeSupported(AVCaptureFocusModeAutoFocus)
+            val ae = device.isExposurePointOfInterestSupported() && device.isExposureModeSupported(AVCaptureExposureModeContinuousAutoExposure)
+            if (!af && !ae) return@withLock CameraFocusResult.Unsupported
+            val rotation = when (orientation.value) {
+                AVCaptureVideoOrientationPortrait -> 90
+                AVCaptureVideoOrientationPortraitUpsideDown -> 270
+                AVCaptureVideoOrientationLandscapeLeft -> 180
+                else -> 0
+            }
+            val surface = point.toSurface(rotation)
+            val location = cValue<CGPoint> { x = surface.x.toDouble(); y = surface.y.toDouble() }
+            check(device.lockForConfiguration(null)) { "摄像头对焦暂不可用" }
+            try {
+                if (af) { device.focusPointOfInterest = location; device.focusMode = AVCaptureFocusModeAutoFocus }
+                if (ae) { device.exposurePointOfInterest = location; device.exposureMode = AVCaptureExposureModeContinuousAutoExposure }
+            } finally { device.unlockForConfiguration() }
+            focusRestore?.cancel()
+            val token = generation.value
+            if (af) focusRestore = cleanup.launch {
+                delay(3000)
+                gate.withLock {
+                    if (generation.value == token && captureDevice == device && device.isFocusModeSupported(AVCaptureFocusModeContinuousAutoFocus) && device.lockForConfiguration(null)) {
+                        try {
+                            if (device.isFocusPointOfInterestSupported()) device.focusPointOfInterest = cValue<CGPoint> { x = .5; y = .5 }
+                            device.focusMode = AVCaptureFocusModeContinuousAutoFocus
+                        } finally { device.unlockForConfiguration() }
+                    }
+                }
+            }
+            if (af) CameraFocusResult.Started else CameraFocusResult.ExposureAdjusted
         }
     }
     override fun close() {

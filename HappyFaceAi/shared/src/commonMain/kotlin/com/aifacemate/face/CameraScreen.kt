@@ -8,6 +8,7 @@ import com.aifacemate.face.camera.*
 import com.aifacemate.face.vision.*
 import com.aifacemate.face.capability.Availability
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.NonCancellable
@@ -37,6 +38,8 @@ fun CameraScreen(
     var photoBusy by remember { mutableStateOf(false) }
     var photoMessage by remember { mutableStateOf<String?>(null) }
     var captureFlash by remember { mutableStateOf(false) }
+    var focusResult by remember { mutableStateOf<CameraFocusResult?>(null) }
+    var focusJob by remember { mutableStateOf<Job?>(null) }
     val scope = rememberCoroutineScope()
     var request by remember { mutableStateOf(0) }
     var deviceId by remember { mutableStateOf<String?>(null) }
@@ -46,8 +49,9 @@ fun CameraScreen(
     val sessionGate = remember { Mutex() }
     DisposableEffect(controller) { onDispose { controller.close() } }
 
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { active = false }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { active = false; focusJob?.cancel() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { active = true }
+    LaunchedEffect(cameraState.deviceId) { focusJob?.cancel(); focusResult = null }
     LaunchedEffect(photoMessage) { if (photoMessage != null) { delay(4000); photoMessage = null } }
     LaunchedEffect(captureFlash) { if (captureFlash) { delay(100); captureFlash = false } }
     LaunchedEffect(latest) {
@@ -96,10 +100,28 @@ fun CameraScreen(
         onBack = onBack,
         onStart = { active = true; request++ },
         onStop = { active = false },
-        onDeviceChange = { deviceId = it; if (active) request++ },
+        onDeviceChange = { focusJob?.cancel(); deviceId = it; if (active) request++ },
         photoBusy = photoBusy,
         photoMessage = photoMessage,
         captureFlash = captureFlash,
+        focusResult = focusResult,
+        onFocus = { point ->
+            focusJob?.cancel()
+            focusResult = null
+            focusJob = scope.launch {
+                try {
+                    val result = controller.focus(point)
+                    focusResult = result
+                    when (result) {
+                        CameraFocusResult.ExposureAdjusted -> photoMessage = "已调整曝光；此镜头不支持点选对焦"
+                        CameraFocusResult.Unsupported -> photoMessage = "此摄像头不支持点选对焦或测光"
+                        CameraFocusResult.Failed -> photoMessage = "未完成对焦，请换个位置重试"
+                        else -> Unit
+                    }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { focusResult = CameraFocusResult.Failed; photoMessage = "对焦未完成，请重试" }
+            }
+        },
         onZoomChange = { ratio -> scope.launch {
             try { controller.setZoom(ratio) }
             catch (cancelled: CancellationException) { throw cancelled }
