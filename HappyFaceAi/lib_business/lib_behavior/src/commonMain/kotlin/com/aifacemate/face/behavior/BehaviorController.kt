@@ -10,7 +10,7 @@ sealed interface BehaviorEvent {
     data object Petted : BehaviorEvent
     data class UserText(val text: String) : BehaviorEvent
     /** Adapter supplies filtered evidence; capturedAtMillis uses the controller's monotonic clock. */
-    data class Vision(val personVisible: Boolean, val thumbsUp: Boolean, val capturedAtMillis: Long) : BehaviorEvent
+    data class Vision(val personVisible: Boolean?, val thumbsUp: Boolean?, val capturedAtMillis: Long) : BehaviorEvent
     data object VisionStopped : BehaviorEvent
     data object ResetInteraction : BehaviorEvent
 }
@@ -34,7 +34,9 @@ class BehaviorController {
     private var personPresent = false
     private var gesturePresent = false
     private var lastPersonAt: Long? = null
-    private var lastVisionAt: Long? = null
+    private var lastPersonSampleAt: Long? = null
+    private var lastGestureSampleAt: Long? = null
+    private var lastGestureReceivedAt: Long? = null
 
     fun accept(event: BehaviorEvent, nowMillis: Long): BehaviorState {
         expire(nowMillis)
@@ -54,25 +56,31 @@ class BehaviorController {
                 }
             }
             is BehaviorEvent.Vision -> {
-                if (event.capturedAtMillis > nowMillis || nowMillis - event.capturedAtMillis > 1000 ||
-                    lastVisionAt?.let { event.capturedAtMillis <= it } == true) return state(nowMillis)
-                if (lastVisionAt?.let { event.capturedAtMillis - it > 1000 } == true) clearVision()
-                lastVisionAt = event.capturedAtMillis
-                if (event.personVisible) {
-                    lastPersonAt = nowMillis
-                    personFrames++
-                    if (!personPresent && personFrames >= 3) {
-                        personPresent = phase != InteractionPhase.Idle ||
-                            react(FaceExpression.GREETING, "person_arrived", 10, 2400, 15000, nowMillis)
-                    }
-                } else personFrames = 0
-                if (event.thumbsUp) {
-                    gestureFrames++
-                    if (!gesturePresent && gestureFrames >= 3) {
-                        gesturePresent = phase != InteractionPhase.Idle ||
-                            react(FaceExpression.APPROVING, "thumbs_up", 10, 2400, 5000, nowMillis)
-                    }
-                } else { gestureFrames = 0; gesturePresent = false }
+                if (event.capturedAtMillis > nowMillis || nowMillis - event.capturedAtMillis > 1000) return state(nowMillis)
+                if (event.personVisible != null && lastPersonSampleAt?.let { event.capturedAtMillis <= it } != true) {
+                    if (lastPersonSampleAt?.let { event.capturedAtMillis - it > 2500 } == true) personFrames = 0
+                    lastPersonSampleAt = event.capturedAtMillis
+                    if (event.personVisible) {
+                        lastPersonAt = nowMillis
+                        personFrames++
+                        if (!personPresent && personFrames >= 3) {
+                            personPresent = phase != InteractionPhase.Idle ||
+                                react(FaceExpression.GREETING, "person_arrived", 10, 2400, 15000, nowMillis)
+                        }
+                    } else personFrames = 0
+                }
+                if (event.thumbsUp != null && lastGestureSampleAt?.let { event.capturedAtMillis <= it } != true) {
+                    if (lastGestureSampleAt?.let { event.capturedAtMillis - it > 1500 } == true) gestureFrames = 0
+                    lastGestureSampleAt = event.capturedAtMillis
+                    lastGestureReceivedAt = nowMillis
+                    if (event.thumbsUp) {
+                        gestureFrames++
+                        if (!gesturePresent && gestureFrames >= 3) {
+                            gesturePresent = phase != InteractionPhase.Idle ||
+                                react(FaceExpression.APPROVING, "thumbs_up", 10, 2400, 5000, nowMillis)
+                        }
+                    } else { gestureFrames = 0; gesturePresent = false }
+                }
             }
             BehaviorEvent.VisionStopped -> clearVision()
             BehaviorEvent.ResetInteraction -> { phase = InteractionPhase.Idle; reaction = null; clearVision() }
@@ -96,7 +104,9 @@ class BehaviorController {
     private fun expire(now: Long) {
         if (reaction?.let { now >= it.until } == true) reaction = null
         if (lastPersonAt?.let { now - it >= 2000 } == true) { personPresent = false; personFrames = 0; lastPersonAt = null }
-        if (lastVisionAt?.let { now - it > 1000 } == true) clearVision()
+        if (lastGestureReceivedAt?.let { now - it > 1500 } == true) {
+            gestureFrames = 0; gesturePresent = false; lastGestureReceivedAt = null
+        }
     }
 
     private fun react(expression: FaceExpression, reason: String, priority: Int, duration: Long, cooldown: Long, now: Long): Boolean {
@@ -108,6 +118,6 @@ class BehaviorController {
 
     private fun clearVision() {
         personFrames = 0; gestureFrames = 0; personPresent = false; gesturePresent = false
-        lastPersonAt = null; lastVisionAt = null
+        lastPersonAt = null; lastPersonSampleAt = null; lastGestureSampleAt = null; lastGestureReceivedAt = null
     }
 }

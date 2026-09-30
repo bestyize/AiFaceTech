@@ -8,11 +8,21 @@ import ai.onnxruntime.TensorInfo
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import com.aifacemate.face.capability.DevicePlatform
+import com.aifacemate.face.capability.currentDeviceEnvironment
 
 /** One ONNX Runtime session with a single fixed-shape float input. Not thread-safe; callers serialize runs. */
 internal class OnnxModel(path: String, description: String) : AutoCloseable {
     private val environment = OrtEnvironment.getEnvironment()
-    private val session: OrtSession = environment.createSession(path)
+    private val session: OrtSession = OrtSession.SessionOptions().use { options ->
+        if (currentDeviceEnvironment().platform == DevicePlatform.Android) {
+            options.setIntraOpNumThreads(2)
+            options.setInterOpNumThreads(1)
+            options.addConfigEntry("session.intra_op.allow_spinning", "0")
+            options.addConfigEntry("session.inter_op.allow_spinning", "0")
+        }
+        environment.createSession(path, options)
+    }
     private var buffer: FloatBuffer? = null
     val inputName: String
     val inputShape: LongArray

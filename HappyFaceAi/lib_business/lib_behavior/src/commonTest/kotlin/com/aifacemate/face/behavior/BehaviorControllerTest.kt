@@ -4,6 +4,16 @@ import com.aifacemate.face.model.FaceExpression
 import kotlin.test.*
 
 class BehaviorControllerTest {
+    @Test fun independentObjectResultsDoNotResetGestureConfirmation() {
+        val controller = BehaviorController()
+        controller.accept(BehaviorEvent.Vision(null, true, 100), 100)
+        controller.accept(BehaviorEvent.Vision(true, null, 150), 150)
+        controller.accept(BehaviorEvent.Vision(null, true, 300), 300)
+        // Older object evidence must not make a newer gesture result look out of order.
+        controller.accept(BehaviorEvent.Vision(true, null, 200), 350)
+        assertEquals(FaceExpression.APPROVING, controller.accept(BehaviorEvent.Vision(null, true, 500), 500).expression)
+    }
+
     @Test fun gestureConfirmedDuringCooldownCanRespondOnceCooldownEnds() {
         val controller = BehaviorController()
         fun frame(time: Long, thumbs: Boolean = true) = controller.accept(BehaviorEvent.Vision(false, thumbs, time), time)
