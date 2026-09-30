@@ -11,6 +11,10 @@ val localSecrets = Properties().apply {
 }
 fun localSecret(name: String): String = localSecrets.getProperty(name, "").replace("\\", "\\\\").replace("\"", "\\\"")
 
+// Debug and release share one key so APKs from any machine or CI can update each other in place.
+val signingFile = file("signing/signing.properties")
+val signing = Properties().apply { signingFile.takeIf { it.isFile }?.inputStream()?.use { input -> load(input) } }
+
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_11
@@ -59,8 +63,17 @@ android {
             excludes += "/META-INF/native-image/**"
         }
     }
+    signingConfigs {
+        create("shared") {
+            storeFile = file("signing/${signing.getProperty("storeFile")}")
+            storePassword = signing.getProperty("storePassword")
+            keyAlias = signing.getProperty("keyAlias")
+            keyPassword = signing.getProperty("keyPassword")
+        }
+    }
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("shared")
             buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"${localSecret("aifacemate.dev.apiKey")}\"")
             buildConfigField("String", "DEV_DEEPSEEK_BASE_URL", "\"${localSecret("aifacemate.dev.baseUrl")}\"")
             buildConfigField("String", "DEV_DEEPSEEK_MODEL", "\"${localSecret("aifacemate.dev.model")}\"")
@@ -68,6 +81,7 @@ android {
             buildConfigField("String", "DEV_MIMO_BASE_URL", "\"${localSecret("aifacemate.dev.mimoBaseUrl")}\"")
         }
         release {
+            signingConfig = signingConfigs.getByName("shared")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

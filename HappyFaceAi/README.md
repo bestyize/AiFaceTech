@@ -16,7 +16,8 @@ This is a Kotlin Multiplatform project targeting Android, iOS, Desktop (JVM).
 
 Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
 
-- Android app: `./gradlew :androidApp:assembleDebug`
+- Android app: `./gradlew :androidApp:assembleDebug` (or `assembleRelease`)
+  - Debug and release are both signed with the shared key in `androidApp/signing/`, so APKs built on any machine or in CI can update each other without uninstalling. The key and its passwords are committed on purpose; keep this repository private.
 - Desktop app:
   - Hot reload: `./gradlew :desktopApp:hotRun --auto`
   - Standard run: `./gradlew :desktopApp:run`
