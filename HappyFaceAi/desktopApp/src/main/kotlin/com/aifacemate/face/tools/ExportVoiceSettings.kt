@@ -64,7 +64,7 @@ fun main(args: Array<String>) {
                     check(scrollContainer(tag) == null) { "$tag must stay fixed" }
                 }
             }
-            fun scrollTo(tag: String) {
+            fun scrollTo(tag: String, minimumHeight: Float = 47f) {
                 val container = scrollContainer(tag) ?: return
                 val id = container.id
                 fun area() = nodes().single { it.id == id }
@@ -79,7 +79,7 @@ fun main(args: Array<String>) {
                 repeat((range.maxValue() / (24 * viewport.density)).toInt() + 4) {
                     val bounds = tagged(tag).boundsInRoot
                     val viewportBounds = area().boundsInRoot
-                    if (bounds.height >= 47 * viewport.density && bounds.top >= viewportBounds.top && bounds.bottom <= viewportBounds.bottom) return
+                    if (bounds.height >= minimumHeight * viewport.density && bounds.top >= viewportBounds.top && bounds.bottom <= viewportBounds.bottom) return
                     advanceScroll(24 * viewport.density)
                 }
                 scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use { File(output, "failure-${viewport.name}.png").writeBytes(it.bytes) }
@@ -144,7 +144,14 @@ fun main(args: Array<String>) {
             click("voice.proactiveConversation")
             check(state.value.proactiveConversation != previousEnabled)
             check(state.value.mode == previousMode)
+            click("voice.proactive.cooldown.5")
+            check(state.value.proactiveCooldownSeconds == 5)
+            // Material Slider has a 44dp semantic thumb inside its 48dp touch layout.
+            scrollTo("voice.proactive.cooldown", minimumHeight = 43f)
+            check(tagged("voice.proactive.cooldown").config[SemanticsActions.SetProgress].action?.invoke(30f) == true)
+            frame(); check(state.value.proactiveCooldownSeconds == 30)
             click("voice.save"); check(saved?.proactiveConversation == state.value.proactiveConversation)
+            check(saved?.proactiveCooldownSeconds == 30)
             click("voice.proactive.configure")
             check(tagged("voice.provider.Doubao").config.getOrNull(SemanticsProperties.Selected) == true)
             click("voice.mode.Proactive")

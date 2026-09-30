@@ -26,7 +26,7 @@
 
 ## 应用接入
 
-主动对话策略独立在 `behavior.proactive`：持续微笑可触发固定提问，经 TTS 播放完成后自动倾听。此开场有独立的 60 秒冷却和同一段微笑仅一次规则，不受普通表情回应的 3 秒冷却控制。配置与闭环边界见 [PROACTIVE_CONVERSATION.md](../../docs/PROACTIVE_CONVERSATION.md)。
+主动对话策略独立在 `behavior.proactive`：持续微笑可触发固定提问，经 TTS 播放完成后自动倾听。开场冷却在主动对话设置中调整，默认 15 秒、范围 5–120 秒，与同一段微笑仅一次规则一起控制触发，不受普通表情回应的 3 秒冷却控制。配置与闭环边界见 [PROACTIVE_CONVERSATION.md](../../docs/PROACTIVE_CONVERSATION.md)。
 
 `shared/App.kt` 持有控制器，用 50ms 时钟更新到期状态。`VoiceConversationOverlay` 转发阶段和已提交的用户文字（包括最终实时语音转写）；`LivingPerception` 在陪伴页订阅相机和感知结果，在工作线程推理、主线程提交事件。关闭页面或应用进入后台会停止感知并释放相机。
 

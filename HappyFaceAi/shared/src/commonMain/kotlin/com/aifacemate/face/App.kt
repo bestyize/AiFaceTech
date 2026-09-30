@@ -54,6 +54,9 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         val behavior = remember { BehaviorController() }
         val clock = remember { TimeSource.Monotonic.markNow() }
         val now = { clock.elapsedNow().inWholeMilliseconds }
+        LaunchedEffect(voicePreferences.proactiveCooldownSeconds) {
+            proactive.configureCooldown(voicePreferences.proactiveCooldownSeconds * 1000L)
+        }
         var proactiveStatus by remember { mutableStateOf("等待微笑") }
         LaunchedEffect(proactiveActivationVersion) {
             if (voicePreferences.proactiveConversation && proactiveActivationVersion > 0)
