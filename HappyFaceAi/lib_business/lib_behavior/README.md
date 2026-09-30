@@ -10,7 +10,7 @@
 | 抚摸按钮 | HAPPY | 2.4 秒 / 0.5 秒 |
 | “真可爱”“你很棒”“喜欢你”等 | BASHFUL_SMILE | 8 秒 / 1 秒 |
 | “难过”“伤心”“不开心”等 | COMFORTING | 8 秒 / 1 秒 |
-| “你好”等 | GREETING | 5 秒 / 3 秒 |
+| “你好”等 | GREETING | 8 秒 / 1 秒；回复结束后显示 2.4 秒 |
 | 人进入画面 | GREETING | 2.4 秒 / 15 秒 |
 | 静态点赞手势 | APPROVING | 2.4 秒 / 5 秒 |
 | 张开手掌 / V 字 | GREETING / CELEBRATING | 2.4 秒 / 5 秒 |
