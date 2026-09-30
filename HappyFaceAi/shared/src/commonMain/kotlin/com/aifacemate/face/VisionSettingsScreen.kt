@@ -3,7 +3,6 @@ package com.aifacemate.face
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -82,10 +81,8 @@ data class VisionTaskState(
     val supported: Boolean = true,
     val unsupportedReason: String? = null,
     val downloadable: Boolean = true,
+    /** Every model is on the device, or the provider needs none. */
     val installed: Boolean = false,
-    /** The task can run with the current draft settings, including a custom model path. */
-    val ready: Boolean = installed,
-    val customModel: Boolean = downloadable,
     val busy: Boolean = false,
     val progress: Int = 0,
     val error: String? = null,
@@ -104,7 +101,7 @@ fun ProviderRegistry.settingsState(task: VisionTask, preferences: VisionPreferen
     }
     if (selected.any { it == null }) {
         return VisionTaskState("暂未接入", "此设备还没有可用的实现", supported = false,
-            unsupportedReason = "此设备暂未接入", downloadable = false, customModel = false, choices = choices)
+            unsupportedReason = "此设备暂未接入", downloadable = false, choices = choices)
     }
     val providers = selected.filterNotNull()
     val unsupported = providers.map { availability(it) }.filterIsInstance<Availability.Unsupported>().firstOrNull()
@@ -117,8 +114,6 @@ fun ProviderRegistry.settingsState(task: VisionTask, preferences: VisionPreferen
         unsupportedReason = unsupported?.reason,
         downloadable = models.isNotEmpty(),
         installed = providers.all { availability(it) == Availability.Ready },
-        ready = providers.all { availability(it, preferences.options(task)) == Availability.Ready },
-        customModel = providers.any { it.acceptsCustomModel },
         choices = choices,
     )
 }
@@ -140,13 +135,10 @@ fun VisionSettingsScreen(
     val initial = remember { VisionPreferencesStore.load() }
     // Primitive saveable fields preserve unsaved edits through Android recreation.
     var yoloEnabled by rememberSaveable { mutableStateOf(initial.yoloEnabled) }
-    var yoloPath by rememberSaveable { mutableStateOf(initial.yoloModelPath) }
     var yoloThreshold by rememberSaveable { mutableStateOf(initial.yoloConfidenceThreshold) }
     var expressionEnabled by rememberSaveable { mutableStateOf(initial.expressionEnabled) }
-    var expressionPath by rememberSaveable { mutableStateOf(initial.expressionModelPath) }
     var expressionThreshold by rememberSaveable { mutableStateOf(initial.expressionConfidenceThreshold) }
     var gestureEnabled by rememberSaveable { mutableStateOf(initial.gestureEnabled) }
-    var gesturePath by rememberSaveable { mutableStateOf(initial.gestureModelPath) }
     var gestureThreshold by rememberSaveable { mutableStateOf(initial.gestureConfidenceThreshold) }
     var providerIds by rememberSaveable(stateSaver = providerIdsSaver) { mutableStateOf(initial.providerIds) }
     val scope = rememberCoroutineScope()
@@ -154,8 +146,8 @@ fun VisionSettingsScreen(
     var progress by remember { mutableStateOf(0) }
     var errors by remember { mutableStateOf(emptyMap<VisionTask, String>()) }
     var job by remember { mutableStateOf<Job?>(null) }
-    val draft = VisionPreferences(yoloEnabled, yoloPath, yoloThreshold, expressionEnabled, expressionPath, expressionThreshold,
-        gestureEnabled, gesturePath, gestureThreshold, providerIds)
+    val draft = VisionPreferences(yoloEnabled, yoloThreshold, expressionEnabled, expressionThreshold,
+        gestureEnabled, gestureThreshold, providerIds)
     // Recomputed on every recomposition; installs and deletions end by clearing busyTask, which recomposes.
     val tasks = VisionTask.entries.associateWith { task ->
         registry.settingsState(task, draft).copy(
@@ -166,13 +158,10 @@ fun VisionSettingsScreen(
         preferences = draft,
         onPreferencesChange = {
             yoloEnabled = it.yoloEnabled
-            yoloPath = it.yoloModelPath
             yoloThreshold = it.yoloConfidenceThreshold
             expressionEnabled = it.expressionEnabled
-            expressionPath = it.expressionModelPath
             expressionThreshold = it.expressionConfidenceThreshold
             gestureEnabled = it.gestureEnabled
-            gesturePath = it.gestureModelPath
             gestureThreshold = it.gestureConfidenceThreshold
             providerIds = it.providerIds
         },
@@ -224,26 +213,19 @@ fun VisionSettingsContent(
 ) {
     var selectedKey by rememberSaveable { mutableStateOf(VisionTab.Yolo.key) }
     val selected = VisionTab.entries.first { it.key == selectedKey }
-    var validationAttempted by rememberSaveable { mutableStateOf(false) }
     val anyBusy = tasks.values.any { it.busy }
 
     fun state(tab: VisionTab) = tasks.getValue(tab.task)
     fun enabled(tab: VisionTab) = preferences.enabled(tab.task)
-    fun pathError(tab: VisionTab) = preferences.modelPathError(tab.task)
     fun status(tab: VisionTab): VisionStatus {
         val state = state(tab)
         return when {
             state.busy -> VisionStatus("下载中 ${state.progress}%", VisionGold, true)
             !enabled(tab) -> VisionStatus("未开启", VisionMuted, false)
             !state.supported -> VisionStatus("设备不支持", VisionError, false)
-            state.ready -> VisionStatus("已开启", VisionGreen, true)
+            state.installed -> VisionStatus("已开启", VisionGreen, true)
             else -> VisionStatus("需下载模型", VisionGold, false)
         }
-    }
-    fun validateAnd(action: () -> Unit) {
-        validationAttempted = true
-        val invalid = VisionTab.entries.firstOrNull { pathError(it) != null }
-        if (invalid != null) selectedKey = invalid.key else action()
     }
 
     MaterialTheme(colorScheme = darkColorScheme(
@@ -272,7 +254,7 @@ fun VisionSettingsContent(
             ) {
                 val sideBySide = split || landscape
                 if (!sideBySide) VisionHeader(compact, showBackLabel = showBackLabel, saveEnabled = !anyBusy,
-                    onBack = onBack, onSave = { validateAnd(onSave) })
+                    onBack = onBack, onSave = onSave)
                 val enabledCount = VisionTab.entries.count { enabled(it) }
 
                 @Composable
@@ -287,20 +269,17 @@ fun VisionSettingsContent(
                                 tab = selected,
                                 enabled = enabled(selected),
                                 state = state(selected),
-                                path = preferences.modelPath(task),
                                 threshold = preferences.threshold(task),
-                                pathError = if (validationAttempted) pathError(selected) else null,
                                 actionsLocked = anyBusy,
                                 compact = compact,
                                 showIcon = !narrowDetail,
                                 onEnabledChange = { onPreferencesChange(preferences.update(task, enabled = it)) },
-                                onPathChange = { onPreferencesChange(preferences.update(task, modelPath = it)) },
                                 onThresholdChange = { onPreferencesChange(preferences.update(task, threshold = it)) },
                                 onProviderChange = { capability, provider -> onPreferencesChange(preferences.withProvider(capability, provider)) },
                                 onModelAction = { onModelAction(task) },
                                 onCancel = { onCancel(task) },
                             )
-                            if (includeCamera) VisionCameraAction(enabledCount, !anyBusy) { validateAnd(onOpenCamera) }
+                            if (includeCamera) VisionCameraAction(enabledCount, !anyBusy, onClick = onOpenCamera)
                             VisionHint("保存不会启动摄像头；打开预览后，画面只在本机分析，不保存也不上传。")
                             Spacer(Modifier.height(4.dp))
                         }
@@ -322,8 +301,8 @@ fun VisionSettingsContent(
                                     VisionTaskCard(tab, status(tab), selected == tab, Modifier.fillMaxWidth(), dense = shortRail) { selectedKey = tab.key }
                                 }
                             }
-                            VisionCameraAction(enabledCount, !anyBusy, showHint = !shortRail) { validateAnd(onOpenCamera) }
-                            VisionSaveButton(!anyBusy, Modifier.fillMaxWidth()) { validateAnd(onSave) }
+                            VisionCameraAction(enabledCount, !anyBusy, showHint = !shortRail, onClick = onOpenCamera)
+                            VisionSaveButton(!anyBusy, Modifier.fillMaxWidth(), onClick = onSave)
                         }
                         Detail(Modifier.weight(1f).fillMaxHeight(), includeCamera = false)
                     }
@@ -340,7 +319,7 @@ fun VisionSettingsContent(
                                     VisionTaskPill(tab, status(tab), selected == tab, Modifier.fillMaxWidth(), showTitle = !iconRail) { selectedKey = tab.key }
                                 }
                             }
-                            VisionSaveButton(!anyBusy, Modifier.fillMaxWidth(), horizontalPadding = 4.dp) { validateAnd(onSave) }
+                            VisionSaveButton(!anyBusy, Modifier.fillMaxWidth(), horizontalPadding = 4.dp, onClick = onSave)
                         }
                         Detail(Modifier.weight(1f).fillMaxHeight(), includeCamera = true)
                     }
@@ -505,14 +484,11 @@ private fun VisionDetail(
     tab: VisionTab,
     enabled: Boolean,
     state: VisionTaskState,
-    path: String,
     threshold: Float,
-    pathError: String?,
     actionsLocked: Boolean,
     compact: Boolean,
     showIcon: Boolean,
     onEnabledChange: (Boolean) -> Unit,
-    onPathChange: (String) -> Unit,
     onThresholdChange: (Float) -> Unit,
     onProviderChange: (capabilityId: String, providerId: String) -> Unit,
     onModelAction: () -> Unit,
@@ -545,7 +521,6 @@ private fun VisionDetail(
     }
 
     VisionPanel("模型", compact) {
-        val customPath = path.isNotBlank()
         state.choices.groupBy { it.capabilityId }.values.forEach { options ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 options.forEach { choice ->
@@ -562,7 +537,6 @@ private fun VisionDetail(
                     !state.downloadable -> "系统内置 · 无需下载" to VisionGreen
                     state.busy -> "正在处理… ${state.progress}%" to VisionGold
                     state.installed -> "已下载 · 可离线使用" to VisionGreen
-                    customPath && state.ready -> "未下载 · 当前使用自定义模型" to VisionMuted
                     else -> "未下载" to VisionGold
                 }
                 Text(label, color = color, fontSize = 12.sp, modifier = Modifier.testTag("$prefix.modelStatus"))
@@ -593,7 +567,7 @@ private fun VisionDetail(
             color = VisionGold, trackColor = Color(0xFF393A35),
         )
         state.error?.let { Text(it, color = VisionError, fontSize = 12.sp, modifier = Modifier.testTag("$prefix.modelError")) }
-        if (enabled && state.supported && !state.ready && !state.busy)
+        if (enabled && state.supported && !state.installed && !state.busy)
             Text("下载后才能在摄像头中识别", color = VisionGold, fontSize = 12.sp)
         VisionHint(if (state.downloadable) "模型不打包进安装包，首次识别时载入，离开摄像头后释放内存。"
             else "使用系统内置模型在本机分析。")
@@ -622,46 +596,6 @@ private fun VisionDetail(
             ) { Text("恢复默认 ${(tab.defaultThreshold * 100).roundToInt()}%", fontSize = 12.sp) }
             Text("筛选更严格", Modifier.weight(1f), color = VisionMuted, fontSize = 12.sp,
                 textAlign = TextAlign.End)
-        }
-    }
-
-    if (state.customModel) {
-        var expanded by rememberSaveable(tab) { mutableStateOf(path.isNotBlank()) }
-        val open = expanded || pathError != null
-        VisionPanel("高级", compact) {
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(10.dp))
-                    .clickable(role = Role.Button, onClickLabel = if (open) "收起" else "展开") { expanded = !open }
-                    .testTag("$prefix.advanced"),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("自定义 ONNX 模型", color = VisionText, fontSize = 14.sp)
-                    Text(if (open) "填写本机 .onnx 文件的完整路径" else if (path.isBlank()) "未设置 · 使用上方模型" else path, color = VisionMuted, fontSize = 12.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Canvas(Modifier.size(16.dp)) {
-                    val y1 = size.height * if (open) .62f else .38f
-                    val y2 = size.height * if (open) .38f else .62f
-                    drawLine(VisionMuted, Offset(size.width * .2f, y1), Offset(size.width * .5f, y2), 2.dp.toPx(), StrokeCap.Round)
-                    drawLine(VisionMuted, Offset(size.width * .5f, y2), Offset(size.width * .8f, y1), 2.dp.toPx(), StrokeCap.Round)
-                }
-            }
-            if (open) {
-                OutlinedTextField(
-                    value = path,
-                    onValueChange = onPathChange,
-                    label = { Text(when (tab) { VisionTab.Yolo -> "YOLO 模型路径"; VisionTab.Expression -> "表情分类模型路径"; VisionTab.Gesture -> "手关键点模型路径" }, fontSize = 13.sp) },
-                    placeholder = { Text(when (tab) { VisionTab.Yolo -> "/models/yolo26m.onnx"; VisionTab.Expression -> "/models/face-expression.onnx"; VisionTab.Gesture -> "/models/hand-pose.onnx" }, fontSize = 13.sp) },
-                    supportingText = { Text(pathError ?: "留空使用上方下载的模型", fontSize = 12.sp) },
-                    isError = pathError != null,
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
-                    modifier = Modifier.fillMaxWidth().testTag("$prefix.modelPath"),
-                )
-                if (tab == VisionTab.Yolo) VisionHint("需为 FP32 [1,3,640,640] → [1,N,6] 输出，导出时设置 nms=False。")
-            }
         }
     }
 }

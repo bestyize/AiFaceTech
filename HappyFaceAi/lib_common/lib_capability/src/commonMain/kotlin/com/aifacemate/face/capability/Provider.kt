@@ -8,11 +8,6 @@ abstract class CapabilityKey<C : AutoCloseable>(val id: String) {
     override fun toString() = id
 }
 
-data class ProviderOptions(
-    /** Replaces the provider's replaceable model with a user file. Ignored unless [Provider.acceptsCustomModel]. */
-    val customModelPath: String? = null,
-)
-
 sealed interface Availability {
     data object Ready : Availability
     data class NeedsModels(val missing: List<ModelSpec>) : Availability
@@ -31,11 +26,9 @@ interface Provider<C : AutoCloseable> {
     val description: String
     /** Managed files this provider needs; empty for platform built-ins such as Apple Vision. */
     val models: List<ModelSpec>
-    /** Whether [ProviderOptions.customModelPath] can replace one of [models]. */
-    val acceptsCustomModel: Boolean get() = false
 
-    fun availability(environment: DeviceEnvironment, options: ProviderOptions = ProviderOptions()): Availability
+    fun availability(environment: DeviceEnvironment): Availability
 
     /** The caller owns the returned instance and closes it when its session ends. */
-    suspend fun open(options: ProviderOptions = ProviderOptions()): C
+    suspend fun open(): C
 }

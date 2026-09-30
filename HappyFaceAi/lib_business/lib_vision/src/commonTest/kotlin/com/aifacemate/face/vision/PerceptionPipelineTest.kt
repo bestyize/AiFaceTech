@@ -19,7 +19,6 @@ class PerceptionPipelineTest {
         override val id: String,
         override val capability: CapabilityKey<C>,
         var availability: Availability = Availability.Ready,
-        override val acceptsCustomModel: Boolean = false,
         private val create: (Fake<C>) -> C,
     ) : Provider<C> {
         override val displayName = id
@@ -27,9 +26,8 @@ class PerceptionPipelineTest {
         override val models = emptyList<ModelSpec>()
         var opened = 0
         var closed = 0
-        var lastOptions: ProviderOptions? = null
-        override fun availability(environment: DeviceEnvironment, options: ProviderOptions) = availability
-        override suspend fun open(options: ProviderOptions): C { opened++; lastOptions = options; return create(this) }
+        override fun availability(environment: DeviceEnvironment) = availability
+        override suspend fun open(): C { opened++; return create(this) }
     }
 
     private fun objects(label: String = "cup", score: Float = .9f, failAfter: Int = Int.MAX_VALUE) =
@@ -51,7 +49,7 @@ class PerceptionPipelineTest {
             override fun close() { owner.closed++ }
         }
     }
-    private fun expressions(confidence: Float) = Fake("expressions", ExpressionClassifier, acceptsCustomModel = true) { owner ->
+    private fun expressions(confidence: Float) = Fake("expressions", ExpressionClassifier) { owner ->
         object : ExpressionClassifier {
             override suspend fun classify(frame: RgbaFrame, face: DetectedFace) = ExpressionResult(Expression.Happy, confidence)
             override fun close() { owner.closed++ }
@@ -79,7 +77,7 @@ class PerceptionPipelineTest {
         val classifier = expressions(.55f)
         val registry = ProviderRegistry(listOf(detector, faceDetector, classifier), environment)
         val preferences = VisionPreferences(yoloEnabled = true, yoloConfidenceThreshold = .4f, expressionEnabled = true,
-            expressionConfidenceThreshold = .6f, expressionModelPath = " /models/custom.onnx ")
+            expressionConfidenceThreshold = .6f)
         val pipeline = PerceptionPipeline(registry, preferences)
         repeat(3) {
             val observation = pipeline.analyze(frame)
@@ -88,7 +86,6 @@ class PerceptionPipelineTest {
             assertEquals(FaceObservation(face, null), observation.faces.single())
         }
         assertEquals(listOf(1, 1, 1), listOf(detector.opened, faceDetector.opened, classifier.opened))
-        assertEquals("/models/custom.onnx", classifier.lastOptions?.customModelPath)
         pipeline.close()
         assertEquals(listOf(1, 1, 1), listOf(detector.closed, faceDetector.closed, classifier.closed))
     }

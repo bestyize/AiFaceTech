@@ -18,9 +18,9 @@ class ProviderRegistryTest {
         override val displayName = id
         override val description = ""
         override val models = emptyList<ModelSpec>()
-        override fun availability(environment: DeviceEnvironment, options: ProviderOptions) =
+        override fun availability(environment: DeviceEnvironment) =
             if (supported) Availability.Ready else Availability.Unsupported("fixture")
-        override suspend fun open(options: ProviderOptions): C = error("not opened in this test")
+        override suspend fun open(): C = error("not opened in this test")
     }
 
     private val environment = DeviceEnvironment(DevicePlatform.Desktop, OperatingSystem.Linux, CpuArchitecture.Arm64)

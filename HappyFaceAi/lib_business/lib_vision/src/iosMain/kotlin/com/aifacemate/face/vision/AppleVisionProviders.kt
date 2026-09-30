@@ -8,7 +8,6 @@ import com.aifacemate.face.capability.DeviceEnvironment
 import com.aifacemate.face.capability.ModelSpec
 import com.aifacemate.face.capability.ModelStore
 import com.aifacemate.face.capability.Provider
-import com.aifacemate.face.capability.ProviderOptions
 import kotlinx.cinterop.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -33,8 +32,8 @@ private class AppleVisionProvider<C : AutoCloseable>(
     private val create: () -> C,
 ) : Provider<C> {
     override val models = emptyList<ModelSpec>()
-    override fun availability(environment: DeviceEnvironment, options: ProviderOptions) = Availability.Ready
-    override suspend fun open(options: ProviderOptions): C = create()
+    override fun availability(environment: DeviceEnvironment) = Availability.Ready
+    override suspend fun open(): C = create()
 }
 
 private class AppleFaceDetector : FaceDetector {

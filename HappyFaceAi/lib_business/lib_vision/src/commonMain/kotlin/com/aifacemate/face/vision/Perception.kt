@@ -59,8 +59,7 @@ fun ProviderRegistry.visionStatus(task: VisionTask, preferences: VisionPreferenc
     if (!preferences.enabled(task)) return VisionTaskStatus.Off
     val providers = visionProviders(task, preferences)
     if (providers.any { it == null }) return VisionTaskStatus.NoProvider
-    val options = preferences.options(task)
-    val results = providers.map { availability(it!!, options) }
+    val results = providers.map { availability(it!!) }
     results.firstOrNull { it is Availability.Unsupported }?.let { return VisionTaskStatus.Unavailable(it) }
     val missing = results.filterIsInstance<Availability.NeedsModels>().flatMap { it.missing }.distinct()
     return if (missing.isEmpty()) VisionTaskStatus.Running else VisionTaskStatus.Unavailable(Availability.NeedsModels(missing))
@@ -84,17 +83,17 @@ class PerceptionPipeline(
 
     suspend fun analyze(frame: RgbaFrame): VisionObservation {
         val objects = guarded(VisionTask.Objects) {
-            instance(VisionTask.Objects, ObjectDetector).detect(frame, config.yoloConfidenceThreshold)
+            instance(ObjectDetector).detect(frame, config.yoloConfidenceThreshold)
         }
         val faces = guarded(VisionTask.Expressions) {
-            val detector = instance(VisionTask.Expressions, FaceDetector)
-            val classifier = instance(VisionTask.Expressions, ExpressionClassifier)
+            val detector = instance(FaceDetector)
+            val classifier = instance(ExpressionClassifier)
             detector.detect(frame).map { face ->
                 FaceObservation(face, classifier.classify(frame, face)?.takeIf { it.confidence >= config.expressionConfidenceThreshold })
             }
         }
         val hands = guarded(VisionTask.Gestures) {
-            instance(VisionTask.Gestures, HandLandmarker).detect(frame)
+            instance(HandLandmarker).detect(frame)
                 .filter { it.score >= config.gestureConfidenceThreshold }
                 .map { hand -> HandObservation(hand, gestures.classify(hand, frame.width, frame.height)) }
         }
@@ -105,11 +104,11 @@ class PerceptionPipeline(
         VisionTask.entries.forEach(::closeTask)
     }
 
-    private suspend fun <C : AutoCloseable> instance(task: VisionTask, capability: CapabilityKey<C>): C {
+    private suspend fun <C : AutoCloseable> instance(capability: CapabilityKey<C>): C {
         @Suppress("UNCHECKED_CAST")
         (opened[capability] as C?)?.let { return it }
         val provider = registry.select(capability, config.providerId(capability)) ?: error("没有可用的 ${capability.id}")
-        return provider.open(config.options(task)).also { opened[capability] = it }
+        return provider.open().also { opened[capability] = it }
     }
 
     private suspend inline fun <T> guarded(task: VisionTask, block: () -> T): T? {

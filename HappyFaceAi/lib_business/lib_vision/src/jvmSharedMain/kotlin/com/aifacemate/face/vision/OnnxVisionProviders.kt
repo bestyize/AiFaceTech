@@ -8,8 +8,6 @@ import com.aifacemate.face.capability.ModelSpec
 import com.aifacemate.face.capability.ModelStore
 import com.aifacemate.face.capability.OperatingSystem
 import com.aifacemate.face.capability.Provider
-import com.aifacemate.face.capability.ProviderOptions
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -32,45 +30,28 @@ internal fun onnxRuntimeAvailable(environment: DeviceEnvironment): Boolean = whe
     DevicePlatform.Ios -> false
 }
 
-/** Managed models are checked by size here and by SHA-256 when opened; [replaceable] may be a user file instead. */
+/** Managed models are checked by size here and by SHA-256 when opened. */
 internal abstract class OnnxProvider<C : AutoCloseable>(
     protected val store: ModelStore,
     final override val models: List<ModelSpec>,
-    private val replaceable: ModelSpec? = null,
 ) : Provider<C> {
-    override val acceptsCustomModel: Boolean get() = replaceable != null
-
-    override fun availability(environment: DeviceEnvironment, options: ProviderOptions): Availability {
+    override fun availability(environment: DeviceEnvironment): Availability {
         if (!onnxRuntimeAvailable(environment)) return Availability.Unsupported("此设备暂不支持 ONNX Runtime 本地推理")
-        val custom = customPath(options)
-        val missing = models.filter { it != replaceable || custom == null }.filterNot(store::installed)
+        val missing = models.filterNot(store::installed)
         return if (missing.isEmpty()) Availability.Ready else Availability.NeedsModels(missing)
     }
 
-    private fun customPath(options: ProviderOptions) =
-        options.customModelPath?.trim()?.takeIf { it.isNotEmpty() && replaceable != null }
-
-    protected suspend fun path(model: ModelSpec, options: ProviderOptions): String {
-        val custom = customPath(options)
-        if (model != replaceable || custom == null) return store.verifiedPath(model)
-        require(custom.endsWith(".onnx", ignoreCase = true)) { "模型文件须使用 .onnx 扩展名" }
-        val file = File(custom)
-        check(file.isFile && file.canRead()) { "无法读取自定义模型 $custom" }
-        return file.absolutePath
-    }
-
-    protected suspend fun load(model: ModelSpec, options: ProviderOptions, description: String) =
-        path(model, options).let { path -> withContext(Dispatchers.IO) { OnnxModel(path, description) } }
+    protected suspend fun load(model: ModelSpec, description: String) =
+        store.verifiedPath(model).let { path -> withContext(Dispatchers.IO) { OnnxModel(path, description) } }
 }
 
 internal class Yolo26ObjectDetectorProvider(store: ModelStore) :
-    OnnxProvider<ObjectDetector>(store, listOf(VisionModels.yolo26m), replaceable = VisionModels.yolo26m) {
+    OnnxProvider<ObjectDetector>(store, listOf(VisionModels.yolo26m)) {
     override val id = "vision.objects.yolo26m-onnx"
     override val capability = ObjectDetector
     override val displayName = "YOLO26m"
     override val description = "COCO 80 类"
-    override suspend fun open(options: ProviderOptions): ObjectDetector =
-        Yolo26OnnxObjectDetector(load(VisionModels.yolo26m, options, "YOLO 模型"))
+    override suspend fun open(): ObjectDetector = Yolo26OnnxObjectDetector(load(VisionModels.yolo26m, "YOLO 模型"))
 }
 
 internal class YunetFaceDetectorProvider(store: ModelStore) : OnnxProvider<FaceDetector>(store, listOf(VisionModels.yunet)) {
@@ -78,36 +59,33 @@ internal class YunetFaceDetectorProvider(store: ModelStore) : OnnxProvider<FaceD
     override val capability = FaceDetector
     override val displayName = "YuNet"
     override val description = "人脸检测"
-    override suspend fun open(options: ProviderOptions): FaceDetector =
-        YunetFaceDetector(load(VisionModels.yunet, options, "YuNet 人脸检测模型"))
+    override suspend fun open(): FaceDetector = YunetFaceDetector(load(VisionModels.yunet, "YuNet 人脸检测模型"))
 }
 
-internal class MobileFaceNetExpressionProvider(store: ModelStore) : OnnxProvider<ExpressionClassifier>(
-    store, listOf(VisionModels.mobileFaceNetExpression), replaceable = VisionModels.mobileFaceNetExpression,
-) {
+internal class MobileFaceNetExpressionProvider(store: ModelStore) :
+    OnnxProvider<ExpressionClassifier>(store, listOf(VisionModels.mobileFaceNetExpression)) {
     override val id = "vision.expression.mobilefacenet-onnx"
     override val capability = ExpressionClassifier
     override val displayName = "MobileFaceNet"
     override val description = "七类表情"
-    override suspend fun open(options: ProviderOptions): ExpressionClassifier =
-        MobileFaceNetClassifier(load(VisionModels.mobileFaceNetExpression, options, "表情分类模型"))
+    override suspend fun open(): ExpressionClassifier =
+        MobileFaceNetClassifier(load(VisionModels.mobileFaceNetExpression, "表情分类模型"))
 }
 
-internal class MediaPipeHandLandmarkerProvider(store: ModelStore) : OnnxProvider<HandLandmarker>(
-    store, listOf(VisionModels.palmDetection, VisionModels.handLandmarks), replaceable = VisionModels.handLandmarks,
-) {
+internal class MediaPipeHandLandmarkerProvider(store: ModelStore) :
+    OnnxProvider<HandLandmarker>(store, listOf(VisionModels.palmDetection, VisionModels.handLandmarks)) {
     override val id = "vision.hands.mediapipe-onnx"
     override val capability = HandLandmarker
     override val displayName = "MediaPipe 手部关键点"
     override val description = "掌心检测 + 21 点骨架"
-    override suspend fun open(options: ProviderOptions): HandLandmarker {
-        val palm = load(VisionModels.palmDetection, options, "手掌检测模型")
-        val hand = try { load(VisionModels.handLandmarks, options, "手部关键点模型") } catch (failure: Throwable) { palm.close(); throw failure }
+    override suspend fun open(): HandLandmarker {
+        val palm = load(VisionModels.palmDetection, "手掌检测模型")
+        val hand = try { load(VisionModels.handLandmarks, "手部关键点模型") } catch (failure: Throwable) { palm.close(); throw failure }
         return MediaPipeHandLandmarker(palm, hand)
     }
 }
 
-/** Closes the model when the wrapper rejects its shape, so a bad custom file never leaks a session. */
+/** Closes the model when the wrapper rejects its shape, so an unexpected export never leaks a session. */
 private inline fun <T> OnnxModel.validated(check: OnnxModel.() -> T): T =
     try { check() } catch (failure: Throwable) { close(); throw failure }
 
