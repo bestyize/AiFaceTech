@@ -21,6 +21,8 @@ Android ONNX Runtime 原来使用默认 SessionOptions，每个模型都保留�
 
 手机更新后直接冷启动：交互链路日志在一次采样中耗时 26–171ms，后续记录识别到两次点赞。top 两次短时 CPU 采样约 105% / 110%。旧值来自 dumpsys、新值来自 top，采样窗口和场景不同，不可当作严格的降幅或温升对照。尚未完成长时间同场景功耗、表面温度和官方 APK 对照测试。
 
+用户实机反馈确认：这两次点赞都切换到了赞同表情。
+
 手机安装的 Ultralytics YOLO APK 为 0.6.13。官方当前文档描述 LiteRT GPU→CPU 路径和可用的量化模型，但仅凭型号 YOLO26m 或版本号不能确认该 APK 此时实际使用的后端、精度和输入尺寸。我们的 ONNX 实现没有设置加速执行提供者，不能宣称已达到官方实现的能效。
 
 参考：[ONNX Runtime 线程配置](https://onnxruntime.ai/docs/performance/tune-performance/threading.html)、[Ultralytics GPU 配置](https://github.com/ultralytics/yolo-flutter-app/blob/main/doc/use_gpu_feature.md)。
