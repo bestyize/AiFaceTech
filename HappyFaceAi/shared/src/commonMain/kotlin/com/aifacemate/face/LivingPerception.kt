@@ -117,7 +117,7 @@ internal fun LivingPerception(now: () -> Long, onEvent: (BehaviorEvent) -> Unit,
                         recognitionReady = state.statuses.values.any { it == VisionTaskStatus.Running }
                         if (currentNow.value() - lastDiagnosticAt >= 3000) {
                             lastDiagnosticAt = currentNow.value()
-                            println("FaceVision interactiveMs=${state.analysisMillis} hands=${observation.hands.size} thumbs=${observation.hands.count { it.gesture == HandGesture.ThumbsUp }} ageMs=${state.sampledAtMillis?.let { currentNow.value() - it }}")
+                            println("FaceVision interactiveMs=${state.analysisMillis} faces=${observation.faces.size} expressions=${observation.faces.mapNotNull { it.expression }.take(2).map { "${it.expression.id}:${(it.confidence * 100).toInt()}" }} hands=${observation.hands.size} thumbs=${observation.hands.count { it.gesture == HandGesture.ThumbsUp }} ageMs=${state.sampledAtMillis?.let { currentNow.value() - it }}")
                         }
                         state.toBehaviorEvent(persons = !interactive || preferences.expressionEnabled, gestures = preferences.gestureEnabled)
                             ?.let { callback.value(it) }

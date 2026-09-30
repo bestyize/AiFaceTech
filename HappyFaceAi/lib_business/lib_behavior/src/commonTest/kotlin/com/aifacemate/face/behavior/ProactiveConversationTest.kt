@@ -4,6 +4,16 @@ import com.aifacemate.face.behavior.proactive.ProactiveConversationController
 import kotlin.test.*
 
 class ProactiveConversationTest {
+    @Test fun deliberateReenableClearsOldCooldownAndSmileLatch() {
+        val controller = ProactiveConversationController()
+        for (time in 0L..800L step 400) controller.observe(smile(time), true, time)
+        assertNotNull(controller.observe(smile(1200), true, 1200))
+        controller.conversationEnded(2000)
+        assertNull(controller.observe(smile(2400), true, 2400))
+        controller.explicitlyEnabled(3000)
+        for (time in 3000L..3800L step 400) assertNull(controller.observe(smile(time), true, time))
+        assertNotNull(controller.observe(smile(4200), true, 4200))
+    }
     @Test fun endingLongConversationStartsANewQuietPeriod() {
         val controller = ProactiveConversationController()
         for (time in 0L..800L step 400) controller.observe(smile(time), true, time)

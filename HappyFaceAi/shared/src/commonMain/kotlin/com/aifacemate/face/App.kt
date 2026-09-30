@@ -47,12 +47,18 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var proactiveOpening by remember { mutableStateOf<ProactiveOpening?>(null) }
         val proactive = remember { ProactiveConversationController() }
         val voicePreferences = remember(route) { VoicePreferencesStore.load().forDevice() }
+        val proactiveActivationVersion = remember(route) { VoicePreferencesStore.proactiveActivationVersion() }
         val proactiveReady = remember(route, voicePreferences) { proactiveVoiceReady(voicePreferences) }
         var appActive by remember { mutableStateOf(true) }
         LaunchedEffect(visionNotice) { if (visionNotice != null) { delay(4000); visionNotice = null } }
         val behavior = remember { BehaviorController() }
         val clock = remember { TimeSource.Monotonic.markNow() }
         val now = { clock.elapsedNow().inWholeMilliseconds }
+        var proactiveStatus by remember { mutableStateOf("等待微笑") }
+        LaunchedEffect(proactiveActivationVersion) {
+            if (voicePreferences.proactiveConversation && proactiveActivationVersion > 0)
+                proactive.explicitlyEnabled(now())
+        }
         val closeVoice: () -> Unit = {
             if (voiceOverlay) proactive.conversationEnded(now())
             voiceOverlay = false; proactiveOpening = null
@@ -62,10 +68,33 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             appActive = false; closeVoice(); proactive.resetEvidence()
         }
         var behaviorState by remember { mutableStateOf(behavior.state(now())) }
+        var lastProactiveDiagnosticAt by remember { mutableStateOf(-3000L) }
         val dispatch: (BehaviorEvent) -> Unit = { event ->
             val time = now()
             behaviorState = behavior.accept(event, time)
             if (event is BehaviorEvent.Vision) {
+                val gate = when {
+                        !voicePreferences.proactiveConversation -> "disabled"
+                        !appActive -> "background"
+                        route != LifeRoute.Living -> "other_page"
+                        voiceOverlay -> "voice_busy"
+                        hud -> "controls_open"
+                        !proactiveReady -> "speech_not_ready"
+                        else -> proactive.status(time)
+                    }
+                proactiveStatus = when {
+                    gate == "disabled" -> "已关闭"
+                    gate == "voice_busy" -> "对话进行中"
+                    gate == "speech_not_ready" -> "声音未就绪"
+                    gate.startsWith("cooldown_") -> "休息 ${gate.removePrefix("cooldown_").removeSuffix("s")} 秒"
+                    gate == "waiting_for_new_smile" -> "等待新一轮微笑"
+                    gate.startsWith("confirming_") -> "确认微笑"
+                    else -> "等待微笑"
+                }
+                if (event.faceAnalyzed && time - lastProactiveDiagnosticAt >= 3000) {
+                    lastProactiveDiagnosticAt = time
+                    println("FaceProactive gate=$gate face=${event.personVisible} cue=${event.appearance}")
+                }
                 proactive.observe(event,
                     eligible = appActive && route == LifeRoute.Living && !voiceOverlay && !hud && proactiveReady && voicePreferences.proactiveConversation,
                     nowMillis = time,
@@ -119,7 +148,9 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    TextButton(onClick = { voiceOverlay = true; hud = false }) { Text("对话") }
+                    TextButton(onClick = { voiceOverlay = true; hud = false }) {
+                        Text(if (voicePreferences.proactiveConversation) "对话 · $proactiveStatus" else "对话")
+                    }
                     TextButton(onClick = { dispatch(BehaviorEvent.Petted); hud = false }) { Text("抚摸") }
                     TextButton(onClick = { navigate(LifeRoute.Camera) }) { Text("视觉 · $visionStatus") }
                     TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }

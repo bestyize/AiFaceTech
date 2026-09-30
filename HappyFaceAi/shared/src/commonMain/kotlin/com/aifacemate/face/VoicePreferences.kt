@@ -57,7 +57,12 @@ object VoicePreferencesStore {
     private const val PREFIX = "voice."
     fun setProactiveConversation(enabled: Boolean) {
         SettingsStore.put(PREFIX + "proactiveConversation", enabled.toString())
+        if (enabled) {
+            val version = proactiveActivationVersion()
+            SettingsStore.put(PREFIX + "proactiveActivationVersion", (version + 1).toString())
+        }
     }
+    fun proactiveActivationVersion(): Long = SettingsStore.get(PREFIX + "proactiveActivationVersion")?.toLongOrNull() ?: 0L
     fun load(): VoicePreferences {
         val savedMode = SettingsStore.get(PREFIX + "mode")
         val legacySystemMode = savedMode == "Native"

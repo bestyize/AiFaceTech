@@ -33,6 +33,15 @@ class ProactiveConversationController {
     }
 
     fun resetEvidence() { firstSmileAt = null; confirmations = 0 }
+    fun explicitlyEnabled(nowMillis: Long) {
+        armed = true; nextAllowedAt = nowMillis; resetEvidence()
+    }
+    fun status(nowMillis: Long): String = when {
+        nowMillis < nextAllowedAt -> "cooldown_${(nextAllowedAt - nowMillis + 999) / 1000}s"
+        !armed -> "waiting_for_new_smile"
+        confirmations > 0 -> "confirming_$confirmations"
+        else -> "watching"
+    }
     fun conversationEnded(nowMillis: Long) {
         nextAllowedAt = maxOf(nextAllowedAt, nowMillis + 60_000)
         armed = false
