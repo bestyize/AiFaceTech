@@ -44,7 +44,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
-enum class VoiceVisualState { Idle, Listening, Speaking }
+enum class VoiceVisualState { Idle, Listening, Processing, Speaking }
 
 private sealed interface ReplyPlayback {
     data class Audio(val chunk: SpeechAudioChunk) : ReplyPlayback
@@ -56,8 +56,9 @@ fun VoiceConversationOverlay(
     modifier: Modifier = Modifier,
     onClose: () -> Unit,
     onVisualStateChange: (VoiceVisualState) -> Unit = {},
+    onUserText: (String) -> Unit = {},
 ) {
-    ConversationPanel(modifier.fillMaxSize(), onClose, overlay = true, onVisualStateChange = onVisualStateChange)
+    ConversationPanel(modifier.fillMaxSize(), onClose, overlay = true, onVisualStateChange = onVisualStateChange, onUserText = onUserText)
 }
 
 @Composable
@@ -71,7 +72,9 @@ private fun ConversationPanel(
     onClose: () -> Unit,
     overlay: Boolean = false,
     onVisualStateChange: (VoiceVisualState) -> Unit = {},
+    onUserText: (String) -> Unit = {},
 ) {
+    val currentUserText = rememberUpdatedState(onUserText)
     val preferences = remember { VoicePreferencesStore.load().forDevice() }
     val scope = rememberCoroutineScope()
     val messages = remember { mutableStateListOf<ChatMessage>() }
@@ -167,7 +170,12 @@ private fun ConversationPanel(
         }
     }
 
-    fun show(role: String, text: String) { if (text.isNotBlank()) messages.add(ChatMessage(role, text)) }
+    fun show(role: String, text: String) {
+        if (text.isNotBlank()) {
+            messages.add(ChatMessage(role, text))
+            if (role == "user" && overlay && preferences.keepFaceVisible) currentUserText.value(text)
+        }
+    }
 
     suspend fun askBrain(text: String): String {
         val providerId = AiBrainSettings.providerId() ?: "deepseek"
@@ -355,6 +363,7 @@ private fun ConversationPanel(
     val visualState = when (facePhase) {
         VoiceFacePhase.Speaking -> VoiceVisualState.Speaking
         VoiceFacePhase.Listening -> VoiceVisualState.Listening
+        VoiceFacePhase.Processing -> VoiceVisualState.Processing
         else -> VoiceVisualState.Idle
     }
     val voiceEnabled = if (preferences.mode == VoiceMode.Realtime) realtimeAudioAvailable() && !stoppingRealtime

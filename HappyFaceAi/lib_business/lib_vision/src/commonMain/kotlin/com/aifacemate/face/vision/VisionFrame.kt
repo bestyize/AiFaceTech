@@ -1,7 +1,7 @@
 package com.aifacemate.face.vision
 
 /** RGBA8888, row-major, top-left origin; each channel is an unsigned byte. */
-class RgbaFrame(val width: Int, val height: Int, val pixels: ByteArray) {
+class RgbaFrame(val width: Int, val height: Int, val pixels: ByteArray, val sampledAtMillis: Long? = null) {
     init {
         require(width > 0 && height > 0 && width.toLong() * height * 4 <= Int.MAX_VALUE) { "Invalid image dimensions" }
         require(pixels.size == width * height * 4) { "RGBA byte count must equal width * height * 4" }

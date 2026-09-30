@@ -25,6 +25,8 @@ import com.aifacemate.face.feature.lifecenter.*
 import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.ui.*
 import kotlinx.coroutines.delay
+import com.aifacemate.face.behavior.*
+import kotlin.time.TimeSource
 
 @Composable
 fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) {
@@ -37,15 +39,26 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var diffuseGlow by rememberSaveable { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
         var hud by remember { mutableStateOf(false) }
         var voiceOverlay by remember { mutableStateOf(false) }
-        var voiceVisualState by remember { mutableStateOf(VoiceVisualState.Idle) }
-        var petting by remember { mutableStateOf(false) }
+        var visionNotice by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(visionNotice) { if (visionNotice != null) { delay(4000); visionNotice = null } }
+        val behavior = remember { BehaviorController() }
+        val clock = remember { TimeSource.Monotonic.markNow() }
+        val now = { clock.elapsedNow().inWholeMilliseconds }
+        var behaviorState by remember { mutableStateOf(behavior.state(now())) }
+        val dispatch: (BehaviorEvent) -> Unit = { behaviorState = behavior.accept(it, now()) }
+        LaunchedEffect(expression) { dispatch(BehaviorEvent.BaseChanged(expression)) }
+        LaunchedEffect(Unit) { while (true) { behaviorState = behavior.state(now()); delay(50) } }
+        LaunchedEffect(voiceOverlay, route) {
+            if (!voiceOverlay || route != LifeRoute.Living) dispatch(BehaviorEvent.ResetInteraction)
+        }
         val changes = remember { mutableStateListOf<RecentChange>() }
         val haptic = LocalHapticFeedback.current
         val navigate: (LifeRoute) -> Unit = {
             if (it == LifeRoute.Camera) {
                 cameraReturnRouteName = if (route == LifeRoute.Living) LifeRoute.Living.name else LifeRoute.Vision.name
             }
-            routeName = it.name; hud = false; petting = false; voiceOverlay = false
+            routeName = it.name; hud = false; voiceOverlay = false
+            dispatch(BehaviorEvent.ResetInteraction)
         }
         onBackHandler(route != LifeRoute.Living || hud || voiceOverlay) {
             if (voiceOverlay) voiceOverlay = false
@@ -56,9 +69,9 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             })
         }
         LaunchedEffect(hud) { if (hud) { delay(3500); hud = false } }
-        LaunchedEffect(petting) { if (petting) { delay(2400); petting = false } }
         when (route) {
             LifeRoute.Living -> Box(Modifier.fillMaxSize()) {
+                LivingPerception(now = now, onEvent = dispatch, onNotice = { visionNotice = it })
                 FaceDisplay(
                     modifier = Modifier.fillMaxSize().pointerInput(Unit) {
                         detectTapGestures(
@@ -69,15 +82,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                             },
                         )
                     },
-                    expression = when {
-                        petting -> FaceExpression.HAPPY
-                        voiceOverlay -> when (voiceVisualState) {
-                            VoiceVisualState.Idle -> expression
-                            VoiceVisualState.Listening -> FaceExpression.LISTENING
-                            VoiceVisualState.Speaking -> FaceExpression.SPEAKING
-                        }
-                        else -> expression
-                    },
+                    expression = behaviorState.expression,
                     diffuseGlow = diffuseGlow,
                     contentOffsetY = if (voiceOverlay) VOICE_FACE_OFFSET_Y else 0.dp,
                 )
@@ -88,15 +93,22 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TextButton(onClick = { voiceOverlay = true; hud = false }) { Text("对话") }
-                    TextButton(onClick = { petting = true; hud = false }) { Text("抚摸") }
+                    TextButton(onClick = { dispatch(BehaviorEvent.Petted); hud = false }) { Text("抚摸") }
                     TextButton(onClick = { navigate(LifeRoute.Camera) }) { Text("视觉") }
                     TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }
                 }
                 if (voiceOverlay) VoiceConversationOverlay(
                     modifier = Modifier.align(Alignment.BottomCenter),
                     onClose = { voiceOverlay = false },
-                    onVisualStateChange = { voiceVisualState = it },
+                    onVisualStateChange = { dispatch(BehaviorEvent.PhaseChanged(when (it) {
+                        VoiceVisualState.Idle -> InteractionPhase.Idle
+                        VoiceVisualState.Listening -> InteractionPhase.Listening
+                        VoiceVisualState.Processing -> InteractionPhase.Processing
+                        VoiceVisualState.Speaking -> InteractionPhase.Speaking
+                    })) },
+                    onUserText = { dispatch(BehaviorEvent.UserText(it)) },
                 )
+                visionNotice?.let { AppToast(it) }
             }
             LifeRoute.Conversation -> ChatScreen(onBack = { navigate(LifeRoute.Living) })
             LifeRoute.Voice -> VoiceSettingsScreen(onBack = { navigate(LifeRoute.LifeCenter) })

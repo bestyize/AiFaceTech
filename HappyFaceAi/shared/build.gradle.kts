@@ -27,6 +27,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":lib_business:lib_face"))
+            implementation(project(":lib_business:lib_behavior"))
             implementation(project(":lib_business:lib_brains"))
             implementation(project(":lib_business:lib_lifecenter"))
             implementation(project(":lib_business:lib_chat"))
