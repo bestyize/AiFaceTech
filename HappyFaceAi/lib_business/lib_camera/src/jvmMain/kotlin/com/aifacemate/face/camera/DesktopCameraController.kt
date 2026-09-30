@@ -41,6 +41,7 @@ internal class DesktopCameraController : CameraController {
     private var captureJob: Job? = null
     @Volatile private var closed = false
     private var sequence = 0L
+    private var discovered: List<CameraDevice>? = null
 
     override suspend fun start(deviceId: String?) = gate.withLock {
         if (closed) return@withLock
@@ -58,6 +59,20 @@ internal class DesktopCameraController : CameraController {
             try {
                 val camera = VideoCapture().also { capture = it }
                 val backend = if (System.getProperty("os.name").lowercase().contains("windows")) CAP_DSHOW else CAP_ANY
+                if (discovered == null) {
+                    discovered = buildList {
+                        for (candidate in 0..3) {
+                            currentCoroutineContext().ensureActive()
+                            VideoCapture().use { probe ->
+                                try {
+                                    if (runCatching { probe.open(candidate, backend) }.getOrDefault(false)) {
+                                        add(CameraDevice(candidate.toString(), "摄像头 $candidate", CameraLens.External))
+                                    }
+                                } finally { probe.release() }
+                            }
+                        }
+                    }
+                }
                 check(camera.open(index, backend)) { "无法打开摄像头 $index，请检查设备、系统相机权限或其它应用占用" }
                 camera.set(CAP_PROP_FRAME_WIDTH, 640.0)
                 camera.set(CAP_PROP_FRAME_HEIGHT, 480.0)
@@ -65,7 +80,10 @@ internal class DesktopCameraController : CameraController {
                 val input = Mat().also { source = it }
                 val rgba = Mat().also { output = it }
                 currentCoroutineContext().ensureActive()
-                mutableState.update { it.copy(status = CameraStatus.Running) }
+                val devices = discovered.orEmpty().let { list ->
+                    if (list.any { it.id == index.toString() }) list else list + CameraDevice(index.toString(), "摄像头 $index", CameraLens.External)
+                }
+                mutableState.update { it.copy(status = CameraStatus.Running, devices = devices, zoomRatio = 1f, minZoomRatio = 1f, maxZoomRatio = 4f) }
                 while (isActive) {
                     check(camera.read(input) && !input.empty()) { "摄像头连接中断，请重新启动" }
                     cvtColor(input, rgba, when (input.channels()) {
@@ -80,7 +98,7 @@ internal class DesktopCameraController : CameraController {
                     val pixels = ByteArray(width * height * 4)
                     if (rgba.isContinuous) rgba.data().get(pixels)
                     else for (row in 0 until height) rgba.ptr(row).get(pixels, row * width * 4, width * 4)
-                    mutableFrames.value = CameraFrame(width, height, pixels, ++sequence)
+                    mutableFrames.value = CameraFrame(width, height, pixels, ++sequence).digitalZoom(state.value.zoomRatio)
                     delay(80)
                 }
             } catch (cancelled: CancellationException) {
@@ -103,6 +121,9 @@ internal class DesktopCameraController : CameraController {
         mutableState.update { it.copy(status = CameraStatus.Idle, error = null) }
     }
     override suspend fun stop() = withContext(NonCancellable) { gate.withLock { stopCapture() } }
+    override suspend fun setZoom(ratio: Float) {
+        if (ratio.isFinite() && state.value.status == CameraStatus.Running) mutableState.update { it.copy(zoomRatio = ratio.coerceIn(1f, 4f)) }
+    }
     override fun close() {
         if (closed) return
         closed = true

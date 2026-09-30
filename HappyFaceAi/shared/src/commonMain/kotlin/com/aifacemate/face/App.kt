@@ -5,6 +5,8 @@ import com.aifacemate.face.feature.aibrain.presentation.*
 import com.aifacemate.face.theme.AppColors
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +31,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
     MaterialTheme(colorScheme = darkColorScheme(primary = AppColors.Amber, background = AppColors.Background, surface = AppColors.Card)) {
         var routeName by rememberSaveable { mutableStateOf(LifeRoute.Living.name) }
         val route = LifeRoute.valueOf(routeName)
+        var cameraReturnRouteName by rememberSaveable { mutableStateOf(LifeRoute.Vision.name) }
         var expressionName by rememberSaveable { mutableStateOf(FaceExpression.IDLE.name) }
         val expression = FaceExpression.valueOf(expressionName)
         var diffuseGlow by rememberSaveable { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
@@ -38,12 +41,17 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var petting by remember { mutableStateOf(false) }
         val changes = remember { mutableStateListOf<RecentChange>() }
         val haptic = LocalHapticFeedback.current
-        val navigate: (LifeRoute) -> Unit = { routeName = it.name; hud = false; petting = false; voiceOverlay = false }
+        val navigate: (LifeRoute) -> Unit = {
+            if (it == LifeRoute.Camera) {
+                cameraReturnRouteName = if (route == LifeRoute.Living) LifeRoute.Living.name else LifeRoute.Vision.name
+            }
+            routeName = it.name; hud = false; petting = false; voiceOverlay = false
+        }
         onBackHandler(route != LifeRoute.Living || hud || voiceOverlay) {
             if (voiceOverlay) voiceOverlay = false
             else if (hud) hud = false else navigate(when (route) {
                 LifeRoute.LifeCenter -> LifeRoute.Living
-                LifeRoute.Camera -> LifeRoute.Vision
+                LifeRoute.Camera -> LifeRoute.valueOf(cameraReturnRouteName)
                 else -> LifeRoute.LifeCenter
             })
         }
@@ -75,11 +83,13 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                 )
                 if (hud) Row(
                     Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(16.dp)
-                        .background(Color(0xEE191C24), RoundedCornerShape(28.dp)).padding(8.dp),
+                        .background(Color(0xEE191C24), RoundedCornerShape(28.dp)).padding(8.dp)
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TextButton(onClick = { voiceOverlay = true; hud = false }) { Text("对话") }
                     TextButton(onClick = { petting = true; hud = false }) { Text("抚摸") }
+                    TextButton(onClick = { navigate(LifeRoute.Camera) }) { Text("视觉") }
                     TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }
                 }
                 if (voiceOverlay) VoiceConversationOverlay(
@@ -91,7 +101,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             LifeRoute.Conversation -> ChatScreen(onBack = { navigate(LifeRoute.Living) })
             LifeRoute.Voice -> VoiceSettingsScreen(onBack = { navigate(LifeRoute.LifeCenter) })
             LifeRoute.Vision -> VisionSettingsScreen(onBack = { navigate(LifeRoute.LifeCenter) }, onOpenCamera = { navigate(LifeRoute.Camera) })
-            LifeRoute.Camera -> CameraScreen(onBack = { navigate(LifeRoute.Vision) })
+            LifeRoute.Camera -> CameraScreen(onBack = { navigate(LifeRoute.valueOf(cameraReturnRouteName)) })
             LifeRoute.LifeCenter -> LifeCenterRoute(LifeCenterUiState(recentChanges = changes.toList()), expression, diffuseGlow, navigate)
             LifeRoute.Brain -> AiBrainRoute(onBack = { navigate(LifeRoute.LifeCenter) })
             LifeRoute.Appearance -> Column(Modifier.fillMaxSize().background(AppColors.Background).safeDrawingPadding()) {

@@ -14,6 +14,8 @@ import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraInfo
+import androidx.camera.core.Camera
+import androidx.camera.core.ZoomState
 import androidx.camera.core.CameraState as NativeCameraState
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -75,6 +77,8 @@ private class AndroidCameraController(
     private var analysis: ImageAnalysis? = null
     private var observedInfo: CameraInfo? = null
     private var stateObserver: Observer<NativeCameraState>? = null
+    private var zoomObserver: Observer<ZoomState>? = null
+    private var boundCamera: Camera? = null
     @Volatile private var closed = false
     @Volatile private var generation = 0L
     private var sequence = 0L
@@ -112,9 +116,10 @@ private class AndroidCameraController(
                 currentCoroutineContext().ensureActive()
                 if (closed) return@withLock
                 provider = cameraProvider
-                val cameras = devices()
+                val available = cameraProvider.availableCameraInfos.map { Camera2CameraInfo.from(it).cameraId }.toSet()
+                val cameras = devices().filter { it.id in available }
                 val selected = cameras.firstOrNull { it.id == deviceId }
-                    ?: if (deviceId == null) cameras.firstOrNull { it.lens == CameraLens.Back } ?: cameras.firstOrNull() else null
+                    ?: if (deviceId == null) cameras.firstOrNull { it.lens == CameraLens.Front } ?: cameras.firstOrNull() else null
                 checkNotNull(selected) { "未找到所选摄像头" }
                 val selector = CameraSelector.Builder().addCameraFilter { infos ->
                     infos.filter { Camera2CameraInfo.from(it).cameraId == selected.id }
@@ -139,12 +144,20 @@ private class AndroidCameraController(
                 }
                 analysis = useCase
                 val camera = cameraProvider.bindToLifecycle(owner, selector, useCase)
+                boundCamera = camera
                 observedInfo = camera.cameraInfo
                 val observer = Observer<NativeCameraState> { native ->
                     if (native.error != null) reportError(token, "摄像头连接异常，请检查设备或其它应用占用后重试")
                 }.also { stateObserver = it }
                 camera.cameraInfo.cameraState.observe(owner, observer)
-                mutableState.value = CameraState(CameraStatus.Running, cameras, selected.id)
+                val zoom = camera.cameraInfo.zoomState.value
+                mutableState.value = CameraState(CameraStatus.Running, cameras, selected.id,
+                    zoomRatio = zoom?.zoomRatio ?: 1f, minZoomRatio = zoom?.minZoomRatio ?: 1f, maxZoomRatio = zoom?.maxZoomRatio ?: 1f)
+                val zoomChanged = Observer<ZoomState> { value ->
+                    if (token == generation) mutableState.update { it.copy(zoomRatio = value.zoomRatio,
+                        minZoomRatio = value.minZoomRatio, maxZoomRatio = value.maxZoomRatio) }
+                }.also { zoomObserver = it }
+                camera.cameraInfo.zoomState.observe(owner, zoomChanged)
             } catch (cancelled: CancellationException) {
                 stopCapture()
                 throw cancelled
@@ -157,9 +170,22 @@ private class AndroidCameraController(
 
     override suspend fun stop() = withContext(NonCancellable + Dispatchers.Main.immediate) { gate.withLock { stopCapture() } }
 
+    override suspend fun setZoom(ratio: Float) = withContext(Dispatchers.Main.immediate) {
+        gate.withLock {
+            val camera = boundCamera ?: return@withLock
+            if (!ratio.isFinite()) return@withLock
+            val current = state.value
+            camera.cameraControl.setZoomRatio(ratio.coerceIn(current.minZoomRatio, current.maxZoomRatio))
+            Unit
+        }
+    }
+
     private fun stopCapture() {
         generation++
         stateObserver?.let { observedInfo?.cameraState?.removeObserver(it) }
+        zoomObserver?.let { observedInfo?.zoomState?.removeObserver(it) }
+        zoomObserver = null
+        boundCamera = null
         stateObserver = null
         observedInfo = null
         analysis?.let { it.clearAnalyzer(); provider?.unbind(it) }
@@ -195,10 +221,14 @@ private fun ImageProxy.plane(index: Int): CameraPixels.Plane {
 }
 
 actual fun CameraFrame.toPreviewBitmap(): ImageBitmap {
+    return toAndroidBitmap().asImageBitmap()
+}
+
+internal fun CameraFrame.toAndroidBitmap(): Bitmap {
     val argb = IntArray(width * height) { index ->
         val at = index * 4
         (255 shl 24) or ((rgba[at].toInt() and 255) shl 16) or
             ((rgba[at + 1].toInt() and 255) shl 8) or (rgba[at + 2].toInt() and 255)
     }
-    return Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888).asImageBitmap()
+    return Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
 }

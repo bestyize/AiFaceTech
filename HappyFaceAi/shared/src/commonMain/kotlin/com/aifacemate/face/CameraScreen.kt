@@ -1,39 +1,15 @@
 package com.aifacemate.face
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.aifacemate.face.camera.*
-import com.aifacemate.face.theme.AppColors
 import com.aifacemate.face.vision.*
 import com.aifacemate.face.capability.Availability
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filter
@@ -43,8 +19,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.math.abs
-import kotlin.math.min
 
 /** A perception result tied to the camera frame orientation it was computed on. */
 data class CameraDetections(val mirrored: Boolean, val observation: VisionObservation)
@@ -59,7 +33,11 @@ fun CameraScreen(
     val cameraState by controller.state.collectAsState()
     val latest by controller.frames.collectAsState()
     val perceived by perception.state.collectAsState()
-    var active by remember { mutableStateOf(false) }
+    var active by remember { mutableStateOf(true) }
+    var photoBusy by remember { mutableStateOf(false) }
+    var photoMessage by remember { mutableStateOf<String?>(null) }
+    var captureFlash by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     var request by remember { mutableStateOf(0) }
     var deviceId by remember { mutableStateOf<String?>(null) }
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -69,6 +47,9 @@ fun CameraScreen(
     DisposableEffect(controller) { onDispose { controller.close() } }
 
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { active = false }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { active = true }
+    LaunchedEffect(photoMessage) { if (photoMessage != null) { delay(4000); photoMessage = null } }
+    LaunchedEffect(captureFlash) { if (captureFlash) { delay(100); captureFlash = false } }
     LaunchedEffect(latest) {
         val frame = latest
         if (frame == null) { bitmap = null; previewFrame = null }
@@ -116,6 +97,26 @@ fun CameraScreen(
         onStart = { active = true; request++ },
         onStop = { active = false },
         onDeviceChange = { deviceId = it; if (active) request++ },
+        photoBusy = photoBusy,
+        photoMessage = photoMessage,
+        captureFlash = captureFlash,
+        onZoomChange = { ratio -> scope.launch {
+            try { controller.setZoom(ratio) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { photoMessage = failure.message ?: "变焦失败，请重试" }
+        } },
+        onCapture = { aspect ->
+            if (!photoBusy) {
+                photoBusy = true
+                captureFlash = true
+                scope.launch {
+                    try { photoMessage = "照片已保存：${controller.capturePhoto(aspect).location}" }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (failure: Exception) { photoMessage = failure.message ?: "照片保存失败" }
+                    finally { photoBusy = false }
+                }
+            }
+        },
     )
 }
 
@@ -148,7 +149,7 @@ private fun summary(task: VisionTask, observation: VisionObservation): String = 
         .ifBlank { if (observation.hands.isEmpty()) "未检测到手" else "手势不明显" }
 }
 
-private fun percent(value: Float) = "${(value * 100).toInt()}%"
+internal fun percent(value: Float) = "${(value * 100).toInt()}%"
 
 internal fun VisionTask.label() = when (this) {
     VisionTask.Objects -> "目标检测"
@@ -175,115 +176,4 @@ internal fun HandGesture.label() = when (this) {
     HandGesture.Victory -> "胜利手势"
     HandGesture.Pointing -> "指向"
     HandGesture.Pinch -> "捏合"
-}
-
-/** Offline fixtures can exercise the page without opening any device or loading a model. */
-@Composable
-fun CameraScreenContent(
-    state: CameraState,
-    bitmap: ImageBitmap?,
-    frame: CameraFrame?,
-    detections: CameraDetections?,
-    recognition: String,
-    onBack: () -> Unit,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-    onDeviceChange: (String) -> Unit,
-) {
-    var showDevices by remember { mutableStateOf(false) }
-    var index by remember(state.deviceId) { mutableStateOf(state.deviceId ?: "0") }
-    val textMeasurer = rememberTextMeasurer()
-    val running = state.status == CameraStatus.Running || state.status == CameraStatus.Starting
-    BoxWithConstraints(Modifier.fillMaxSize().background(AppColors.Background).safeDrawingPadding()) {
-        val compact = maxHeight < 400.dp || maxWidth < 600.dp
-        Column(Modifier.fillMaxSize().padding(if (compact) 8.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp).testTag("camera.back"),
-                    contentPadding = PaddingValues(horizontal = 12.dp)) {
-                    Canvas(Modifier.size(14.dp)) {
-                        drawLine(AppColors.Amber, Offset(size.width * .75f, size.height * .1f), Offset(size.width * .25f, size.height * .5f), 2.dp.toPx())
-                        drawLine(AppColors.Amber, Offset(size.width * .25f, size.height * .5f), Offset(size.width * .75f, size.height * .9f), 2.dp.toPx())
-                    }
-                    if (!compact) { Spacer(Modifier.width(4.dp)); Text("返回") }
-                }
-                Text("摄像头", Modifier.weight(1f), color = Color.White, fontSize = if (compact) 17.sp else 22.sp,
-                    fontWeight = FontWeight.Bold, maxLines = 1)
-                OutlinedButton(onClick = { showDevices = true },
-                    enabled = state.usesDeviceIndex || state.devices.size > 1,
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("camera.devices"), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("设备") }
-                Button(onClick = if (running) onStop else onStart, modifier = Modifier.heightIn(min = 48.dp).testTag("camera.toggle"),
-                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.Amber, contentColor = AppColors.Background),
-                    contentPadding = PaddingValues(horizontal = 14.dp)) { Text(if (running) "停止" else "启动") }
-            }
-            Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.Black).testTag("camera.preview"), contentAlignment = Alignment.Center) {
-                if (bitmap != null && frame != null && state.status == CameraStatus.Running) {
-                    Image(bitmap, "摄像头实时预览", Modifier.fillMaxSize().graphicsLayer { scaleX = if (frame.mirrored) -1f else 1f }, contentScale = ContentScale.Fit)
-                    val observation = detections?.observation
-                    if (observation != null && observation.frameWidth == frame.width && observation.frameHeight == frame.height && detections.mirrored == frame.mirrored) {
-                        Canvas(Modifier.fillMaxSize().testTag("camera.detections")) {
-                            val transform = CameraPreviewTransform.fit(frame.width, frame.height, size.width, size.height, frame.mirrored)
-                            fun drawBox(box: NormalizedBox, label: String, accent: Color) {
-                                val left = transform.x(box.left * frame.width)
-                                val right = transform.x(box.right * frame.width)
-                                val top = transform.y(box.top * frame.height)
-                                val bottom = transform.y(box.bottom * frame.height)
-                                drawRect(accent, Offset(min(left, right), top), Size(abs(right - left), (bottom - top).coerceAtLeast(0f)),
-                                    style = Stroke(2.dp.toPx()))
-                                val measured = textMeasurer.measure(label,
-                                    TextStyle(color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Medium))
-                                val labelX = min(left, right).coerceIn(0f, (size.width - measured.size.width).coerceAtLeast(0f))
-                                val labelY = (top - measured.size.height).coerceIn(0f, (size.height - measured.size.height).coerceAtLeast(0f))
-                                drawRect(accent, Offset(labelX, labelY), Size(measured.size.width.toFloat(), measured.size.height.toFloat()))
-                                drawText(measured, topLeft = Offset(labelX, labelY))
-                            }
-                            observation.objects.forEach { drawBox(it.box, "${it.label} ${percent(it.score)}", Color(0xFF66E3AC)) }
-                            observation.faces.forEach { face ->
-                                val label = face.expression?.let { "${it.expression.label()} ${percent(it.confidence)}" } ?: "人脸"
-                                drawBox(face.face.box, label, Color(0xFFFFA0C9))
-                            }
-                            observation.hands.forEach { hand ->
-                                drawBox(hand.hand.box, hand.gesture?.label() ?: "手", Color(0xFF74D5FF))
-                            }
-                        }
-                    }
-                } else {
-                    Text(when (state.status) {
-                        CameraStatus.Starting -> "正在启动摄像头…"
-                        CameraStatus.PermissionDenied -> "需要摄像头权限"
-                        CameraStatus.Error -> "摄像头暂不可用"
-                        CameraStatus.Running -> "等待相机画面…"
-                        else -> "点击启动，打开摄像头"
-                    }, color = AppColors.Secondary, modifier = Modifier.padding(16.dp))
-                }
-            }
-            Text(state.error ?: recognition, color = if (state.error != null) AppColors.Pink else AppColors.Secondary,
-                fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().testTag("camera.status"))
-            if (!compact) Text("视频帧仅在本机处理；离开页面或进入后台后停止采集。", color = AppColors.Secondary, fontSize = 12.sp)
-        }
-        if (showDevices) AlertDialog(
-            onDismissRequest = { showDevices = false },
-            title = { Text("选择摄像头") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (state.usesDeviceIndex) {
-                        Text("桌面设备按编号选择，0 为默认摄像头。", color = AppColors.Secondary)
-                        OutlinedTextField(index, { index = it.filter(Char::isDigit).take(2) }, label = { Text("设备编号（0–15）") },
-                            singleLine = true, modifier = Modifier.testTag("camera.deviceIndex"))
-                    } else state.devices.forEach { device ->
-                        TextButton(onClick = { onDeviceChange(device.id); showDevices = false },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("camera.device.${device.id}")) {
-                            Text(if (device.id == state.deviceId) "✓ ${device.name}" else device.name)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                if (state.usesDeviceIndex) TextButton(
-                    onClick = { onDeviceChange(index); showDevices = false },
-                    enabled = index.toIntOrNull() in 0..15, modifier = Modifier.testTag("camera.deviceConfirm"),
-                ) { Text("使用此设备") }
-            },
-            dismissButton = { TextButton(onClick = { showDevices = false }) { Text("关闭") } },
-        )
-    }
 }
