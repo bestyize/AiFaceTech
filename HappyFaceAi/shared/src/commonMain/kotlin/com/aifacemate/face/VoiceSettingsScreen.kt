@@ -412,6 +412,19 @@ fun VoiceSettingsContent(
                                     }
                                     Switch(checked = preferences.keepFaceVisible, onCheckedChange = null)
                                 }
+                                Row(
+                                    Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("voice.proactiveConversation")
+                                        .toggleable(value = preferences.proactiveConversation, role = Role.Switch,
+                                            onValueChange = { onPreferencesChange(preferences.copy(proactiveConversation = it)) }),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("视觉主动对话", color = VoiceText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                        VoiceHint("保持猫脸时，持续检测到微笑会主动提问并倾听。需要可用的识别和独立朗读配置。")
+                                    }
+                                    Switch(checked = preferences.proactiveConversation, onCheckedChange = null)
+                                }
                             }
                             Spacer(Modifier.height(8.dp))
                         }

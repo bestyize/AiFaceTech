@@ -27,6 +27,9 @@ import com.aifacemate.face.ui.*
 import kotlinx.coroutines.delay
 import com.aifacemate.face.behavior.*
 import kotlin.time.TimeSource
+import com.aifacemate.face.behavior.proactive.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 
 @Composable
 fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) {
@@ -41,12 +44,30 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var voiceOverlay by remember { mutableStateOf(false) }
         var visionNotice by remember { mutableStateOf<String?>(null) }
         var visionStatus by remember { mutableStateOf("未开启") }
+        var proactiveOpening by remember { mutableStateOf<ProactiveOpening?>(null) }
+        val proactive = remember { ProactiveConversationController() }
+        val voicePreferences = remember(route) { VoicePreferencesStore.load().forDevice() }
+        val proactiveReady = remember(route, voicePreferences) { proactiveVoiceReady(voicePreferences) }
+        var appActive by remember { mutableStateOf(true) }
+        LifecycleEventEffect(Lifecycle.Event.ON_START) { appActive = true }
+        LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+            appActive = false; voiceOverlay = false; proactiveOpening = null; proactive.resetEvidence()
+        }
         LaunchedEffect(visionNotice) { if (visionNotice != null) { delay(4000); visionNotice = null } }
         val behavior = remember { BehaviorController() }
         val clock = remember { TimeSource.Monotonic.markNow() }
         val now = { clock.elapsedNow().inWholeMilliseconds }
         var behaviorState by remember { mutableStateOf(behavior.state(now())) }
-        val dispatch: (BehaviorEvent) -> Unit = { behaviorState = behavior.accept(it, now()) }
+        val dispatch: (BehaviorEvent) -> Unit = { event ->
+            val time = now()
+            behaviorState = behavior.accept(event, time)
+            if (event is BehaviorEvent.Vision) {
+                proactive.observe(event,
+                    eligible = appActive && route == LifeRoute.Living && !voiceOverlay && !hud && proactiveReady && voicePreferences.proactiveConversation,
+                    nowMillis = time,
+                )?.let { opening -> proactiveOpening = opening; voiceOverlay = true; hud = false }
+            } else if (event == BehaviorEvent.VisionStopped) proactive.resetEvidence()
+        }
         LaunchedEffect(expression) { dispatch(BehaviorEvent.BaseChanged(expression)) }
         LaunchedEffect(Unit) { while (true) { behaviorState = behavior.state(now()); delay(50) } }
         LaunchedEffect(voiceOverlay, route) {
@@ -58,11 +79,11 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             if (it == LifeRoute.Camera) {
                 cameraReturnRouteName = if (route == LifeRoute.Living) LifeRoute.Living.name else LifeRoute.Vision.name
             }
-            routeName = it.name; hud = false; voiceOverlay = false
+            routeName = it.name; hud = false; voiceOverlay = false; proactiveOpening = null
             dispatch(BehaviorEvent.ResetInteraction)
         }
         onBackHandler(route != LifeRoute.Living || hud || voiceOverlay) {
-            if (voiceOverlay) voiceOverlay = false
+            if (voiceOverlay) { voiceOverlay = false; proactiveOpening = null }
             else if (hud) hud = false else navigate(when (route) {
                 LifeRoute.LifeCenter -> LifeRoute.Living
                 LifeRoute.Camera -> LifeRoute.valueOf(cameraReturnRouteName)
@@ -101,7 +122,9 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                 }
                 if (voiceOverlay) VoiceConversationOverlay(
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    onClose = { voiceOverlay = false },
+                    onClose = { voiceOverlay = false; proactiveOpening = null },
+                    proactiveOpening = proactiveOpening,
+                    onProactiveNoResponse = { visionNotice = "暂时没有听到回应，我先继续陪伴你" },
                     onVisualStateChange = { dispatch(BehaviorEvent.PhaseChanged(when (it) {
                         VoiceVisualState.Idle -> InteractionPhase.Idle
                         VoiceVisualState.Listening -> InteractionPhase.Listening

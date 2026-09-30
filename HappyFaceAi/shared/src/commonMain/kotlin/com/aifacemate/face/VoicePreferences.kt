@@ -31,6 +31,7 @@ data class VoicePreferences(
     val mimoVoice: String = "Chloe",
     val traditionalAsr: TraditionalAsr = TraditionalAsr.Mimo,
     val traditionalTts: TraditionalTts = TraditionalTts.Mimo,
+    val proactiveConversation: Boolean = true,
 )
 
 /** A saved option can be unavailable on a different device. */
@@ -61,6 +62,7 @@ object VoicePreferencesStore {
             mode = if (legacySystemMode) VoiceMode.Traditional else
                 savedMode?.let { raw -> VoiceMode.entries.firstOrNull { it.name == raw } } ?: VoiceMode.Realtime,
             keepFaceVisible = SettingsStore.get(PREFIX + "keepFaceVisible")?.toBooleanStrictOrNull() ?: true,
+            proactiveConversation = SettingsStore.get(PREFIX + "proactiveConversation")?.toBooleanStrictOrNull() ?: true,
             provider = SettingsStore.get(PREFIX + "realtime.provider")?.let { raw -> RealtimeProvider.entries.firstOrNull { it.name == raw } } ?: RealtimeProvider.Qwen,
             qwenModel = SettingsStore.get(PREFIX + "qwen.model")?.takeIf(String::isNotBlank) ?: "qwen3.5-omni-flash-realtime",
             qwenEndpoint = SettingsStore.get(PREFIX + "qwen.endpoint").orEmpty(),
@@ -82,6 +84,7 @@ object VoicePreferencesStore {
         val fields = mapOf(
             "mode" to value.mode.name, "realtime.provider" to value.provider.name,
             "keepFaceVisible" to value.keepFaceVisible.toString(),
+            "proactiveConversation" to value.proactiveConversation.toString(),
             "qwen.model" to value.qwenModel, "qwen.endpoint" to value.qwenEndpoint.trim(), "qwen.apiKey" to value.qwenApiKey.trim(),
             "doubao.appId" to value.doubaoAppId.trim(), "doubao.accessKey" to value.doubaoAccessKey.trim(), "doubao.appKey" to value.doubaoAppKey.trim(),
             "mimo.apiKey" to value.mimoApiKey.trim(), "mimo.baseUrl" to value.mimoBaseUrl.trim(), "mimo.voice" to value.mimoVoice,
