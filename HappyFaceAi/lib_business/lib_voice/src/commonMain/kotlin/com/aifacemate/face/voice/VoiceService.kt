@@ -5,6 +5,7 @@ sealed interface VoiceCaptureResult { data class Success(val clip: VoiceClip) : 
 sealed interface VoicePlaybackResult { data object Complete : VoicePlaybackResult; data class Failure(val reason: String) : VoicePlaybackResult }
 
 interface VoiceService {
+    val observations: kotlinx.coroutines.flow.Flow<VoiceObservation> get() = kotlinx.coroutines.flow.emptyFlow()
     suspend fun record(maxDurationMs: Long = 6_000): VoiceCaptureResult
     /** End capture and return the audio recorded so far from [record]. */
     fun finishRecording()

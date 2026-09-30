@@ -30,6 +30,9 @@ actual fun realtimeAudioAvailable(): Boolean = false
 actual fun createRealtimeAudioDevice(): RealtimeAudioDevice = error("iOS 实时音频设备尚未接入")
 
 private class IosNativeSpeech : NativeSpeechEngine {
+    private val events = kotlinx.coroutines.flow.MutableSharedFlow<VoiceObservation>(extraBufferCapacity = 8,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+    override val observations: kotlinx.coroutines.flow.Flow<VoiceObservation> get() = events
     private var engine: AVAudioEngine? = null
     private var task: SFSpeechRecognitionTask? = null
     private var request: SFSpeechAudioBufferRecognitionRequest? = null
@@ -60,6 +63,7 @@ private class IosNativeSpeech : NativeSpeechEngine {
         return suspendCancellableCoroutine { continuation ->
             val audioEngine = AVAudioEngine()
             val audioRequest = SFSpeechAudioBufferRecognitionRequest()
+            audioRequest.shouldReportPartialResults = true
             engine = audioEngine; request = audioRequest
             val input = audioEngine.inputNode
             input.installTapOnBus(0u, bufferSize = 1024u, format = input.outputFormatForBus(0u)) { buffer, _ ->
@@ -67,6 +71,8 @@ private class IosNativeSpeech : NativeSpeechEngine {
             }
             task = recognizer.recognitionTaskWithRequest(audioRequest) { result, error ->
                 if (generation == recognitionGeneration) {
+                    if (result != null && !result.isFinal && continuation.isActive)
+                        events.tryEmit(VoiceObservation.PartialText(result.bestTranscription.formattedString))
                     if (error != null && continuation.isActive) continuation.resumeWithException(IllegalStateException(error.localizedDescription))
                     else if (result?.isFinal == true && continuation.isActive) continuation.resume(result.bestTranscription.formattedString)
                     if (error != null || result?.isFinal == true) stopRecognition()

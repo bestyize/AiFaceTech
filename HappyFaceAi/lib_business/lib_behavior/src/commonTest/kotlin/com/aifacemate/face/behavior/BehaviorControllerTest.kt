@@ -4,6 +4,35 @@ import com.aifacemate.face.model.FaceExpression
 import kotlin.test.*
 
 class BehaviorControllerTest {
+    @Test fun independentObjectResultsDoNotResetGestureConfirmation() {
+        val controller = BehaviorController()
+        controller.accept(BehaviorEvent.Vision(null, true, 100), 100)
+        controller.accept(BehaviorEvent.Vision(true, null, 150), 150)
+        controller.accept(BehaviorEvent.Vision(null, true, 300), 300)
+        // Older object evidence must not make a newer gesture result look out of order.
+        controller.accept(BehaviorEvent.Vision(true, null, 200), 350)
+        assertEquals(FaceExpression.APPROVING, controller.accept(BehaviorEvent.Vision(null, true, 500), 500).expression)
+    }
+
+    @Test fun gestureConfirmedDuringCooldownCanRespondOnceCooldownEnds() {
+        val controller = BehaviorController()
+        fun frame(time: Long, thumbs: Boolean = true) = controller.accept(BehaviorEvent.Vision(false, thumbs, time), time)
+        frame(0); frame(200); frame(400)
+        frame(600, false)
+        for (time in 800L..2200L step 200) frame(time)
+        assertEquals(2800L, frame(2399).expiresAtMillis)
+        assertEquals(4800L, frame(2400).expiresAtMillis)
+        for (time in 2600L..7000L step 200) frame(time)
+        assertEquals(FaceExpression.IDLE, controller.state(7000).expression)
+    }
+
+    @Test fun visionBlockedByPettingIsNotMarkedAsAlreadyAcknowledged() {
+        val controller = BehaviorController()
+        controller.accept(BehaviorEvent.Petted, 0)
+        for (time in 0L..2200L step 200) controller.accept(BehaviorEvent.Vision(false, true, time), time)
+        assertEquals(FaceExpression.APPROVING, controller.accept(BehaviorEvent.Vision(false, true, 2400), 2400).expression)
+    }
+
     @Test fun arrivalRearmsAfterAbsenceAndCooldown() {
         val controller = BehaviorController()
         fun frame(time: Long, person: Boolean) = controller.accept(BehaviorEvent.Vision(person, false, time), time)
@@ -11,9 +40,11 @@ class BehaviorControllerTest {
         for (time in 600L..3000L step 200) frame(time, false)
         frame(3200, true); frame(3400, true)
         assertEquals(FaceExpression.IDLE, frame(3600, true).expression)
-        for (time in 3800L..16000L step 200) frame(time, false)
-        frame(16200, true); frame(16400, true)
-        assertEquals(FaceExpression.GREETING, frame(16600, true).expression)
+        for (time in 3800L..5200L step 200) frame(time, true)
+        assertEquals(FaceExpression.IDLE, frame(5399, true).expression)
+        assertEquals(FaceExpression.GREETING, frame(5400, true).expression)
+        for (time in 5600L..11000L step 200) frame(time, true)
+        assertEquals(FaceExpression.IDLE, controller.state(11000).expression)
     }
 
     @Test fun staleFutureAndInterruptedFramesDoNotConfirmGesture() {

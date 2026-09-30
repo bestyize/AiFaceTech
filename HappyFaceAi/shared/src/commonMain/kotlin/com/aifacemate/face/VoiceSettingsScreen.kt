@@ -60,7 +60,11 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
     var piperError by remember { mutableStateOf<String?>(null) }
     VoiceSettingsContent(
         preferences = draft,
-        onPreferencesChange = { draft = it },
+        onPreferencesChange = {
+            if (it.proactiveConversation != draft.proactiveConversation)
+                VoicePreferencesStore.setProactiveConversation(it.proactiveConversation)
+            draft = it
+        },
         onBack = onBack,
         onSave = { VoicePreferencesStore.save(draft); onBack() },
         systemAsrAvailable = systemAsrAvailable(),
@@ -156,6 +160,7 @@ fun VoiceSettingsContent(
     onPiperAction: () -> Unit = {},
     onModelAction: () -> Unit = {},
 ) {
+    var proactivePage by rememberSaveable { mutableStateOf(false) }
     val colors = darkColorScheme(
         primary = VoiceGold, onPrimary = Color(0xFF221D13),
         secondary = VoiceGold, background = VoiceBackground,
@@ -203,12 +208,14 @@ fun VoiceSettingsContent(
                         VoiceChoice(
                             label = mode.shortLabel(),
                             description = if (!available) "此设备不可用" else mode.summary(),
-                            selected = preferences.mode == mode,
+                            selected = !proactivePage && preferences.mode == mode,
                             enabled = available,
                             modifier = Modifier.testTag("voice.mode.${mode.name}").fillMaxWidth(),
-                            onClick = { onPreferencesChange(preferences.copy(mode = mode)) },
+                            onClick = { proactivePage = false; onPreferencesChange(preferences.copy(mode = mode)) },
                         )
                     }
+                    VoiceChoice("主动对话", description = "事件唤起 · 短时接话", selected = proactivePage,
+                        modifier = Modifier.testTag("voice.mode.Proactive").fillMaxWidth(), onClick = { proactivePage = true })
                 }
 
                 @Composable
@@ -233,17 +240,57 @@ fun VoiceSettingsContent(
                         VoiceHint(if (preferences.mode == VoiceMode.Realtime)
                             "实时服务负责连续聆听、理解并生成语音；独立识别与朗读选项不会参与此模式。"
                         else "AI 大脑负责生成回复；语音识别与朗读分别配置，可自由组合。")
+                        if (preferences.keepFaceVisible) VoiceHint(
+                            if (preferences.mode == VoiceMode.Realtime || preferences.traditionalAsr == TraditionalAsr.System)
+                                "倾听时随声音轻微活动；识别服务提供中间文字时，可边听边回应表情。"
+                            else "录音时随声音轻微活动，结束识别后按内容回应表情。边听边按内容回应可选择系统识别或实时语音。"
+                        )
                     }
                 }
 
                 @Composable
                 fun Configuration(modifier: Modifier) {
                     // Each mode starts at the top of its own configuration area.
-                    key(preferences.mode) {
+                    key(proactivePage, preferences.mode) {
                         Column(
                             modifier.verticalScroll(rememberScrollState()).testTag("voice.configuration"),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
+                            if (proactivePage) {
+                                VoicePanel(Modifier.fillMaxWidth(), "主动对话", compact) {
+                                    Row(
+                                        Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("voice.proactiveConversation")
+                                            .toggleable(value = preferences.proactiveConversation, role = Role.Switch,
+                                                onValueChange = { onPreferencesChange(preferences.copy(proactiveConversation = it)) }),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text("开启主动对话", color = VoiceText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                                            VoiceHint("开关立即生效。返回猫脸后，持续检测到微笑会主动提问，朗读结束后自动倾听。")
+                                        }
+                                        Switch(checked = preferences.proactiveConversation, onCheckedChange = null)
+                                    }
+                                    VoiceHint("需要开启视觉表情识别、保持猫脸显示，并配置可用的识别和朗读服务。")
+                                }
+                                VoicePanel(Modifier.fillMaxWidth(), "连续接话", compact) {
+                                    Text("主动提问 → 倾听 → 回答 → 再次倾听", color = VoiceGold, fontSize = 14.sp)
+                                    VoiceHint("每次听完回复都有约 12 秒接话窗口，不需要再点说话。分段模式说完停顿约 1.4 秒自动提交。")
+                                    VoiceHint("没有回应就回到陪伴并关闭语音会话。单次收音最长 30 秒，一轮主动会话最多 3 分钟；随时可停止。")
+                                }
+                                VoicePanel(Modifier.fillMaxWidth(), "安静待机", compact) {
+                                    VoiceHint("待机不持续识别或上传语音；当前由视觉事件重新发起，主动开场至少间隔 60 秒。")
+                                    VoiceHint("隔很久再用声音唤起需要本地唤醒词监听，暂未接入。要完全关闭麦克风，可用视觉触发或轻点猫脸的对话入口。")
+                                }
+                                VoicePanel(Modifier.fillMaxWidth(), "当前语音配置", compact) {
+                                    Text("接话方式：${preferences.mode.shortLabel()}", color = VoiceText, fontSize = 14.sp)
+                                    VoiceHint("主动对话控制何时开口和倾听，实时 / 分段语音控制如何听说。进入此页不会更换已选服务。")
+                                    OutlinedButton(onClick = { proactivePage = false }, modifier = Modifier.heightIn(min = 48.dp)
+                                        .testTag("voice.proactive.configure")) { Text("配置识别与朗读") }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                return@Column
+                            }
                             if (!compact) {
                                 Text(preferences.mode.shortLabel(), color = VoiceText, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                                 Text(preferences.mode.summary(), color = VoiceMuted, fontSize = 13.sp)
@@ -426,7 +473,8 @@ fun VoiceSettingsContent(
                                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("对话方式", color = VoiceMuted, fontSize = 13.sp)
                                 ModeChoices()
-                                VoiceHint("选择方式后，在右侧配置服务。保存后用于下一次对话。")
+                                VoiceHint(if (proactivePage) "主动开关即时生效。语音服务配置使用下方保存。"
+                                    else "选择方式后，在右侧配置服务。保存后用于下一次对话。")
                             }
                             VoiceSaveButton(Modifier.fillMaxWidth(), onClick = onSave)
                         }
@@ -446,11 +494,14 @@ fun VoiceSettingsContent(
                                     }
                                     VoiceChoice(if (iconRail) mode.tinyLabel() else mode.shortLabel(),
                                         description = if (!available) "不可用" else null,
-                                        selected = preferences.mode == mode, enabled = available,
+                                        selected = !proactivePage && preferences.mode == mode, enabled = available,
                                         modifier = Modifier.fillMaxWidth().testTag("voice.mode.${mode.name}")
                                             .semantics { contentDescription = mode.shortLabel() },
-                                        onClick = { onPreferencesChange(preferences.copy(mode = mode)) })
+                                        onClick = { proactivePage = false; onPreferencesChange(preferences.copy(mode = mode)) })
                                 }
+                                VoiceChoice(if (iconRail) "主动" else "主动对话", selected = proactivePage,
+                                    modifier = Modifier.fillMaxWidth().testTag("voice.mode.Proactive")
+                                        .semantics { contentDescription = "主动对话" }, onClick = { proactivePage = true })
                             }
                             VoiceSaveButton(Modifier.fillMaxWidth(), horizontalPadding = 4.dp, onClick = onSave)
                         }
@@ -464,10 +515,12 @@ fun VoiceSettingsContent(
                                 VoiceMode.Traditional -> true
                             }
                             VoiceChoice(mode.shortLabel(), description = if (!available) "此设备不可用" else null,
-                                selected = preferences.mode == mode, enabled = available,
+                                selected = !proactivePage && preferences.mode == mode, enabled = available,
                                 modifier = Modifier.weight(1f).testTag("voice.mode.${mode.name}"),
-                                onClick = { onPreferencesChange(preferences.copy(mode = mode)) })
+                                onClick = { proactivePage = false; onPreferencesChange(preferences.copy(mode = mode)) })
                         }
+                        VoiceChoice("主动对话", selected = proactivePage,
+                            modifier = Modifier.weight(1f).testTag("voice.mode.Proactive"), onClick = { proactivePage = true })
                     }
                     Configuration(Modifier.weight(1f).fillMaxWidth())
                 }

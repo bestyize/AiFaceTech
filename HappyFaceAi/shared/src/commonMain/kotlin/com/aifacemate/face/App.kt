@@ -27,6 +27,9 @@ import com.aifacemate.face.ui.*
 import kotlinx.coroutines.delay
 import com.aifacemate.face.behavior.*
 import kotlin.time.TimeSource
+import com.aifacemate.face.behavior.proactive.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 
 @Composable
 fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) {
@@ -40,12 +43,64 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var hud by remember { mutableStateOf(false) }
         var voiceOverlay by remember { mutableStateOf(false) }
         var visionNotice by remember { mutableStateOf<String?>(null) }
+        var visionStatus by remember { mutableStateOf("未开启") }
+        var proactiveOpening by remember { mutableStateOf<ProactiveOpening?>(null) }
+        val proactive = remember { ProactiveConversationController() }
+        val voicePreferences = remember(route) { VoicePreferencesStore.load().forDevice() }
+        val proactiveActivationVersion = remember(route) { VoicePreferencesStore.proactiveActivationVersion() }
+        val proactiveReady = remember(route, voicePreferences) { proactiveVoiceReady(voicePreferences) }
+        var appActive by remember { mutableStateOf(true) }
         LaunchedEffect(visionNotice) { if (visionNotice != null) { delay(4000); visionNotice = null } }
         val behavior = remember { BehaviorController() }
         val clock = remember { TimeSource.Monotonic.markNow() }
         val now = { clock.elapsedNow().inWholeMilliseconds }
+        var proactiveStatus by remember { mutableStateOf("等待微笑") }
+        LaunchedEffect(proactiveActivationVersion) {
+            if (voicePreferences.proactiveConversation && proactiveActivationVersion > 0)
+                proactive.explicitlyEnabled(now())
+        }
+        val closeVoice: () -> Unit = {
+            if (voiceOverlay) proactive.conversationEnded(now())
+            voiceOverlay = false; proactiveOpening = null
+        }
+        LifecycleEventEffect(Lifecycle.Event.ON_START) { appActive = true }
+        LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+            appActive = false; closeVoice(); proactive.resetEvidence()
+        }
         var behaviorState by remember { mutableStateOf(behavior.state(now())) }
-        val dispatch: (BehaviorEvent) -> Unit = { behaviorState = behavior.accept(it, now()) }
+        var lastProactiveDiagnosticAt by remember { mutableStateOf(-3000L) }
+        val dispatch: (BehaviorEvent) -> Unit = { event ->
+            val time = now()
+            behaviorState = behavior.accept(event, time)
+            if (event is BehaviorEvent.Vision) {
+                val gate = when {
+                        !voicePreferences.proactiveConversation -> "disabled"
+                        !appActive -> "background"
+                        route != LifeRoute.Living -> "other_page"
+                        voiceOverlay -> "voice_busy"
+                        hud -> "controls_open"
+                        !proactiveReady -> "speech_not_ready"
+                        else -> proactive.status(time)
+                    }
+                proactiveStatus = when {
+                    gate == "disabled" -> "已关闭"
+                    gate == "voice_busy" -> "对话进行中"
+                    gate == "speech_not_ready" -> "声音未就绪"
+                    gate.startsWith("cooldown_") -> "休息 ${gate.removePrefix("cooldown_").removeSuffix("s")} 秒"
+                    gate == "waiting_for_new_smile" -> "等待新一轮微笑"
+                    gate.startsWith("confirming_") -> "确认微笑"
+                    else -> "等待微笑"
+                }
+                if (event.faceAnalyzed && time - lastProactiveDiagnosticAt >= 3000) {
+                    lastProactiveDiagnosticAt = time
+                    println("FaceProactive gate=$gate face=${event.personVisible} cue=${event.appearance}")
+                }
+                proactive.observe(event,
+                    eligible = appActive && route == LifeRoute.Living && !voiceOverlay && !hud && proactiveReady && voicePreferences.proactiveConversation,
+                    nowMillis = time,
+                )?.let { opening -> proactiveOpening = opening; voiceOverlay = true; hud = false }
+            } else if (event == BehaviorEvent.VisionStopped) proactive.resetEvidence()
+        }
         LaunchedEffect(expression) { dispatch(BehaviorEvent.BaseChanged(expression)) }
         LaunchedEffect(Unit) { while (true) { behaviorState = behavior.state(now()); delay(50) } }
         LaunchedEffect(voiceOverlay, route) {
@@ -57,11 +112,11 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             if (it == LifeRoute.Camera) {
                 cameraReturnRouteName = if (route == LifeRoute.Living) LifeRoute.Living.name else LifeRoute.Vision.name
             }
-            routeName = it.name; hud = false; voiceOverlay = false
+            routeName = it.name; hud = false; closeVoice()
             dispatch(BehaviorEvent.ResetInteraction)
         }
         onBackHandler(route != LifeRoute.Living || hud || voiceOverlay) {
-            if (voiceOverlay) voiceOverlay = false
+            if (voiceOverlay) closeVoice()
             else if (hud) hud = false else navigate(when (route) {
                 LifeRoute.LifeCenter -> LifeRoute.Living
                 LifeRoute.Camera -> LifeRoute.valueOf(cameraReturnRouteName)
@@ -71,7 +126,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         LaunchedEffect(hud) { if (hud) { delay(3500); hud = false } }
         when (route) {
             LifeRoute.Living -> Box(Modifier.fillMaxSize()) {
-                LivingPerception(now = now, onEvent = dispatch, onNotice = { visionNotice = it })
+                LivingPerception(now = now, onEvent = dispatch, onNotice = { visionNotice = it }, onStatus = { visionStatus = it })
                 FaceDisplay(
                     modifier = Modifier.fillMaxSize().pointerInput(Unit) {
                         detectTapGestures(
@@ -84,6 +139,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     },
                     expression = behaviorState.expression,
                     diffuseGlow = diffuseGlow,
+                    listeningActivity = behaviorState.listeningActivity,
                     contentOffsetY = if (voiceOverlay) VOICE_FACE_OFFSET_Y else 0.dp,
                 )
                 if (hud) Row(
@@ -92,14 +148,19 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    TextButton(onClick = { voiceOverlay = true; hud = false }) { Text("对话") }
+                    TextButton(onClick = { voiceOverlay = true; hud = false }) {
+                        Text(if (voicePreferences.proactiveConversation) "对话 · $proactiveStatus" else "对话")
+                    }
                     TextButton(onClick = { dispatch(BehaviorEvent.Petted); hud = false }) { Text("抚摸") }
-                    TextButton(onClick = { navigate(LifeRoute.Camera) }) { Text("视觉") }
+                    TextButton(onClick = { navigate(LifeRoute.Camera) }) { Text("视觉 · $visionStatus") }
                     TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }
                 }
                 if (voiceOverlay) VoiceConversationOverlay(
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    onClose = { voiceOverlay = false },
+                    onClose = closeVoice,
+                    proactiveOpening = proactiveOpening,
+                    onProactiveNoResponse = { visionNotice = "暂时没有听到回应，我先继续陪伴你" },
+                    onProactiveSessionTimeout = { visionNotice = "这一轮先聊到这里，需要时可以再开启对话" },
                     onVisualStateChange = { dispatch(BehaviorEvent.PhaseChanged(when (it) {
                         VoiceVisualState.Idle -> InteractionPhase.Idle
                         VoiceVisualState.Listening -> InteractionPhase.Listening
@@ -107,6 +168,15 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         VoiceVisualState.Speaking -> InteractionPhase.Speaking
                     })) },
                     onUserText = { dispatch(BehaviorEvent.UserText(it)) },
+                    onSpeechObservation = { observation -> dispatch(when (observation) {
+                        com.aifacemate.face.voice.VoiceObservation.Cancelled -> BehaviorEvent.VoiceCancelled
+                        is com.aifacemate.face.voice.VoiceObservation.PartialText -> BehaviorEvent.ListeningText(observation.text)
+                        is com.aifacemate.face.voice.VoiceObservation.Level -> BehaviorEvent.SpeechLevel(observation.value)
+                    }) },
+                )
+                if (visionStatus == "监测中") VisionObservationIcon(
+                    modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(4.dp),
+                    onClick = { navigate(LifeRoute.Camera) },
                 )
                 visionNotice?.let { AppToast(it) }
             }

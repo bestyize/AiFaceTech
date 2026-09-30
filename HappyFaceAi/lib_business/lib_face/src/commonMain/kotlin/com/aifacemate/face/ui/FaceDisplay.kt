@@ -28,6 +28,7 @@ fun FaceDisplay(
     animate: Boolean = true,
     diffuseGlow: Float = DEFAULT_DIFFUSE_GLOW,
     contentOffsetY: Dp = 0.dp,
+    listeningActivity: Float = 0f,
 ) {
     Box(modifier.fillMaxSize().background(Color.Black)) {
         FaceStage(
@@ -36,6 +37,7 @@ fun FaceDisplay(
             animate = animate,
             surface = FaceSurface.DEVICE_SCREEN,
             diffuseGlow = diffuseGlow,
+            listeningActivity = listeningActivity,
         )
     }
 }

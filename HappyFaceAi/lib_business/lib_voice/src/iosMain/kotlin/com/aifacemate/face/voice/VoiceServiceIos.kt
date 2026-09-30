@@ -24,11 +24,15 @@ import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import kotlin.coroutines.resume
+import kotlin.math.pow
 
 actual fun createVoiceService(): VoiceService = IosVoiceService()
 
 @OptIn(ExperimentalForeignApi::class)
 private class IosVoiceService : VoiceService {
+    private val events = kotlinx.coroutines.flow.MutableSharedFlow<VoiceObservation>(extraBufferCapacity = 8,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+    override val observations: kotlinx.coroutines.flow.Flow<VoiceObservation> get() = events
     private var recorder: AVAudioRecorder? = null
     private var player: AVAudioPlayer? = null
     private var stopped = false
@@ -57,8 +61,16 @@ private class IosVoiceService : VoiceService {
             )
             val recording = AVAudioRecorder(NSURL.fileURLWithPath(path), settings, error = null)
             recorder = recording
+            recording.meteringEnabled = true
             check(recording.record()) { "麦克风启动失败" }
-            withTimeoutOrNull(maxDurationMs.coerceAtLeast(1)) { captureFinished.await() }
+            withTimeoutOrNull(maxDurationMs.coerceAtLeast(1)) {
+                while (!captureFinished.isCompleted) {
+                    recording.updateMeters()
+                    val amplitude = 10.0.pow(recording.averagePowerForChannel(0u).toDouble() / 20.0)
+                    events.tryEmit(VoiceObservation.Level(((amplitude - .008) * 8).toFloat().coerceIn(0f, 1f)))
+                    delay(80)
+                }
+            }
             recording.stop()
             if (stopped) return VoiceCaptureResult.Failure("录音已停止")
             val data = NSData.dataWithContentsOfFile(path) ?: error("无法读取录音")

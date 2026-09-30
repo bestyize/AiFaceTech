@@ -43,6 +43,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
+import kotlin.time.TimeSource
+import com.aifacemate.face.voice.VoiceObservation
+import com.aifacemate.face.voice.pcm16Activity
+import com.aifacemate.face.behavior.proactive.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 
 enum class VoiceVisualState { Idle, Listening, Processing, Speaking }
 
@@ -57,8 +64,15 @@ fun VoiceConversationOverlay(
     onClose: () -> Unit,
     onVisualStateChange: (VoiceVisualState) -> Unit = {},
     onUserText: (String) -> Unit = {},
+    onSpeechObservation: (VoiceObservation) -> Unit = {},
+    proactiveOpening: ProactiveOpening? = null,
+    onProactiveNoResponse: () -> Unit = {},
+    onProactiveSessionTimeout: () -> Unit = {},
 ) {
-    ConversationPanel(modifier.fillMaxSize(), onClose, overlay = true, onVisualStateChange = onVisualStateChange, onUserText = onUserText)
+    ConversationPanel(modifier.fillMaxSize(), onClose, overlay = true, onVisualStateChange = onVisualStateChange,
+        onUserText = onUserText, onSpeechObservation = onSpeechObservation,
+        proactiveOpening = proactiveOpening, onProactiveNoResponse = onProactiveNoResponse,
+        onProactiveSessionTimeout = onProactiveSessionTimeout)
 }
 
 @Composable
@@ -73,7 +87,13 @@ private fun ConversationPanel(
     overlay: Boolean = false,
     onVisualStateChange: (VoiceVisualState) -> Unit = {},
     onUserText: (String) -> Unit = {},
+    onSpeechObservation: (VoiceObservation) -> Unit = {},
+    proactiveOpening: ProactiveOpening? = null,
+    onProactiveNoResponse: () -> Unit = {},
+    onProactiveSessionTimeout: () -> Unit = {},
 ) {
+    val currentSpeechObservation = rememberUpdatedState(onSpeechObservation)
+    val observationsActive = remember { mutableStateOf(true) }
     val currentUserText = rememberUpdatedState(onUserText)
     val preferences = remember { VoicePreferencesStore.load().forDevice() }
     val scope = rememberCoroutineScope()
@@ -93,6 +113,65 @@ private fun ConversationPanel(
     var stoppingRealtime by remember { mutableStateOf(false) }
     var replyStreaming by remember { mutableStateOf(false) }
     var pcmPlayer by remember { mutableStateOf<SpeechPcmPlayer?>(null) }
+    val listeningClock = remember { TimeSource.Monotonic.markNow() }
+    var automaticFirstListen by remember { mutableStateOf(false) }
+    var automaticWindow by remember { mutableStateOf<ListeningWindow?>(null) }
+    fun observe(observation: VoiceObservation) {
+        if (facePhase == VoiceFacePhase.Listening && observationsActive.value) {
+            val time = listeningClock.elapsedNow().inWholeMilliseconds
+            when (observation) {
+                is VoiceObservation.Level -> automaticWindow?.activity(observation.value, time)
+                is VoiceObservation.PartialText -> automaticWindow?.text(observation.text, time)
+                VoiceObservation.Cancelled -> Unit
+            }
+        }
+        if (observationsActive.value && overlay && preferences.keepFaceVisible && facePhase == VoiceFacePhase.Listening)
+            currentSpeechObservation.value(observation)
+    }
+    fun cancelFeedback() {
+        automaticFirstListen = false; automaticWindow = null
+        if (observationsActive.value && overlay && preferences.keepFaceVisible) currentSpeechObservation.value(VoiceObservation.Cancelled)
+    }
+    LaunchedEffect(voice, native) {
+        launch { voice.observations.collect { observe(it) } }
+        native?.let { launch { it.observations.collect { observe(it) } } }
+    }
+
+    suspend fun synthesizeSentence(sentence: String, emit: suspend (ReplyPlayback) -> Unit) {
+        when (preferences.traditionalTts) {
+            TraditionalTts.System -> {
+                check(systemTtsAvailable()) { "系统语音合成不可用" }
+                emit(ReplyPlayback.SystemText(sentence))
+            }
+            TraditionalTts.Piper -> PiperTts.stream(sentence) { emit(ReplyPlayback.Audio(it)) }
+            TraditionalTts.Mimo -> TtsClient(NetworkClient()).stream(TtsRequest(apiKey = preferences.mimoApiKey,
+                baseUrl = preferences.mimoBaseUrl, text = sentence, voice = preferences.mimoVoice)) {
+                emit(ReplyPlayback.Audio(it))
+            }
+        }
+    }
+
+    suspend fun speakOpening(text: String) {
+        var player: SpeechPcmPlayer? = null
+        var spoken = false
+        try {
+            val result = streamSpokenReply<ReplyPlayback>(
+                generate = { it(text) },
+                synthesize = ::synthesizeSentence,
+                play = { part -> when (part) {
+                    is ReplyPlayback.SystemText -> checkNotNull(native).speak(part.text)
+                    is ReplyPlayback.Audio -> {
+                        val output = player ?: createSpeechPcmPlayer().also { player = it; pcmPlayer = it }
+                        output.write(part.chunk)
+                    }
+                } },
+                drain = { player?.drain() },
+                onSpeechStart = { spoken = true; facePhase = VoiceFacePhase.Speaking; status = "正在主动和你打招呼" },
+            )
+            result.speechFailure?.let { throw it }
+            check(spoken) { "主动朗读没有产生音频，请检查声音配置" }
+        } finally { player?.close(); pcmPlayer = null }
+    }
 
     suspend fun answerWithSpeech() {
         replyStreaming = true
@@ -173,7 +252,8 @@ private fun ConversationPanel(
     fun show(role: String, text: String) {
         if (text.isNotBlank()) {
             messages.add(ChatMessage(role, text))
-            if (role == "user" && overlay && preferences.keepFaceVisible) currentUserText.value(text)
+            if (role == "user") automaticFirstListen = false
+            if (role == "user" && observationsActive.value && overlay && preferences.keepFaceVisible) currentUserText.value(text)
         }
     }
 
@@ -202,14 +282,15 @@ private fun ConversationPanel(
         turnJob = scope.launch {
             status = "AI 大脑正在思考"
             try { show("assistant", askBrain(question)); status = "可以继续对话" }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { status = error.message ?: "对话失败"; notice = "查看提示" }
+            catch (cancelled: CancellationException) { cancelFeedback(); throw cancelled }
+            catch (error: Exception) { cancelFeedback(); status = error.message ?: "对话失败"; notice = "查看提示" }
             finally { busy = false; if (!live) facePhase = VoiceFacePhase.Idle }
         }
     }
 
     fun startSingleTurn() {
         if (capturing) {
+            automaticFirstListen = false
             capturing = false
             facePhase = VoiceFacePhase.Processing
             status = "正在结束收音"
@@ -223,17 +304,19 @@ private fun ConversationPanel(
         notice = null
         facePhase = VoiceFacePhase.Listening
         turnJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            var continueAutomatically = false
             try {
                 val input = if (preferences.mode == VoiceMode.Traditional && preferences.traditionalAsr == TraditionalAsr.System) {
                     check(systemAsrAvailable()) { "系统语音识别不可用" }
-                    status = "系统正在聆听，点结束说话提交"
+                    status = if (automaticFirstListen) "系统正在自动倾听，说完后会提交" else "系统正在聆听，点结束说话提交"
                     checkNotNull(native).recognize().also { capturing = false; facePhase = VoiceFacePhase.Processing }
                 } else {
                     if (preferences.traditionalAsr == TraditionalAsr.Mimo) {
                         check(preferences.mimoApiKey.isNotBlank()) { "请先在声音设置中填写 MiMo 在线识别的 API Key" }
                     }
-                    status = "正在录音，点结束说话提交（最长 60 秒）"
-                    val recorded = voice.record(maxDurationMs = 60_000)
+                    status = if (automaticFirstListen) "正在自动倾听，说完停顿后会提交（最长 30 秒）"
+                        else "正在录音，点结束说话提交（最长 60 秒）"
+                    val recorded = voice.record(maxDurationMs = if (automaticFirstListen) 30_000 else 60_000)
                     capturing = false
                     facePhase = VoiceFacePhase.Processing
                     val clip = when (recorded) {
@@ -268,9 +351,14 @@ private fun ConversationPanel(
                     return@launch
                 }
                 answerWithSpeech()
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { status = error.message ?: "语音对话失败"; notice = "查看提示" }
+                continueAutomatically = proactiveOpening != null && notice == null
+            } catch (cancelled: CancellationException) { cancelFeedback(); throw cancelled }
+            catch (error: Exception) { cancelFeedback(); status = error.message ?: "语音对话失败"; notice = "查看提示" }
             finally { capturing = false; busy = false; replyStreaming = false; facePhase = VoiceFacePhase.Idle }
+            if (continueAutomatically && observationsActive.value && currentCoroutineContext().isActive) {
+                automaticFirstListen = true
+                startSingleTurn()
+            }
         }
     }
 
@@ -290,17 +378,27 @@ private fun ConversationPanel(
                     RealtimeProvider.Qwen -> RealtimeConfig.Qwen(
                         apiKey = preferences.qwenApiKey, workspaceEndpoint = preferences.qwenEndpoint,
                         model = preferences.qwenModel, enableDelegation = true,
-                        instructions = "日常对话直接回答。需要复杂推理或执行任务时使用 delegate_to_brain。",
+                        instructions = "日常对话直接回答。需要复杂推理或执行任务时使用 delegate_to_brain。" +
+                            proactiveOpening?.let { "你刚刚已经向用户提问：${it.text}。现在等待并回应用户的回答，不要重复开场问题。" }.orEmpty(),
                     )
                     RealtimeProvider.Doubao -> RealtimeConfig.Doubao(
                         appId = preferences.doubaoAppId, accessKey = preferences.doubaoAccessKey,
                         appKey = preferences.doubaoAppKey, sessionId = randomSessionId(),
+                        systemRole = proactiveOpening?.let { "你是陪伴机器人。你刚刚已经问过：${it.text}。现在回应用户的回答，不要重复开场问题。" }.orEmpty(),
                     )
                 }
                 val connected = RealtimeConversationEngine().connect(config)
                 session = connected
                 capture = launch {
-                    try { device.capture { connected.sendAudio(com.aifacemate.face.voice.realtime.RealtimeAudio(it)) } }
+                    var activityAt = TimeSource.Monotonic.markNow()
+                    try { device.capture {
+                        connected.sendAudio(com.aifacemate.face.voice.realtime.RealtimeAudio(it))
+                        if (activityAt.elapsedNow().inWholeMilliseconds >= 80) {
+                            val level = pcm16Activity(it)
+                            withContext(Dispatchers.Main) { observe(VoiceObservation.Level(level)) }
+                            activityAt = TimeSource.Monotonic.markNow()
+                        }
+                    } }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: Exception) {
                         status = error.message ?: "麦克风采集失败"
@@ -312,6 +410,7 @@ private fun ConversationPanel(
                 connected.events.collect { event ->
                     when (event) {
                         is RealtimeEvent.InputText -> if (event.final) show("user", event.text)
+                            else observe(VoiceObservation.PartialText(event.text))
                         is RealtimeEvent.OutputText -> if (event.final) show("assistant", event.text)
                         is RealtimeEvent.OutputAudio -> device.play(event)
                         is RealtimeEvent.ToolCall -> {
@@ -330,8 +429,8 @@ private fun ConversationPanel(
                         else -> Unit
                     }
                 }
-            } catch (cancelled: CancellationException) { status = "对话已结束"; throw cancelled }
-            catch (error: Exception) { status = error.message ?: "实时对话失败"; notice = "查看提示" }
+            } catch (cancelled: CancellationException) { cancelFeedback(); status = "对话已结束"; throw cancelled }
+            catch (error: Exception) { cancelFeedback(); status = error.message ?: "实时对话失败"; notice = "查看提示" }
             finally {
                 runCatching { device.close() }
                 withContext(NonCancellable) {
@@ -344,16 +443,76 @@ private fun ConversationPanel(
     }
 
     fun toggleVoice() {
+        if (replyStreaming) {
+            cancelFeedback(); turnJob?.cancel(); pcmPlayer?.close(); voice.stop(); native?.stop()
+            status = "已停止回复"
+            return
+        }
         if (preferences.mode == VoiceMode.Realtime) {
             if (live) {
                 if (!stoppingRealtime) {
                     stoppingRealtime = true; status = "正在结束对话"; facePhase = VoiceFacePhase.Processing
+                    cancelFeedback()
                     realtimeJob?.cancel()
                 }
             } else startRealtime()
         } else if (replyStreaming || facePhase == VoiceFacePhase.Speaking) {
+            cancelFeedback()
             turnJob?.cancel(); pcmPlayer?.close(); voice.stop(); native?.stop(); status = "已停止回复"
         } else startSingleTurn()
+    }
+
+    LaunchedEffect(proactiveOpening?.id) {
+        val opening = proactiveOpening ?: return@LaunchedEffect
+        if (!overlay) return@LaunchedEffect
+        busy = true; replyStreaming = true; notice = null; facePhase = VoiceFacePhase.Processing
+        turnJob = currentCoroutineContext()[Job]
+        var delivered = false
+        try {
+            show("assistant", opening.text)
+            status = "正在准备主动提问"
+            println("FaceProactive openingStarted id=${opening.id}")
+            speakOpening(opening.text)
+            println("FaceProactive openingPlayed id=${opening.id}")
+            delivered = true
+        } catch (cancelled: CancellationException) { cancelFeedback(); throw cancelled }
+        catch (failure: Exception) { cancelFeedback(); status = failure.message ?: "主动朗读失败"; notice = "查看提示" }
+        finally { busy = false; replyStreaming = false; facePhase = VoiceFacePhase.Idle; turnJob = null }
+        if (delivered && currentCoroutineContext().isActive && observationsActive.value) {
+            automaticFirstListen = true
+            println("FaceProactive beginListening mode=${preferences.mode}")
+            if (preferences.mode == VoiceMode.Realtime) startRealtime() else startSingleTurn()
+        }
+    }
+
+    LaunchedEffect(automaticFirstListen, capturing, live, facePhase) {
+        val automaticRealtime = proactiveOpening != null && live
+        if ((!automaticFirstListen && !automaticRealtime) || (!capturing && !live) || facePhase != VoiceFacePhase.Listening) {
+            automaticWindow = null; return@LaunchedEffect
+        }
+        val window = ListeningWindow(listeningClock.elapsedNow().inWholeMilliseconds, preferences.mode == VoiceMode.Traditional)
+        automaticWindow = window
+        try {
+            while (automaticFirstListen || automaticRealtime) {
+                delay(100)
+                when (window.decision(listeningClock.elapsedNow().inWholeMilliseconds)) {
+                    ListeningDecision.Continue -> Unit
+                    ListeningDecision.Submit -> { automaticFirstListen = false; startSingleTurn(); break }
+                    ListeningDecision.NoResponse -> {
+                        automaticFirstListen = false; cancelFeedback()
+                        turnJob?.cancel(); realtimeJob?.cancel(); voice.stop(); native?.stop()
+                        onProactiveNoResponse(); onClose(); break
+                    }
+                }
+            }
+        } finally { if (automaticWindow === window) automaticWindow = null }
+    }
+
+    LaunchedEffect(proactiveOpening?.id, overlay) {
+        if (proactiveOpening == null || !overlay) return@LaunchedEffect
+        delay(180_000)
+        cancelFeedback(); turnJob?.cancel(); realtimeJob?.cancel(); voice.stop(); native?.stop(); pcmPlayer?.close()
+        onProactiveSessionTimeout(); onClose()
     }
 
     val currentRealtime = rememberUpdatedState(realtimeJob)
@@ -372,6 +531,7 @@ private fun ConversationPanel(
     LaunchedEffect(visualState) { if (overlay && preferences.keepFaceVisible) currentVisualCallback.value(visualState) }
     DisposableEffect(Unit) {
         onDispose {
+            observationsActive.value = false
             currentVisualCallback.value(VoiceVisualState.Idle)
             currentRealtime.value?.cancel(); currentTurn.value?.cancel(); voice.stop(); native?.stop()
             currentPcmPlayer.value?.close()
@@ -396,7 +556,7 @@ private fun ConversationPanel(
     } else if (preferences.keepFaceVisible && !detailsExpanded) {
         VoiceFaceControl(
             state = VoiceFaceControlState(facePhase, status, preferences.mode == VoiceMode.Realtime, voiceEnabled, notice,
-                replyActive = replyStreaming),
+                replyActive = replyStreaming, automaticListening = proactiveOpening != null),
             onVoice = ::toggleVoice,
             onOpenConversation = { detailsExpanded = true },
             modifier = modifier,
