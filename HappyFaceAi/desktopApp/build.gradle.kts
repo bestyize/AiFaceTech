@@ -43,6 +43,7 @@ dependencies {
     implementation(project(":shared"))
     implementation(project(":lib_business:lib_chat"))
     implementation(project(":lib_business:lib_face"))
+    implementation(project(":lib_business:lib_effects"))
     implementation(project(":lib_business:lib_brains"))
     implementation(project(":lib_business:lib_lifecenter"))
     implementation(project(":lib_business:lib_voice"))
@@ -73,6 +74,14 @@ tasks.register<JavaExec>("exportFaceSheets") {
     mainClass.set("com.aifacemate.face.tools.ExportFaceSheetsKt")
     classpath = sourceSets["main"].runtimeClasspath
     args = listOf(layout.buildDirectory.dir("face-sheets").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("exportFaceEffects") {
+    group = "verification"
+    description = "Export deterministic surprise-effect frames and verify preview controls"
+    mainClass.set("com.aifacemate.face.tools.ExportFaceEffectsKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args(layout.buildDirectory.dir("face-effects").get().asFile.absolutePath)
 }
 
 compose.desktop {
