@@ -19,36 +19,35 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            api(project(":lib_common:lib_capability"))
             implementation(project(":lib_common:lib_storage"))
             implementation(libs.kotlinx.coroutinesCore)
         }
         val jvmSharedMain by creating { dependsOn(commonMain.get()) }
-        jvmSharedMain.dependencies { implementation("org.bytedeco:opencv:4.13.0-1.5.13") }
         jvmMain.get().dependsOn(jvmSharedMain)
         androidMain.get().dependsOn(jvmSharedMain)
         jvmMain.dependencies { implementation(libs.onnxruntime.jvm) }
         androidMain.dependencies {
             implementation(libs.onnxruntime.android)
-            implementation("org.bytedeco:opencv:4.13.0-1.5.13")
-            runtimeOnly("org.bytedeco:opencv:4.13.0-1.5.13:android-arm64")
-            runtimeOnly("org.bytedeco:openblas:0.3.31-1.5.13:android-arm64")
-            runtimeOnly("org.bytedeco:javacpp:1.5.13:android-arm64")
         }
 
         val iosMain = maybeCreate("iosMain").apply { dependsOn(commonMain.get()) }
         iosArm64Main.get().dependsOn(iosMain)
         iosSimulatorArm64Main.get().dependsOn(iosMain)
-        commonTest.dependencies { implementation(libs.kotlin.test) }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutinesCore)
+        }
     }
 }
 
-// Explicit network/runtime check; ordinary tests remain offline and use temporary fixtures.
-val yoloJvmTest = kotlin.targets.getByName("jvm").compilations.getByName("test")
-tasks.register<JavaExec>("verifyManagedYolo26m") {
+// Explicit network check with real models and sample photos; ordinary tests stay offline.
+val visionJvmTest = kotlin.targets.getByName("jvm").compilations.getByName("test")
+tasks.register<JavaExec>("verifyVisionProviders") {
     group = "verification"
-    description = "Download the pinned YOLO26m export and exercise lazy ONNX inference in an isolated directory"
+    description = "Download the pinned vision models into the build directory and check them on sample photos"
     dependsOn("jvmTestClasses")
-    mainClass.set("com.aifacemate.face.vision.VerifyManagedYolo26mKt")
-    classpath = files(yoloJvmTest.output.allOutputs, yoloJvmTest.runtimeDependencyFiles)
-    args = listOf(layout.buildDirectory.dir("managed-yolo-check").get().asFile.absolutePath)
+    mainClass.set("com.aifacemate.face.vision.VerifyVisionProvidersKt")
+    classpath = files(visionJvmTest.output.allOutputs, visionJvmTest.runtimeDependencyFiles)
+    args = listOf(layout.buildDirectory.dir("vision-provider-check").get().asFile.absolutePath)
 }

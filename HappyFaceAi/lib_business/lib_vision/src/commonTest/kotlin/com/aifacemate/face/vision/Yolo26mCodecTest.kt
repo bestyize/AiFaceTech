@@ -7,16 +7,15 @@ import kotlin.test.assertTrue
 
 class Yolo26mCodecTest {
     @Test
-    fun letterboxRestoresOriginalFrameCoordinates() {
+    fun letterboxRestoresNormalizedFrameCoordinates() {
         val mapping = Yolo26mCodec.letterbox(320, 240)
         assertEquals(640, mapping.resizedWidth)
         assertEquals(480, mapping.resizedHeight)
         assertEquals(80, mapping.top)
-        val detections = Yolo26mCodec.decode(
-            floatArrayOf(100f, 100f, 300f, 300f, .9f, 15f), mapping,
-        )
-        assertEquals("cat", detections.single().label)
-        assertEquals(PixelBox(50f, 10f, 150f, 110f), detections.single().box)
+        val detection = Yolo26mCodec.decode(floatArrayOf(100f, 100f, 300f, 300f, .9f, 15f), mapping).single()
+        assertEquals("cat", detection.label)
+        assertEquals(15, detection.classIndex)
+        assertEquals(NormalizedBox(50f / 320, 10f / 240, 150f / 320, 110f / 240), detection.box)
     }
 
     @Test
@@ -30,7 +29,7 @@ class Yolo26mCodecTest {
             0f, 0f, 10f, 10f, .9f, 0f,
         ), mapping)
         assertEquals(1, detections.size)
-        assertEquals(PixelBox(0f, 0f, 320f, 240f), detections.single().box)
+        assertEquals(NormalizedBox(0f, 0f, 1f, 1f), detections.single().box)
         assertFailsWith<IllegalArgumentException> { Yolo26mCodec.decode(FloatArray(7), mapping) }
     }
 

@@ -32,41 +32,39 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import com.aifacemate.face.camera.*
 import com.aifacemate.face.theme.AppColors
 import com.aifacemate.face.vision.*
-import kotlinx.coroutines.CancellationException
+import com.aifacemate.face.capability.Availability
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.min
 
-data class CameraDetections(
-    val width: Int,
-    val height: Int,
-    val mirrored: Boolean,
-    val items: List<VisionDetection>,
-    val local: List<LocalVisualFinding> = emptyList(),
-)
+/** A perception result tied to the camera frame orientation it was computed on. */
+data class CameraDetections(val mirrored: Boolean, val observation: VisionObservation)
 
 @Composable
 fun CameraScreen(
     onBack: () -> Unit,
     controller: CameraController = rememberCameraController(),
     preferences: VisionPreferences = remember { VisionPreferencesStore.load() },
+    perception: PerceptionService = remember { PerceptionService(VisionRuntime.registry) },
 ) {
     val cameraState by controller.state.collectAsState()
     val latest by controller.frames.collectAsState()
+    val perceived by perception.state.collectAsState()
     var active by remember { mutableStateOf(false) }
     var request by remember { mutableStateOf(0) }
     var deviceId by remember { mutableStateOf<String?>(null) }
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var previewFrame by remember { mutableStateOf<CameraFrame?>(null) }
-    var detections by remember { mutableStateOf<CameraDetections?>(null) }
-    var recognition by remember { mutableStateOf("点击启动摄像头") }
+    var mirrored by remember { mutableStateOf(false) }
     val sessionGate = remember { Mutex() }
     DisposableEffect(controller) { onDispose { controller.close() } }
 
@@ -82,90 +80,101 @@ fun CameraScreen(
     }
     LaunchedEffect(active, request, deviceId) {
         sessionGate.withLock {
-            detections = null
             if (!active) {
                 controller.stop()
-                Yolo26mModel.unload()
-                LocalVisionAnalyzer.unload()
-                recognition = "相机已停止"
                 return@withLock
             }
             try {
                 controller.start(deviceId)
-                val localEnabled = preferences.expressionEnabled || preferences.gestureEnabled
-                val localReady =
-                    (!preferences.expressionEnabled || LocalVisionAnalyzer.modelsInstalled(LocalVisionTask.FacialExpressions)) &&
-                    (!preferences.gestureEnabled || LocalVisionAnalyzer.modelsInstalled(LocalVisionTask.HandGestures))
-                var yoloFailed = false
-                var localFailed = false
-                controller.frames.filterNotNull().conflate().collect { frame ->
-                    if (controller.state.value.status != CameraStatus.Running) return@collect
-                    val rgbaFrame = RgbaFrame(frame.width, frame.height, frame.rgba)
-                    var localFindings = emptyList<LocalVisualFinding>()
-                    var localStatus: String? = when {
-                        !localEnabled -> null
-                        !LocalVisionAnalyzer.supported() -> "设备不支持本地表情/手势识别"
-                        !localReady -> "请先下载表情或手势模型"
-                        else -> null
+                coroutineScope {
+                    launch {
+                        perception.run(
+                            controller.frames.filterNotNull()
+                                .filter { controller.state.value.status == CameraStatus.Running }
+                                .map { frame -> mirrored = frame.mirrored; RgbaFrame(frame.width, frame.height, frame.rgba) },
+                            preferences,
+                        )
                     }
-                    if (localEnabled && localReady && LocalVisionAnalyzer.supported() && !localFailed) {
-                        try {
-                            localFindings = LocalVisionAnalyzer.analyze(rgbaFrame, preferences)
-                            localStatus = localFindings.take(2).joinToString(" · ") { "${it.label} ${(it.confidence * 100).toInt()}%" }
-                                .ifBlank { "未识别到明显表情或手势" }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (failure: LinkageError) {
-                            localFailed = true
-                            localStatus = "本地视觉运行库不可用"
-                        } catch (error: Exception) {
-                            localFailed = true
-                            localStatus = error.message ?: "本地表情/手势识别失败"
-                        }
-                    }
-                    var objects = emptyList<VisionDetection>()
-                    var yoloStatus = if (!preferences.yoloEnabled) null else when {
-                        !Yolo26mModel.supported() -> "此设备 YOLO 后端待接入"
-                        !yoloFailed -> "未检测到目标"
-                        else -> "YOLO 识别已停止"
-                    }
-                    if (preferences.yoloEnabled && Yolo26mModel.supported() && !yoloFailed) {
-                        try {
-                            objects = Yolo26mModel.detect(rgbaFrame, preferences)
-                            yoloStatus = objects.take(2).joinToString(" · ") { "${it.label} ${(it.confidence * 100).toInt()}%" }
-                                .ifBlank { "未检测到目标" }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (failure: LinkageError) {
-                            yoloFailed = true
-                            yoloStatus = "YOLO 运行库不可用"
-                        } catch (error: Exception) {
-                            yoloFailed = true
-                            yoloStatus = error.message ?: "YOLO 识别失败，请检查模型后重试"
-                        }
-                    }
-                    detections = CameraDetections(frame.width, frame.height, frame.mirrored, objects, localFindings)
-                    recognition = listOfNotNull(localStatus, yoloStatus)
-                        .joinToString(" · ").ifBlank { "相机已启动" }
-                    // Run inference on the newest frame only. The camera stream does not build up a queue.
-                    delay(150)
                 }
             } finally {
-                withContext(NonCancellable) { controller.stop(); Yolo26mModel.unload(); LocalVisionAnalyzer.unload() }
+                withContext(NonCancellable) { controller.stop() }
             }
         }
     }
+    val observation = perceived.observation
     CameraScreenContent(
         state = cameraState,
         bitmap = bitmap,
         frame = previewFrame,
-        detections = detections,
-        recognition = recognition,
+        detections = observation?.let { CameraDetections(mirrored, it) },
+        recognition = when {
+            !active -> "相机已停止"
+            !perceived.running -> "相机已启动"
+            else -> recognitionSummary(perceived)
+        },
         onBack = onBack,
         onStart = { active = true; request++ },
         onStop = { active = false },
         onDeviceChange = { deviceId = it; if (active) request++ },
     )
+}
+
+/** One line per enabled task, e.g. "开心 91% · 点赞 99% · person 97% · 108 ms". */
+internal fun recognitionSummary(state: PerceptionState): String {
+    val observation = state.observation
+    val parts = VisionTask.entries.mapNotNull { task ->
+        when (val status = state.statuses[task]) {
+            null, VisionTaskStatus.Off -> null
+            VisionTaskStatus.NoProvider -> "${task.label()}暂未接入"
+            is VisionTaskStatus.Unavailable -> when (val availability = status.availability) {
+                is Availability.NeedsModels -> "请先下载${task.label()}模型"
+                is Availability.Unsupported -> availability.reason
+                Availability.Ready -> null
+            }
+            is VisionTaskStatus.Failed -> "${task.label()}已停止：${status.message}"
+            VisionTaskStatus.Running -> observation?.let { summary(task, it) }
+        }
+    }
+    val timing = state.analysisMillis?.let { "$it ms" }
+    return (parts + listOfNotNull(timing)).joinToString(" · ").ifBlank { "相机已启动" }
+}
+
+private fun summary(task: VisionTask, observation: VisionObservation): String = when (task) {
+    VisionTask.Objects -> observation.objects.take(2).joinToString(" · ") { "${it.label} ${percent(it.score)}" }.ifBlank { "未检测到目标" }
+    VisionTask.Expressions -> observation.faces.mapNotNull { it.expression }.take(2)
+        .joinToString(" · ") { "${it.expression.label()} ${percent(it.confidence)}" }
+        .ifBlank { if (observation.faces.isEmpty()) "未检测到人脸" else "表情不明显" }
+    VisionTask.Gestures -> observation.hands.mapNotNull { it.gesture }.take(2).joinToString(" · ") { it.label() }
+        .ifBlank { if (observation.hands.isEmpty()) "未检测到手" else "手势不明显" }
+}
+
+private fun percent(value: Float) = "${(value * 100).toInt()}%"
+
+internal fun VisionTask.label() = when (this) {
+    VisionTask.Objects -> "目标检测"
+    VisionTask.Expressions -> "表情识别"
+    VisionTask.Gestures -> "手势识别"
+}
+
+internal fun Expression.label() = when (this) {
+    Expression.Angry -> "愤怒"
+    Expression.Disgust -> "厌恶"
+    Expression.Fear -> "恐惧"
+    Expression.Happy -> "开心"
+    Expression.Neutral -> "平静"
+    Expression.Sad -> "难过"
+    Expression.Surprise -> "惊讶"
+    Expression.Smiling -> "微笑"
+    Expression.MouthOpen -> "张嘴"
+}
+
+internal fun HandGesture.label() = when (this) {
+    HandGesture.ThumbsUp -> "点赞"
+    HandGesture.OpenPalm -> "张开手掌"
+    HandGesture.Fist -> "握拳"
+    HandGesture.Victory -> "胜利手势"
+    HandGesture.Pointing -> "指向"
+    HandGesture.Pinch -> "捏合"
 }
 
 /** Offline fixtures can exercise the page without opening any device or loading a model. */
@@ -209,14 +218,15 @@ fun CameraScreenContent(
             Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.Black).testTag("camera.preview"), contentAlignment = Alignment.Center) {
                 if (bitmap != null && frame != null && state.status == CameraStatus.Running) {
                     Image(bitmap, "摄像头实时预览", Modifier.fillMaxSize().graphicsLayer { scaleX = if (frame.mirrored) -1f else 1f }, contentScale = ContentScale.Fit)
-                    if (detections != null && detections.width == frame.width && detections.height == frame.height && detections.mirrored == frame.mirrored) {
+                    val observation = detections?.observation
+                    if (observation != null && observation.frameWidth == frame.width && observation.frameHeight == frame.height && detections.mirrored == frame.mirrored) {
                         Canvas(Modifier.fillMaxSize().testTag("camera.detections")) {
                             val transform = CameraPreviewTransform.fit(frame.width, frame.height, size.width, size.height, frame.mirrored)
-                            fun drawBox(box: PixelBox, label: String, accent: Color) {
-                                val left = transform.x(box.left)
-                                val right = transform.x(box.right)
-                                val top = transform.y(box.top)
-                                val bottom = transform.y(box.bottom)
+                            fun drawBox(box: NormalizedBox, label: String, accent: Color) {
+                                val left = transform.x(box.left * frame.width)
+                                val right = transform.x(box.right * frame.width)
+                                val top = transform.y(box.top * frame.height)
+                                val bottom = transform.y(box.bottom * frame.height)
                                 drawRect(accent, Offset(min(left, right), top), Size(abs(right - left), (bottom - top).coerceAtLeast(0f)),
                                     style = Stroke(2.dp.toPx()))
                                 val measured = textMeasurer.measure(label,
@@ -226,10 +236,13 @@ fun CameraScreenContent(
                                 drawRect(accent, Offset(labelX, labelY), Size(measured.size.width.toFloat(), measured.size.height.toFloat()))
                                 drawText(measured, topLeft = Offset(labelX, labelY))
                             }
-                            detections.items.forEach { drawBox(it.box, "${it.label} ${(it.confidence * 100).toInt()}%", Color(0xFF66E3AC)) }
-                            detections.local.forEach { finding ->
-                                val color = if (finding.task == LocalVisionTask.FacialExpressions) Color(0xFFFFA0C9) else Color(0xFF74D5FF)
-                                drawBox(finding.box, "${finding.label} ${(finding.confidence * 100).toInt()}%", color)
+                            observation.objects.forEach { drawBox(it.box, "${it.label} ${percent(it.score)}", Color(0xFF66E3AC)) }
+                            observation.faces.forEach { face ->
+                                val label = face.expression?.let { "${it.expression.label()} ${percent(it.confidence)}" } ?: "人脸"
+                                drawBox(face.face.box, label, Color(0xFFFFA0C9))
+                            }
+                            observation.hands.forEach { hand ->
+                                drawBox(hand.hand.box, hand.gesture?.label() ?: "手", Color(0xFF74D5FF))
                             }
                         }
                     }

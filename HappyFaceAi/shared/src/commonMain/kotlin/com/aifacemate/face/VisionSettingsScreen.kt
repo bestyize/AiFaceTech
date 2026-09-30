@@ -38,11 +38,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.saveable.Saver
+import com.aifacemate.face.capability.Availability
+import com.aifacemate.face.capability.ModelStore
+import com.aifacemate.face.capability.ProviderRegistry
+import com.aifacemate.face.capability.formatModelSize
 import com.aifacemate.face.vision.VisionPreferences
 import com.aifacemate.face.vision.VisionPreferencesStore
-import com.aifacemate.face.vision.LocalVisionAnalyzer
-import com.aifacemate.face.vision.LocalVisionTask
-import com.aifacemate.face.vision.Yolo26mModel
+import com.aifacemate.face.vision.VisionRuntime
+import com.aifacemate.face.vision.VisionTask
+import com.aifacemate.face.vision.visionProviders
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -63,30 +68,75 @@ private enum class VisionTab(
     val shortTitle: String,
     val summary: String,
     val defaultThreshold: Float,
-    val localTask: LocalVisionTask?,
+    val task: VisionTask,
 ) {
-    Yolo("yolo", "目标检测", "目标", "识别画面中的人和常见物体", 0.25f, null),
-    Expression("expression", "表情识别", "表情", "识别七种可见表情，结果只代表外观线索", 0.60f, LocalVisionTask.FacialExpressions),
-    Gesture("gesture", "手势识别", "手势", "识别点赞、手掌、握拳、V 字、指向和捏合", 0.70f, LocalVisionTask.HandGestures),
+    Yolo("yolo", "目标检测", "目标", "识别画面中的人和常见物体", 0.25f, VisionTask.Objects),
+    Expression("expression", "表情识别", "表情", "识别人脸的可见表情，结果只代表外观线索", 0.60f, VisionTask.Expressions),
+    Gesture("gesture", "手势识别", "手势", "识别点赞、手掌、握拳、V 字、指向和捏合", 0.70f, VisionTask.Gestures),
 }
 
-private data class VisionModel(
-    val name: String,
-    val detail: String,
-    val supported: Boolean,
-    val downloadable: Boolean,
-    val installed: Boolean,
-    val busy: Boolean,
-    val progress: Int,
-    val error: String?,
-) {
-    fun ready(customPath: Boolean) = supported && (!downloadable || customPath || installed)
+/** What the settings page shows for one task. Built from the provider registry, or from fixtures in UI checks. */
+data class VisionTaskState(
+    val modelName: String,
+    val modelDetail: String,
+    val supported: Boolean = true,
+    val unsupportedReason: String? = null,
+    val downloadable: Boolean = true,
+    val installed: Boolean = false,
+    /** The task can run with the current draft settings, including a custom model path. */
+    val ready: Boolean = installed,
+    val customModel: Boolean = downloadable,
+    val busy: Boolean = false,
+    val progress: Int = 0,
+    val error: String? = null,
+    /** Shown only when a capability has more than one packaged provider. */
+    val choices: List<VisionProviderChoice> = emptyList(),
+)
+
+data class VisionProviderChoice(val capabilityId: String, val providerId: String, val label: String, val selected: Boolean)
+
+fun ProviderRegistry.settingsState(task: VisionTask, preferences: VisionPreferences): VisionTaskState {
+    val selected = visionProviders(task, preferences)
+    val choices = task.capabilities.zip(selected).flatMap { (capability, chosen) ->
+        providers(capability).takeIf { it.size > 1 }.orEmpty().map { provider ->
+            VisionProviderChoice(capability.id, provider.id, provider.displayName, provider.id == chosen?.id)
+        }
+    }
+    if (selected.any { it == null }) {
+        return VisionTaskState("暂未接入", "此设备还没有可用的实现", supported = false,
+            unsupportedReason = "此设备暂未接入", downloadable = false, customModel = false, choices = choices)
+    }
+    val providers = selected.filterNotNull()
+    val unsupported = providers.map { availability(it) }.filterIsInstance<Availability.Unsupported>().firstOrNull()
+    val models = providers.flatMap { it.models }.distinct()
+    return VisionTaskState(
+        modelName = providers.map { it.displayName }.distinct().joinToString(" + "),
+        modelDetail = providers.joinToString(" + ") { it.description } +
+            if (models.isEmpty()) "" else " · ${formatModelSize(models.sumOf { it.sizeBytes })}",
+        supported = unsupported == null,
+        unsupportedReason = unsupported?.reason,
+        downloadable = models.isNotEmpty(),
+        installed = providers.all { availability(it) == Availability.Ready },
+        ready = providers.all { availability(it, preferences.options(task)) == Availability.Ready },
+        customModel = providers.any { it.acceptsCustomModel },
+        choices = choices,
+    )
 }
+
+private val providerIdsSaver = Saver<Map<String, String>, ArrayList<String>>(
+    save = { ids -> ArrayList(ids.flatMap { listOf(it.key, it.value) }) },
+    restore = { saved -> saved.chunked(2) { (capability, provider) -> capability to provider }.toMap() },
+)
 
 private data class VisionStatus(val label: String, val color: Color, val active: Boolean)
 
 @Composable
-fun VisionSettingsScreen(onBack: () -> Unit, onOpenCamera: () -> Unit = {}) {
+fun VisionSettingsScreen(
+    onBack: () -> Unit,
+    onOpenCamera: () -> Unit = {},
+    registry: ProviderRegistry = VisionRuntime.registry,
+    store: ModelStore = VisionRuntime.modelStore,
+) {
     val initial = remember { VisionPreferencesStore.load() }
     // Primitive saveable fields preserve unsaved edits through Android recreation.
     var yoloEnabled by rememberSaveable { mutableStateOf(initial.yoloEnabled) }
@@ -98,21 +148,20 @@ fun VisionSettingsScreen(onBack: () -> Unit, onOpenCamera: () -> Unit = {}) {
     var gestureEnabled by rememberSaveable { mutableStateOf(initial.gestureEnabled) }
     var gesturePath by rememberSaveable { mutableStateOf(initial.gestureModelPath) }
     var gestureThreshold by rememberSaveable { mutableStateOf(initial.gestureConfidenceThreshold) }
+    var providerIds by rememberSaveable(stateSaver = providerIdsSaver) { mutableStateOf(initial.providerIds) }
     val scope = rememberCoroutineScope()
-    var modelInstalled by remember { mutableStateOf(Yolo26mModel.installed()) }
-    var modelBusy by remember { mutableStateOf(false) }
-    var modelProgress by remember { mutableStateOf(0) }
-    var modelError by remember { mutableStateOf<String?>(null) }
-    var modelJob by remember { mutableStateOf<Job?>(null) }
-    var localTaskBusy by remember { mutableStateOf<LocalVisionTask?>(null) }
-    var localProgress by remember { mutableStateOf(0) }
-    var localError by remember { mutableStateOf<String?>(null) }
-    var localErrorTask by remember { mutableStateOf<LocalVisionTask?>(null) }
-    var localModelJob by remember { mutableStateOf<Job?>(null) }
-    var expressionsInstalled by remember { mutableStateOf(LocalVisionAnalyzer.modelsInstalled(LocalVisionTask.FacialExpressions)) }
-    var gesturesInstalled by remember { mutableStateOf(LocalVisionAnalyzer.modelsInstalled(LocalVisionTask.HandGestures)) }
+    var busyTask by remember { mutableStateOf<VisionTask?>(null) }
+    var progress by remember { mutableStateOf(0) }
+    var errors by remember { mutableStateOf(emptyMap<VisionTask, String>()) }
+    var job by remember { mutableStateOf<Job?>(null) }
     val draft = VisionPreferences(yoloEnabled, yoloPath, yoloThreshold, expressionEnabled, expressionPath, expressionThreshold,
-        gestureEnabled, gesturePath, gestureThreshold)
+        gestureEnabled, gesturePath, gestureThreshold, providerIds)
+    // Recomputed on every recomposition; installs and deletions end by clearing busyTask, which recomposes.
+    val tasks = VisionTask.entries.associateWith { task ->
+        registry.settingsState(task, draft).copy(
+            busy = busyTask == task, progress = progress, error = errors[task]?.takeIf { busyTask == null },
+        )
+    }
     VisionSettingsContent(
         preferences = draft,
         onPreferencesChange = {
@@ -125,88 +174,39 @@ fun VisionSettingsScreen(onBack: () -> Unit, onOpenCamera: () -> Unit = {}) {
             gestureEnabled = it.gestureEnabled
             gesturePath = it.gestureModelPath
             gestureThreshold = it.gestureConfidenceThreshold
+            providerIds = it.providerIds
         },
         onBack = onBack,
-        onSave = {
-            VisionPreferencesStore.save(draft)
-            scope.launch { Yolo26mModel.unload(); LocalVisionAnalyzer.unload(); onBack() }
-        },
-        onOpenCamera = {
-            VisionPreferencesStore.save(draft)
-            scope.launch { Yolo26mModel.unload(); LocalVisionAnalyzer.unload(); onOpenCamera() }
-        },
-        localVisionSupported = LocalVisionAnalyzer.supported(),
-        localModelsDownloadable = LocalVisionAnalyzer.modelsAreDownloadable(),
-        expressionsInstalled = expressionsInstalled,
-        gesturesInstalled = gesturesInstalled,
-        localTaskBusy = localTaskBusy,
-        localProgress = localProgress,
-        localError = localError,
-        localErrorTask = localErrorTask,
-        onLocalModelAction = { task ->
-            localTaskBusy = task
-            localProgress = 0
-            localError = null
-            localErrorTask = null
-            localModelJob = scope.launch {
+        onSave = { VisionPreferencesStore.save(draft); onBack() },
+        onOpenCamera = { VisionPreferencesStore.save(draft); onOpenCamera() },
+        tasks = tasks,
+        onModelAction = { task ->
+            val models = registry.visionProviders(task, draft).filterNotNull().flatMap { it.models }.distinct()
+            val remove = tasks.getValue(task).installed
+            busyTask = task
+            progress = 0
+            errors = errors - task
+            job = scope.launch {
                 try {
-                    val installed = LocalVisionAnalyzer.modelsInstalled(task)
-                    if (installed) LocalVisionAnalyzer.removeModels(task)
+                    if (remove) store.remove(models)
                     else {
                         var last = -1
-                        LocalVisionAnalyzer.downloadModels(task) { downloaded, total ->
-                            val percent = (downloaded * 100 / total).toInt().coerceIn(0, 99)
-                            if (percent != last) { last = percent; scope.launch { localProgress = percent } }
+                        store.install(models) { downloaded, total ->
+                            val percent = if (total > 0) (downloaded * 100 / total).toInt().coerceIn(0, 99) else 0
+                            if (percent != last) { last = percent; scope.launch { progress = percent } }
                         }
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    localError = error.message ?: "本地视觉模型操作失败，请重试"
-                    localErrorTask = task
+                    errors = errors + (task to (error.message ?: "模型操作失败，请重试"))
                 } finally {
-                    expressionsInstalled = LocalVisionAnalyzer.modelsInstalled(LocalVisionTask.FacialExpressions)
-                    gesturesInstalled = LocalVisionAnalyzer.modelsInstalled(LocalVisionTask.HandGestures)
-                    localTaskBusy = null
-                    localModelJob = null
+                    busyTask = null
+                    job = null
                 }
             }
         },
-        onLocalCancel = { localModelJob?.cancel() },
-        yoloSupported = Yolo26mModel.supported(),
-        yoloInstalled = modelInstalled,
-        yoloBusy = modelBusy,
-        yoloProgress = modelProgress,
-        yoloError = modelError,
-        onYoloCancel = { modelJob?.cancel() },
-        onYoloModelAction = {
-            modelBusy = true
-            modelProgress = 0
-            modelError = null
-            modelJob = scope.launch {
-                try {
-                    if (modelInstalled) Yolo26mModel.remove()
-                    else {
-                        var last = -1
-                        Yolo26mModel.install { downloaded, total ->
-                            val percent = (downloaded * 100 / total).toInt().coerceIn(0, 99)
-                            if (last != percent) {
-                                last = percent
-                                scope.launch { modelProgress = percent }
-                            }
-                        }
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    modelError = error.message ?: "YOLO 模型操作失败，请重试"
-                } finally {
-                    modelInstalled = Yolo26mModel.installed()
-                    modelBusy = false
-                    modelJob = null
-                }
-            }
-        },
+        onCancel = { job?.cancel() },
     )
 }
 
@@ -217,68 +217,26 @@ fun VisionSettingsContent(
     onPreferencesChange: (VisionPreferences) -> Unit,
     onBack: () -> Unit,
     onSave: () -> Unit,
-    yoloSupported: Boolean = false,
-    yoloInstalled: Boolean = false,
-    yoloBusy: Boolean = false,
-    yoloProgress: Int = 0,
-    yoloError: String? = null,
-    onYoloModelAction: () -> Unit = {},
-    onYoloCancel: () -> Unit = {},
+    tasks: Map<VisionTask, VisionTaskState>,
+    onModelAction: (VisionTask) -> Unit = {},
+    onCancel: (VisionTask) -> Unit = {},
     onOpenCamera: () -> Unit = {},
-    localVisionSupported: Boolean = false,
-    localModelsDownloadable: Boolean = false,
-    expressionsInstalled: Boolean = false,
-    gesturesInstalled: Boolean = false,
-    localTaskBusy: LocalVisionTask? = null,
-    localProgress: Int = 0,
-    localError: String? = null,
-    localErrorTask: LocalVisionTask? = localTaskBusy,
-    onLocalModelAction: (LocalVisionTask) -> Unit = {},
-    onLocalCancel: () -> Unit = {},
 ) {
     var selectedKey by rememberSaveable { mutableStateOf(VisionTab.Yolo.key) }
     val selected = VisionTab.entries.first { it.key == selectedKey }
     var validationAttempted by rememberSaveable { mutableStateOf(false) }
-    val anyBusy = yoloBusy || localTaskBusy != null
+    val anyBusy = tasks.values.any { it.busy }
 
-    fun model(tab: VisionTab): VisionModel = when (tab) {
-        VisionTab.Yolo -> VisionModel("YOLO26m", "COCO 80 类 · 约 82 MB", yoloSupported, true,
-            yoloInstalled, yoloBusy, yoloProgress, yoloError)
-        else -> {
-            val task = tab.localTask!!
-            val expression = tab == VisionTab.Expression
-            VisionModel(
-                name = if (localModelsDownloadable) { if (expression) "YuNet + MobileFaceNet" else "MediaPipe 手部关键点" } else "系统 Vision",
-                detail = if (localModelsDownloadable) { if (expression) "人脸检测 + 七类表情 · 约 5.0 MB" else "掌心检测 + 21 点骨架 · 约 8.0 MB" }
-                    else if (expression) "脸部关键点与可见动作线索" else "系统手部关键点",
-                supported = localVisionSupported,
-                downloadable = localModelsDownloadable,
-                installed = if (expression) expressionsInstalled else gesturesInstalled,
-                busy = localTaskBusy == task,
-                progress = localProgress,
-                error = localError.takeIf { localErrorTask == task && localTaskBusy == null },
-            )
-        }
-    }
-    fun enabled(tab: VisionTab) = when (tab) {
-        VisionTab.Yolo -> preferences.yoloEnabled
-        VisionTab.Expression -> preferences.expressionEnabled
-        VisionTab.Gesture -> preferences.gestureEnabled
-    }
-    fun path(tab: VisionTab) = when (tab) {
-        VisionTab.Yolo -> preferences.yoloModelPath
-        VisionTab.Expression -> preferences.expressionModelPath
-        VisionTab.Gesture -> preferences.gestureModelPath
-    }
-    fun pathError(tab: VisionTab) =
-        preferences.modelPathError(expression = tab == VisionTab.Expression, gesture = tab == VisionTab.Gesture)
+    fun state(tab: VisionTab) = tasks.getValue(tab.task)
+    fun enabled(tab: VisionTab) = preferences.enabled(tab.task)
+    fun pathError(tab: VisionTab) = preferences.modelPathError(tab.task)
     fun status(tab: VisionTab): VisionStatus {
-        val model = model(tab)
+        val state = state(tab)
         return when {
-            model.busy -> VisionStatus("下载中 ${model.progress}%", VisionGold, true)
+            state.busy -> VisionStatus("下载中 ${state.progress}%", VisionGold, true)
             !enabled(tab) -> VisionStatus("未开启", VisionMuted, false)
-            !model.supported -> VisionStatus("设备不支持", VisionError, false)
-            model.ready(path(tab).isNotBlank()) -> VisionStatus("已开启", VisionGreen, true)
+            !state.supported -> VisionStatus("设备不支持", VisionError, false)
+            state.ready -> VisionStatus("已开启", VisionGreen, true)
             else -> VisionStatus("需下载模型", VisionGold, false)
         }
     }
@@ -324,43 +282,23 @@ fun VisionSettingsContent(
                             modifier.verticalScroll(rememberScrollState()).testTag("vision.configuration"),
                             verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
                         ) {
+                            val task = selected.task
                             VisionDetail(
                                 tab = selected,
                                 enabled = enabled(selected),
-                                model = model(selected),
-                                path = path(selected),
-                                threshold = when (selected) {
-                                    VisionTab.Yolo -> preferences.yoloConfidenceThreshold
-                                    VisionTab.Expression -> preferences.expressionConfidenceThreshold
-                                    VisionTab.Gesture -> preferences.gestureConfidenceThreshold
-                                },
+                                state = state(selected),
+                                path = preferences.modelPath(task),
+                                threshold = preferences.threshold(task),
                                 pathError = if (validationAttempted) pathError(selected) else null,
                                 actionsLocked = anyBusy,
                                 compact = compact,
                                 showIcon = !narrowDetail,
-                                onEnabledChange = {
-                                    onPreferencesChange(when (selected) {
-                                        VisionTab.Yolo -> preferences.copy(yoloEnabled = it)
-                                        VisionTab.Expression -> preferences.copy(expressionEnabled = it)
-                                        VisionTab.Gesture -> preferences.copy(gestureEnabled = it)
-                                    })
-                                },
-                                onPathChange = {
-                                    onPreferencesChange(when (selected) {
-                                        VisionTab.Yolo -> preferences.copy(yoloModelPath = it)
-                                        VisionTab.Expression -> preferences.copy(expressionModelPath = it)
-                                        VisionTab.Gesture -> preferences.copy(gestureModelPath = it)
-                                    })
-                                },
-                                onThresholdChange = {
-                                    onPreferencesChange(when (selected) {
-                                        VisionTab.Yolo -> preferences.copy(yoloConfidenceThreshold = it)
-                                        VisionTab.Expression -> preferences.copy(expressionConfidenceThreshold = it)
-                                        VisionTab.Gesture -> preferences.copy(gestureConfidenceThreshold = it)
-                                    })
-                                },
-                                onModelAction = { if (selected == VisionTab.Yolo) onYoloModelAction() else onLocalModelAction(selected.localTask!!) },
-                                onCancel = { if (selected == VisionTab.Yolo) onYoloCancel() else onLocalCancel() },
+                                onEnabledChange = { onPreferencesChange(preferences.update(task, enabled = it)) },
+                                onPathChange = { onPreferencesChange(preferences.update(task, modelPath = it)) },
+                                onThresholdChange = { onPreferencesChange(preferences.update(task, threshold = it)) },
+                                onProviderChange = { capability, provider -> onPreferencesChange(preferences.withProvider(capability, provider)) },
+                                onModelAction = { onModelAction(task) },
+                                onCancel = { onCancel(task) },
                             )
                             if (includeCamera) VisionCameraAction(enabledCount, !anyBusy) { validateAnd(onOpenCamera) }
                             VisionHint("保存不会启动摄像头；打开预览后，画面只在本机分析，不保存也不上传。")
@@ -510,6 +448,23 @@ private fun VisionTaskPill(tab: VisionTab, status: VisionStatus, selected: Boole
 }
 
 @Composable
+private fun VisionProviderChip(choice: VisionProviderChoice, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier.heightIn(min = 48.dp).clip(shape)
+            .background(if (choice.selected) Color(0xFF393329) else Color(0xFF171B1B))
+            .border(1.dp, if (choice.selected) VisionGold else VisionBorder.copy(alpha = .65f), shape)
+            .selectable(choice.selected, role = Role.RadioButton, onClick = onClick)
+            .testTag("vision.provider.${choice.providerId}")
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(choice.label, color = if (choice.selected) VisionGold else VisionText, fontSize = 13.sp,
+            fontWeight = if (choice.selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
 private fun VisionStatusLabel(status: VisionStatus) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         Box(Modifier.size(6.dp).background(status.color, CircleShape))
@@ -549,7 +504,7 @@ private fun VisionCameraAction(enabledCount: Int, enabled: Boolean, showHint: Bo
 private fun VisionDetail(
     tab: VisionTab,
     enabled: Boolean,
-    model: VisionModel,
+    state: VisionTaskState,
     path: String,
     threshold: Float,
     pathError: String?,
@@ -559,6 +514,7 @@ private fun VisionDetail(
     onEnabledChange: (Boolean) -> Unit,
     onPathChange: (String) -> Unit,
     onThresholdChange: (Float) -> Unit,
+    onProviderChange: (capabilityId: String, providerId: String) -> Unit,
     onModelAction: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -590,50 +546,57 @@ private fun VisionDetail(
 
     VisionPanel("模型", compact) {
         val customPath = path.isNotBlank()
+        state.choices.groupBy { it.capabilityId }.values.forEach { options ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                options.forEach { choice ->
+                    VisionProviderChip(choice, Modifier.weight(1f)) { onProviderChange(choice.capabilityId, choice.providerId) }
+                }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(model.name, color = VisionText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Text(model.detail, color = VisionMuted, fontSize = 12.sp)
+                Text(state.modelName, color = VisionText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(state.modelDetail, color = VisionMuted, fontSize = 12.sp)
                 val (label, color) = when {
-                    !model.supported -> "此设备暂不支持" to VisionError
-                    !model.downloadable -> "系统内置 · 无需下载" to VisionGreen
-                    model.busy -> "正在处理… ${model.progress}%" to VisionGold
-                    model.installed -> "已下载 · 可离线使用" to VisionGreen
-                    customPath -> "未下载 · 当前使用自定义模型" to VisionMuted
+                    !state.supported -> (state.unsupportedReason ?: "此设备暂不支持") to VisionError
+                    !state.downloadable -> "系统内置 · 无需下载" to VisionGreen
+                    state.busy -> "正在处理… ${state.progress}%" to VisionGold
+                    state.installed -> "已下载 · 可离线使用" to VisionGreen
+                    customPath && state.ready -> "未下载 · 当前使用自定义模型" to VisionMuted
                     else -> "未下载" to VisionGold
                 }
                 Text(label, color = color, fontSize = 12.sp, modifier = Modifier.testTag("$prefix.modelStatus"))
             }
-            if (model.downloadable) {
-                if (model.busy) OutlinedButton(
+            if (state.downloadable) {
+                if (state.busy) OutlinedButton(
                     onClick = onCancel,
                     modifier = Modifier.heightIn(min = 48.dp).testTag("$prefix.cancel"),
                     shape = RoundedCornerShape(12.dp),
                 ) { Text("取消", fontSize = 13.sp) }
-                else if (model.installed) OutlinedButton(
+                else if (state.installed) OutlinedButton(
                     onClick = onModelAction,
-                    enabled = model.supported && !actionsLocked,
+                    enabled = state.supported && !actionsLocked,
                     modifier = Modifier.heightIn(min = 48.dp).testTag("$prefix.modelAction"),
                     shape = RoundedCornerShape(12.dp),
                 ) { Text("删除", fontSize = 13.sp) }
                 else Button(
                     onClick = onModelAction,
-                    enabled = model.supported && !actionsLocked,
+                    enabled = state.supported && !actionsLocked,
                     modifier = Modifier.heightIn(min = 48.dp).testTag("$prefix.modelAction"),
                     shape = RoundedCornerShape(12.dp),
                 ) { Text("下载", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
             }
         }
-        if (model.busy) LinearProgressIndicator(
-            progress = { model.progress / 100f },
+        if (state.busy) LinearProgressIndicator(
+            progress = { state.progress / 100f },
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(2.dp)),
             color = VisionGold, trackColor = Color(0xFF393A35),
         )
-        model.error?.let { Text(it, color = VisionError, fontSize = 12.sp, modifier = Modifier.testTag("$prefix.modelError")) }
-        if (enabled && model.supported && !model.ready(customPath) && !model.busy)
+        state.error?.let { Text(it, color = VisionError, fontSize = 12.sp, modifier = Modifier.testTag("$prefix.modelError")) }
+        if (enabled && state.supported && !state.ready && !state.busy)
             Text("下载后才能在摄像头中识别", color = VisionGold, fontSize = 12.sp)
-        VisionHint(if (model.downloadable) "模型不打包进安装包，首次识别时载入，离开摄像头后释放内存。"
-            else "使用设备系统 Vision 在本机分析。")
+        VisionHint(if (state.downloadable) "模型不打包进安装包，首次识别时载入，离开摄像头后释放内存。"
+            else "使用系统内置模型在本机分析。")
     }
 
     VisionPanel("识别阈值", compact) {
@@ -662,7 +625,7 @@ private fun VisionDetail(
         }
     }
 
-    if (model.downloadable) {
+    if (state.customModel) {
         var expanded by rememberSaveable(tab) { mutableStateOf(path.isNotBlank()) }
         val open = expanded || pathError != null
         VisionPanel("高级", compact) {
