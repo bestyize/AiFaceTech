@@ -62,15 +62,15 @@ class BehaviorController {
                     lastPersonAt = nowMillis
                     personFrames++
                     if (!personPresent && personFrames >= 3) {
-                        personPresent = true
-                        if (phase == InteractionPhase.Idle) react(FaceExpression.GREETING, "person_arrived", 10, 2400, 15000, nowMillis)
+                        personPresent = phase != InteractionPhase.Idle ||
+                            react(FaceExpression.GREETING, "person_arrived", 10, 2400, 15000, nowMillis)
                     }
                 } else personFrames = 0
                 if (event.thumbsUp) {
                     gestureFrames++
                     if (!gesturePresent && gestureFrames >= 3) {
-                        gesturePresent = true
-                        if (phase == InteractionPhase.Idle) react(FaceExpression.APPROVING, "thumbs_up", 10, 2400, 5000, nowMillis)
+                        gesturePresent = phase != InteractionPhase.Idle ||
+                            react(FaceExpression.APPROVING, "thumbs_up", 10, 2400, 5000, nowMillis)
                     }
                 } else { gestureFrames = 0; gesturePresent = false }
             }
@@ -99,10 +99,11 @@ class BehaviorController {
         if (lastVisionAt?.let { now - it > 1000 } == true) clearVision()
     }
 
-    private fun react(expression: FaceExpression, reason: String, priority: Int, duration: Long, cooldown: Long, now: Long) {
-        if (cooldowns[reason]?.let { now < it } == true || reaction?.let { it.priority > priority } == true) return
+    private fun react(expression: FaceExpression, reason: String, priority: Int, duration: Long, cooldown: Long, now: Long): Boolean {
+        if (cooldowns[reason]?.let { now < it } == true || reaction?.let { it.priority > priority } == true) return false
         reaction = Reaction(expression, reason, priority, now + duration)
         cooldowns[reason] = now + cooldown
+        return true
     }
 
     private fun clearVision() {

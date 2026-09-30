@@ -13,15 +13,51 @@ import kotlinx.coroutines.sync.withLock
 
 /** Face-page owner. Leaving the page or stopping the app releases camera and inference. */
 @Composable
-internal fun LivingPerception(now: () -> Long, onEvent: (BehaviorEvent) -> Unit, onNotice: (String) -> Unit) {
+internal fun LivingPerception(now: () -> Long, onEvent: (BehaviorEvent) -> Unit, onNotice: (String) -> Unit, onStatus: (String) -> Unit) {
     val preferences = remember { VisionPreferencesStore.load() }
-    if (VisionTask.entries.none { VisionRuntime.registry.visionStatus(it, preferences) == VisionTaskStatus.Running }) return
+    if (VisionTask.entries.none { VisionRuntime.registry.visionStatus(it, preferences) == VisionTaskStatus.Running }) {
+        SideEffect { onStatus(if (VisionTask.entries.any { preferences.enabled(it) }) "未就绪" else "未开启") }
+        return
+    }
     val controller = rememberCameraController()
     val perception = remember { PerceptionService(VisionRuntime.registry) }
     val callback = rememberUpdatedState(onEvent)
     val currentNow = rememberUpdatedState(now)
     val notice = rememberUpdatedState(onNotice)
+    val status = rememberUpdatedState(onStatus)
     val cameraState by controller.state.collectAsState()
+    var restart by remember { mutableStateOf(0) }
+    var lastFrameAt by remember { mutableStateOf<Long?>(null) }
+    var active by remember { mutableStateOf(true) }
+    LaunchedEffect(controller) {
+        controller.frames.collect { frame -> if (frame != null) lastFrameAt = currentNow.value() }
+    }
+    // A failed camera or a stalled stream must recover on this page, without a preview-page round trip.
+    LaunchedEffect(cameraState.status, active) {
+        status.value(when {
+            !active -> "已暂停"
+            cameraState.status == CameraStatus.Running -> "监测中"
+            cameraState.status == CameraStatus.Starting -> "启动中"
+            cameraState.status == CameraStatus.PermissionDenied -> "需授权"
+            cameraState.status == CameraStatus.Error -> "重试中"
+            else -> "启动中"
+        })
+        if (!active) return@LaunchedEffect
+        if (cameraState.status == CameraStatus.Error) {
+            delay(3000)
+            restart++
+        } else if (cameraState.status == CameraStatus.Running) {
+            val started = currentNow.value()
+            while (true) {
+                delay(2000)
+                if (currentNow.value() - (lastFrameAt ?: started) > 8000) {
+                    status.value("重试中")
+                    restart++
+                    break
+                }
+            }
+        }
+    }
     LaunchedEffect(cameraState.status, cameraState.error) {
         when (cameraState.status) {
             CameraStatus.PermissionDenied -> notice.value("视觉互动需要相机权限，可在系统设置中开启")
@@ -30,13 +66,13 @@ internal fun LivingPerception(now: () -> Long, onEvent: (BehaviorEvent) -> Unit,
         }
     }
     val gate = remember { Mutex() }
-    var active by remember { mutableStateOf(true) }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { active = true }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { active = false }
-    LaunchedEffect(active) {
+    LaunchedEffect(active, restart) {
         gate.withLock {
             if (!active) { controller.stop(); callback.value(BehaviorEvent.VisionStopped); return@withLock }
             try {
+                lastFrameAt = null
                 controller.start()
                 coroutineScope {
                     var failureReported = false

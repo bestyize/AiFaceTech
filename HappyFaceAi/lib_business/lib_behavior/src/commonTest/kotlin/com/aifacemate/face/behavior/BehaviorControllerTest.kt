@@ -4,6 +4,24 @@ import com.aifacemate.face.model.FaceExpression
 import kotlin.test.*
 
 class BehaviorControllerTest {
+    @Test fun gestureConfirmedDuringCooldownCanRespondOnceCooldownEnds() {
+        val controller = BehaviorController()
+        fun frame(time: Long, thumbs: Boolean = true) = controller.accept(BehaviorEvent.Vision(false, thumbs, time), time)
+        frame(0); frame(200); frame(400)
+        frame(600, false)
+        for (time in 800L..5200L step 200) frame(time)
+        assertEquals(FaceExpression.APPROVING, frame(5400).expression)
+        for (time in 5600L..11000L step 200) frame(time)
+        assertEquals(FaceExpression.IDLE, controller.state(11000).expression)
+    }
+
+    @Test fun visionBlockedByPettingIsNotMarkedAsAlreadyAcknowledged() {
+        val controller = BehaviorController()
+        controller.accept(BehaviorEvent.Petted, 0)
+        for (time in 0L..2200L step 200) controller.accept(BehaviorEvent.Vision(false, true, time), time)
+        assertEquals(FaceExpression.APPROVING, controller.accept(BehaviorEvent.Vision(false, true, 2400), 2400).expression)
+    }
+
     @Test fun arrivalRearmsAfterAbsenceAndCooldown() {
         val controller = BehaviorController()
         fun frame(time: Long, person: Boolean) = controller.accept(BehaviorEvent.Vision(person, false, time), time)

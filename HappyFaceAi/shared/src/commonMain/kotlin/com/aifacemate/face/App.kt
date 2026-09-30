@@ -40,6 +40,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var hud by remember { mutableStateOf(false) }
         var voiceOverlay by remember { mutableStateOf(false) }
         var visionNotice by remember { mutableStateOf<String?>(null) }
+        var visionStatus by remember { mutableStateOf("未开启") }
         LaunchedEffect(visionNotice) { if (visionNotice != null) { delay(4000); visionNotice = null } }
         val behavior = remember { BehaviorController() }
         val clock = remember { TimeSource.Monotonic.markNow() }
@@ -71,7 +72,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         LaunchedEffect(hud) { if (hud) { delay(3500); hud = false } }
         when (route) {
             LifeRoute.Living -> Box(Modifier.fillMaxSize()) {
-                LivingPerception(now = now, onEvent = dispatch, onNotice = { visionNotice = it })
+                LivingPerception(now = now, onEvent = dispatch, onNotice = { visionNotice = it }, onStatus = { visionStatus = it })
                 FaceDisplay(
                     modifier = Modifier.fillMaxSize().pointerInput(Unit) {
                         detectTapGestures(
@@ -94,7 +95,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                 ) {
                     TextButton(onClick = { voiceOverlay = true; hud = false }) { Text("对话") }
                     TextButton(onClick = { dispatch(BehaviorEvent.Petted); hud = false }) { Text("抚摸") }
-                    TextButton(onClick = { navigate(LifeRoute.Camera) }) { Text("视觉") }
+                    TextButton(onClick = { navigate(LifeRoute.Camera) }) { Text("视觉 · $visionStatus") }
                     TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }
                 }
                 if (voiceOverlay) VoiceConversationOverlay(
