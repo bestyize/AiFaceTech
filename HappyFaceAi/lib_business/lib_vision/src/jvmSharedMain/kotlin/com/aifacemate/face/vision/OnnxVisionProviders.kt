@@ -41,8 +41,18 @@ internal abstract class OnnxProvider<C : AutoCloseable>(
         return if (missing.isEmpty()) Availability.Ready else Availability.NeedsModels(missing)
     }
 
-    protected suspend fun load(model: ModelSpec, description: String) =
-        store.verifiedPath(model).let { path -> withContext(Dispatchers.IO) { OnnxModel(path, description) } }
+    protected suspend fun load(model: ModelSpec, description: String): OnnxModel {
+        val path = store.verifiedPath(model)
+        // Returning to the caller's dispatcher can be cancelled after the native session was created.
+        // Keep ownership here until withContext has successfully delivered it to the caller.
+        var created: OnnxModel? = null
+        try {
+            return withContext(Dispatchers.IO) { OnnxModel(path, description).also { created = it } }
+        } catch (failure: Throwable) {
+            runCatching { created?.close() }.onFailure { failure.addSuppressed(it) }
+            throw failure
+        }
+    }
 }
 
 internal class Yolo26ObjectDetectorProvider(store: ModelStore) :
@@ -95,8 +105,11 @@ class Yolo26OnnxObjectDetector internal constructor(private val model: OnnxModel
 
     private val output = model.validated {
         requireInput(longArrayOf(1, 3, Yolo26mCodec.inputSize.toLong(), Yolo26mCodec.inputSize.toLong()), "YOLO 模型")
-        val (name, size) = outputSizes.entries.singleOrNull() ?: error("YOLO 模型应只有一个输出")
-        require(size > 0 && size % 6 == 0L) { "YOLO 模型需输出 [1,N,6]，导出时请设置 nms=False" }
+        val (name, tensor) = outputTensors.entries.singleOrNull() ?: error("YOLO 模型应只有一个输出")
+        val shape = tensor.shape
+        require(shape.size == 3 && shape[0] == 1L && shape[1] > 0 && shape[2] == 6L) {
+            "YOLO 模型需输出 FP32 [1,N,6]，实际为 ${shape.contentToString()}，导出时请设置 nms=False"
+        }
         name
     }
 

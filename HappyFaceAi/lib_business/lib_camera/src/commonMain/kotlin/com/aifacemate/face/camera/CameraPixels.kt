@@ -60,10 +60,47 @@ data class CameraPreviewTransform(val scale: Float, val left: Float, val top: Fl
     fun y(value: Float): Float = top + value * scale
 
     companion object {
+        fun crop(sourceWidth: Int, sourceHeight: Int, width: Float, height: Float, mirrored: Boolean): CameraPreviewTransform {
+            require(sourceWidth > 0 && sourceHeight > 0 && width >= 0 && height >= 0)
+            val scale = maxOf(width / sourceWidth, height / sourceHeight)
+            return CameraPreviewTransform(scale, (width - sourceWidth * scale) / 2, (height - sourceHeight * scale) / 2, sourceWidth, mirrored)
+        }
         fun fit(sourceWidth: Int, sourceHeight: Int, width: Float, height: Float, mirrored: Boolean): CameraPreviewTransform {
             require(sourceWidth > 0 && sourceHeight > 0 && width >= 0 && height >= 0)
             val scale = minOf(width / sourceWidth, height / sourceHeight)
             return CameraPreviewTransform(scale, (width - sourceWidth * scale) / 2, (height - sourceHeight * scale) / 2, sourceWidth, mirrored)
         }
     }
+}
+
+/** Photo pixels match the centre-cropped full-screen preview, including selfie mirroring. */
+internal fun CameraFrame.photoFrame(aspectRatio: Float?): CameraFrame {
+    val aspect = aspectRatio?.takeIf { it.isFinite() && it > 0 } ?: width.toFloat() / height
+    val cropWidth = minOf(width, (height * aspect).toInt().coerceAtLeast(1))
+    val cropHeight = minOf(height, (width / aspect).toInt().coerceAtLeast(1))
+    val left = (width - cropWidth) / 2
+    val top = (height - cropHeight) / 2
+    val pixels = ByteArray(cropWidth * cropHeight * 4)
+    for (y in 0 until cropHeight) for (x in 0 until cropWidth) {
+        val sourceX = left + if (mirrored) cropWidth - 1 - x else x
+        val source = ((top + y) * width + sourceX) * 4
+        rgba.copyInto(pixels, (y * cropWidth + x) * 4, source, source + 4)
+    }
+    return CameraFrame(cropWidth, cropHeight, pixels, sequence)
+}
+
+/** Desktop fallback when a webcam exposes no portable optical-zoom control. */
+internal fun CameraFrame.digitalZoom(ratio: Float): CameraFrame {
+    val zoom = ratio.coerceIn(1f, 4f)
+    if (zoom == 1f) return this
+    val cropWidth = (width / zoom).toInt().coerceAtLeast(1)
+    val cropHeight = (height / zoom).toInt().coerceAtLeast(1)
+    val left = (width - cropWidth) / 2
+    val top = (height - cropHeight) / 2
+    val pixels = ByteArray(rgba.size)
+    for (y in 0 until height) for (x in 0 until width) {
+        val source = ((top + y * cropHeight / height) * width + left + x * cropWidth / width) * 4
+        rgba.copyInto(pixels, (y * width + x) * 4, source, source + 4)
+    }
+    return CameraFrame(width, height, pixels, sequence, mirrored)
 }

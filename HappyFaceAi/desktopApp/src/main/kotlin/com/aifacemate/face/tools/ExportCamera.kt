@@ -46,10 +46,12 @@ fun main(args: Array<String>) {
         CameraViewport("font130", 480, 320, font = 1.3f), CameraViewport("density150", 480, 320, density = 1.5f),
         CameraViewport("phone", 2400, 1080, density = 2.75f))
     for (viewport in viewports) {
-        val state = mutableStateOf(CameraState(devices = listOf(CameraDevice("back", "后置摄像头", CameraLens.Back), CameraDevice("front", "前置摄像头", CameraLens.Front))))
+        val state = mutableStateOf(CameraState(status = CameraStatus.Running, deviceId = "front", maxZoomRatio = 4f,
+            devices = listOf(CameraDevice("back", "后置摄像头", CameraLens.Back), CameraDevice("front", "前置摄像头", CameraLens.Front))))
         var starts = 0
         var stops = 0
         var backed = 0
+        var captured = 0
         val scene = ImageComposeScene(viewport.width, viewport.height, Density(viewport.density, viewport.font)) {
             MaterialTheme(colorScheme = darkColorScheme(primary = AppColors.Amber, background = AppColors.Background, surface = AppColors.Card)) {
                 val display = CameraFrame(frame.width, frame.height, frame.rgba, frame.sequence, state.value.deviceId == "front")
@@ -64,7 +66,9 @@ fun main(args: Array<String>) {
                     "开心 91% · 点赞 · person 85% · 108 ms", { backed++ },
                     { starts++; state.value = state.value.copy(status = CameraStatus.Running, error = null) },
                     { stops++; state.value = state.value.copy(status = CameraStatus.Idle) },
-                    { state.value = state.value.copy(deviceId = it) })
+                    { state.value = state.value.copy(deviceId = it) },
+                    onCapture = { check(it > 0); captured++ },
+                    onZoomChange = { state.value = state.value.copy(zoomRatio = it) })
             }
         }
         try {
@@ -76,24 +80,26 @@ fun main(args: Array<String>) {
             }
             fun tagged(tag: String) = nodes().single { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
             fun fixedControls() {
-                for (tag in listOf("camera.back", "camera.devices", "camera.toggle")) {
+                for (tag in listOf("camera.back", "camera.flip", "camera.capture")) {
                     val bounds = tagged(tag).boundsInRoot
                     check(bounds.height >= 47 * viewport.density && bounds.width >= 47 * viewport.density) { "$tag too small: $bounds" }
                     check(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= viewport.width && bounds.bottom <= viewport.height) { "$tag clipped: $bounds" }
                 }
-                check(tagged("camera.preview").boundsInRoot.height >= 40 * viewport.density)
+                val preview = tagged("camera.preview").boundsInRoot
+                check(preview.width == viewport.width.toFloat() && preview.height == viewport.height.toFloat()) { "Preview must fill the screen: $preview" }
             }
             fun click(tag: String) { check(tagged(tag).config[SemanticsActions.OnClick].action?.invoke() == true); render() }
             fun shot(name: String) { scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use { File(output, "${viewport.name}-$name.png").writeBytes(it.bytes) } }
-            render(); fixedControls(); check(starts == 0); shot("idle")
-            click("camera.toggle"); check(starts == 1); fixedControls(); shot("preview")
-            click("camera.devices"); click("camera.device.front"); check(state.value.deviceId == "front"); shot("mirrored")
-            click("camera.toggle"); check(stops == 1)
+            render(); fixedControls(); check(starts == 0); shot("mirrored")
+            click("camera.flip"); check(state.value.deviceId == "back"); fixedControls(); shot("preview")
+            click("camera.capture"); check(captured == 1)
+            check(tagged("camera.zoom").config[SemanticsActions.SetProgress].action?.invoke(2f) == true)
+            render(); check(state.value.zoomRatio == 2f); shot("zoom")
             state.value = state.value.copy(status = CameraStatus.PermissionDenied, error = "请在系统设置中允许摄像头访问，然后重试")
             render(); fixedControls(); shot("permission")
-            click("camera.toggle"); check(starts == 2)
+            click("camera.retry"); check(starts == 1)
             click("camera.back"); check(backed == 1)
-            println("PASS ${viewport.name}: fixed controls, explicit start, stop, front camera, permission/retry, back, overlay")
+            println("PASS ${viewport.name}: full-screen preview, floating controls, camera flip, zoom, capture, permission/retry, back")
         } finally { scene.close() }
     }
     val state = mutableStateOf(CameraState(usesDeviceIndex = true))
@@ -129,8 +135,8 @@ private fun verifySessionLifecycle(frame: CameraFrame) {
         var closed = false
         override suspend fun start(deviceId: String?) {
             check(!closed)
-            operations += "start:${deviceId ?: "back"}"
-            state.value = state.value.copy(status = CameraStatus.Running, deviceId = deviceId ?: "back")
+            operations += "start:${deviceId ?: "front"}"
+            state.value = state.value.copy(status = CameraStatus.Running, deviceId = deviceId ?: "front")
             frames.value = frame
         }
         override suspend fun stop() {
@@ -173,22 +179,19 @@ private fun verifySessionLifecycle(frame: CameraFrame) {
                 .single { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
         }
         fun click(tag: String) { check(tagged(tag).config[SemanticsActions.OnClick].action?.invoke() == true); render() }
-        render(); await { operations.contains("stop") }
-        check(operations.none { it.startsWith("start") })
-        click("camera.toggle"); await { camera.state.value.status == CameraStatus.Running }
-        click("camera.devices"); click("camera.device.front")
-        await { camera.state.value.status == CameraStatus.Running && camera.state.value.deviceId == "front" }
+        render(); await { camera.state.value.status == CameraStatus.Running }
+        check(camera.state.value.deviceId == "front")
+        click("camera.flip")
+        await { camera.state.value.status == CameraStatus.Running && camera.state.value.deviceId == "back" }
         repeat(8) { render(); Thread.sleep(10) }
         check(camera.state.value.status == CameraStatus.Running) { "Old cleanup stopped the new camera" }
-        check(operations.indexOf("start:front") > operations.indexOf("start:back"))
+        check(operations.indexOf("start:back") > operations.indexOf("start:front"))
         owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         await { camera.state.value.status == CameraStatus.Idle && camera.frames.value == null }
         val starts = operations.count { it.startsWith("start") }
         owner.registry.currentState = Lifecycle.State.RESUMED
-        repeat(5) { render(); Thread.sleep(10) }
-        check(operations.count { it.startsWith("start") } == starts) { "Camera must not reopen automatically after backgrounding" }
-        click("camera.toggle"); await { camera.state.value.status == CameraStatus.Running }
+        await { camera.state.value.status == CameraStatus.Running && operations.count { it.startsWith("start") } > starts }
     } finally { scene.close() }
     check(camera.closed && camera.frames.value == null)
-    println("PASS real camera route lifecycle: explicit start, serial device switch, background stop, no automatic reopen, owner disposal")
+    println("PASS real camera route lifecycle: automatic front-camera start, serial switch, background stop, foreground resume, owner disposal")
 }

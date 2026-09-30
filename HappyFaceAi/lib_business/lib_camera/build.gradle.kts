@@ -24,6 +24,7 @@ kotlin {
             api(libs.compose.ui)
         }
         androidMain.dependencies {
+            implementation(project(":lib_common:lib_storage"))
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.camera.core)
             implementation(libs.androidx.camera.camera2)

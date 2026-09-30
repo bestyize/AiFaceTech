@@ -4,6 +4,40 @@ import kotlin.test.*
 
 class CameraPixelsTest {
     @Test
+    fun fullScreenCropKeepsOverlayCoordinatesAlignedForBothLenses() {
+        val normal = CameraPreviewTransform.crop(640, 480, 300f, 600f, false)
+        val mirrored = CameraPreviewTransform.crop(640, 480, 300f, 600f, true)
+        assertEquals(1.25f, normal.scale)
+        assertEquals(-250f, normal.left)
+        assertEquals(0f, normal.top)
+        assertEquals(150f, normal.x(320f))
+        assertEquals(300f, normal.y(240f))
+        assertEquals(normal.x(400f), mirrored.x(240f))
+    }
+
+    @Test
+    fun photoMatchesCentreCropAndSelfieWithoutChangingTheAnalysisFrame() {
+        val pixels = (1..8).flatMap { listOf(it.toByte(), 0.toByte(), 0.toByte(), (-1).toByte()) }.toByteArray()
+        val frame = CameraFrame(4, 2, pixels, 12, mirrored = true)
+        val photo = frame.photoFrame(1f)
+        assertEquals(2, photo.width)
+        assertEquals(2, photo.height)
+        assertEquals(listOf(3, 2, 7, 6), photo.rgba.asList().chunked(4).map { it.first().toInt() })
+        assertFalse(photo.mirrored)
+        assertEquals(12, photo.sequence)
+        assertContentEquals(pixels, frame.rgba)
+    }
+
+    @Test
+    fun desktopZoomUsesTheCentreOfTheFrameForPreviewAndInference() {
+        val pixels = (1..16).flatMap { listOf(it.toByte(), 0.toByte(), 0.toByte(), (-1).toByte()) }.toByteArray()
+        val frame = CameraFrame(4, 4, pixels, 2)
+        assertSame(frame, frame.digitalZoom(1f))
+        assertEquals(listOf(6, 6, 7, 7, 6, 6, 7, 7, 10, 10, 11, 11, 10, 10, 11, 11),
+            frame.digitalZoom(2f).rgba.asList().chunked(4).map { it.first().toInt() })
+    }
+
+    @Test
     fun yuvUsesPlaneRowAndPixelStrides() {
         val y = CameraPixels.Plane(byteArrayOf(81, 81, 81, 81, 0, 81, 81, 81, 81), 5)
         val u = CameraPixels.Plane(byteArrayOf(-128, 0, -128), 4, 2)

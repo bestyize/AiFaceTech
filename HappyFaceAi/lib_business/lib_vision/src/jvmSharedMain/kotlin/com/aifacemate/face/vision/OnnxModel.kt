@@ -16,6 +16,7 @@ internal class OnnxModel(path: String, description: String) : AutoCloseable {
     private var buffer: FloatBuffer? = null
     val inputName: String
     val inputShape: LongArray
+    val outputTensors: Map<String, TensorInfo>
     /** Output name → element count; dynamic dimensions count as 1. */
     val outputSizes: Map<String, Long>
 
@@ -29,8 +30,13 @@ internal class OnnxModel(path: String, description: String) : AutoCloseable {
             }
             inputName = name
             inputShape = tensor.shape
-            outputSizes = session.outputInfo.mapValues { (_, value) ->
-                (value.info as? TensorInfo)?.shape?.fold(1L) { total, dimension -> total * maxOf(dimension, 1L) } ?: 0L
+            outputTensors = session.outputInfo.mapValues { (outputName, value) ->
+                val output = value.info as? TensorInfo ?: error("$description 的输出 $outputName 不是张量")
+                require(output.type == OnnxJavaType.FLOAT) { "$description 的输出 $outputName 需要 FP32，实际为 ${output.type}" }
+                output
+            }
+            outputSizes = outputTensors.mapValues { (_, tensor) ->
+                tensor.shape.fold(1L) { total, dimension -> total * maxOf(dimension, 1L) }
             }
         } catch (failure: Throwable) {
             session.close()

@@ -46,6 +46,7 @@ private class IosCameraController : CameraController {
     private val orientation = MutableStateFlow(AVCaptureVideoOrientationPortrait)
     private val frameQueue = dispatch_queue_create("com.aifacemate.camera.frames", null)
     private var session: AVCaptureSession? = null
+    private var captureDevice: AVCaptureDevice? = null
     private var output: AVCaptureVideoDataOutput? = null
     private var delegate: FrameDelegate? = null
     private var sequence = 0L
@@ -111,8 +112,11 @@ private class IosCameraController : CameraController {
                 if (closed.value) return@withLock
                 val cameras = devices()
                 val selected = cameras.firstOrNull { it.uniqueID == deviceId }
-                    ?: if (deviceId == null) cameras.firstOrNull { it.position == AVCaptureDevicePositionBack } ?: cameras.firstOrNull() else null
+                    ?: if (deviceId == null) cameras.firstOrNull { it.position == AVCaptureDevicePositionFront } ?: cameras.firstOrNull() else null
                 checkNotNull(selected) { "未找到摄像头；请使用有相机的 iOS 真机" }
+                check(selected.lockForConfiguration(null)) { "摄像头配置暂不可用" }
+                try { selected.videoZoomFactor = 1.0 } finally { selected.unlockForConfiguration() }
+                captureDevice = selected
                 val capture = AVCaptureSession().also { session = it }
                 capture.beginConfiguration()
                 try {
@@ -156,7 +160,8 @@ private class IosCameraController : CameraController {
                 currentCoroutineContext().ensureActive()
                 capture.startRunning()
                 check(capture.isRunning()) { "摄像头未能启动，请重试" }
-                mutableState.value = CameraState(CameraStatus.Running, cameras.map { it.toCameraDevice() }, selected.uniqueID)
+                mutableState.value = CameraState(CameraStatus.Running, cameras.map { it.toCameraDevice() }, selected.uniqueID,
+                    zoomRatio = selected.videoZoomFactor.toFloat(), maxZoomRatio = selected.activeFormat.videoMaxZoomFactor.toFloat().coerceIn(1f, 8f))
             } catch (cancelled: CancellationException) {
                 stopCapture()
                 throw cancelled
@@ -173,11 +178,22 @@ private class IosCameraController : CameraController {
         session?.stopRunning()
         output = null
         session = null
+        captureDevice = null
         delegate = null
         mutableFrames.value = null
         mutableState.update { it.copy(status = CameraStatus.Idle, error = null) }
     }
     override suspend fun stop() = withContext(NonCancellable + Dispatchers.Default) { gate.withLock { stopCapture() } }
+    override suspend fun setZoom(ratio: Float) = withContext(Dispatchers.Default) {
+        gate.withLock {
+            val device = captureDevice ?: return@withLock
+            if (!ratio.isFinite()) return@withLock
+            val zoom = ratio.coerceIn(state.value.minZoomRatio, state.value.maxZoomRatio)
+            check(device.lockForConfiguration(null)) { "摄像头变焦暂不可用" }
+            try { device.videoZoomFactor = zoom.toDouble() } finally { device.unlockForConfiguration() }
+            mutableState.update { it.copy(zoomRatio = zoom) }
+        }
+    }
     override fun close() {
         if (closed.value) return
         closed.value = true

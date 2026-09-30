@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>需要将你拍摄的照片保存到系统相册。</string>
     <key>NSCameraUsageDescription</key>
     <string>需要摄像头以便让小星看到周围环境并进行本地视觉识别。</string>
 	<key>NSMicrophoneUsageDescription</key>
