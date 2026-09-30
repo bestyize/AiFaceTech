@@ -113,7 +113,7 @@ class BehaviorController {
                         personFrames++
                         if (!personPresent && personFrames >= 3) {
                             personPresent = phase != InteractionPhase.Idle ||
-                                react(FaceExpression.GREETING, "person_arrived", 10, 2400, 15000, nowMillis)
+                                react(FaceExpression.GREETING, "person_arrived", 10, 2400, 5000, nowMillis)
                         }
                     } else personFrames = 0
                 }
@@ -129,7 +129,7 @@ class BehaviorController {
                         gestureFrames++
                         if (!gesturePresent && gestureFrames >= 3) {
                             gesturePresent = phase != InteractionPhase.Idle ||
-                                react(gesture.expression(), gesture.reason(), 10, 2400, 5000, nowMillis)
+                                react(gesture.expression(), gesture.reason(), 10, 2400, 2000, nowMillis)
                         }
                     } else { gestureFrames = 0; gesturePresent = false }
                 }
@@ -144,7 +144,7 @@ class BehaviorController {
                     val appearance = event.appearance
                     if (appearance != null && ++faceFrames >= 3 && !faceResponded) {
                         faceResponded = phase != InteractionPhase.Idle ||
-                            react(appearance.expression(), "face_${appearance.name.lowercase()}", 5, 2400, 8000, nowMillis)
+                            react(appearance.expression(), "face_${appearance.name.lowercase()}", 5, 2400, 3000, nowMillis)
                     }
                 }
             }
