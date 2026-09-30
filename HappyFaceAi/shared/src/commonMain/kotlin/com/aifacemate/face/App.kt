@@ -30,6 +30,7 @@ import kotlin.time.TimeSource
 import com.aifacemate.face.behavior.proactive.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.aifacemate.face.effects.*
 
 @Composable
 fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) {
@@ -41,6 +42,10 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         val expression = FaceExpression.valueOf(expressionName)
         var diffuseGlow by rememberSaveable { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
         var hud by remember { mutableStateOf(false) }
+        var effectsPreview by remember { mutableStateOf(false) }
+        var effectsPreferences by remember { mutableStateOf(FaceEffectsSettings.load()) }
+        val effects = remember { EffectController() }
+        var effectScene by remember { mutableStateOf<EffectScene?>(null) }
         var voiceOverlay by remember { mutableStateOf(false) }
         var visionNotice by remember { mutableStateOf<String?>(null) }
         var visionStatus by remember { mutableStateOf("未开启") }
@@ -54,6 +59,11 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         val behavior = remember { BehaviorController() }
         val clock = remember { TimeSource.Monotonic.markNow() }
         val now = { clock.elapsedNow().inWholeMilliseconds }
+        LaunchedEffect(route, appActive, effectsPreferences.enabled, effectsPreview) {
+            if (route != LifeRoute.Living || !appActive || !effectsPreferences.enabled || effectsPreview) {
+                effects.clear(); effectScene = null
+            }
+        }
         LaunchedEffect(voicePreferences.proactiveCooldownSeconds) {
             proactive.configureCooldown(voicePreferences.proactiveCooldownSeconds * 1000L)
         }
@@ -75,13 +85,26 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         val dispatch: (BehaviorEvent) -> Unit = { event ->
             val time = now()
             behaviorState = behavior.accept(event, time)
+            behaviorState.effectIntent?.let { intent ->
+                if (effectsPreferences.enabled && appActive && route == LifeRoute.Living && !effectsPreview) {
+                    val effect = when (intent.cue) {
+                        BehaviorEffectCue.Celebration -> EffectId.Fireworks
+                        BehaviorEffectCue.Affection -> EffectId.Hearts
+                        BehaviorEffectCue.Comfort -> EffectId.RainToSun
+                        BehaviorEffectCue.Reward -> EffectId.StarReward
+                    }
+                    effects.play(EffectScene("behavior-${intent.sequence}", effect, intent.createdAtMillis, intent.priority, intent.sequence.toInt()), time)
+                    effectScene = effects.sceneAt(time)
+                }
+            }
+            if (event == BehaviorEvent.VoiceCancelled || event == BehaviorEvent.ResetInteraction) { effects.clear(); effectScene = null }
             if (event is BehaviorEvent.Vision) {
                 val gate = when {
                         !voicePreferences.proactiveConversation -> "disabled"
                         !appActive -> "background"
                         route != LifeRoute.Living -> "other_page"
                         voiceOverlay -> "voice_busy"
-                        hud -> "controls_open"
+                        hud || effectsPreview -> "controls_open"
                         !proactiveReady -> "speech_not_ready"
                         else -> proactive.status(time)
                     }
@@ -99,13 +122,13 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     println("FaceProactive gate=$gate face=${event.personVisible} cue=${event.appearance}")
                 }
                 proactive.observe(event,
-                    eligible = appActive && route == LifeRoute.Living && !voiceOverlay && !hud && proactiveReady && voicePreferences.proactiveConversation,
+                    eligible = appActive && route == LifeRoute.Living && !voiceOverlay && !hud && !effectsPreview && proactiveReady && voicePreferences.proactiveConversation,
                     nowMillis = time,
                 )?.let { opening -> proactiveOpening = opening; voiceOverlay = true; hud = false }
             } else if (event == BehaviorEvent.VisionStopped) proactive.resetEvidence()
         }
         LaunchedEffect(expression) { dispatch(BehaviorEvent.BaseChanged(expression)) }
-        LaunchedEffect(Unit) { while (true) { behaviorState = behavior.state(now()); delay(50) } }
+        LaunchedEffect(Unit) { while (true) { behaviorState = behavior.state(now()); effectScene = effects.sceneAt(now()); delay(50) } }
         LaunchedEffect(voiceOverlay, route) {
             if (!voiceOverlay || route != LifeRoute.Living) dispatch(BehaviorEvent.ResetInteraction)
         }
@@ -115,11 +138,12 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             if (it == LifeRoute.Camera) {
                 cameraReturnRouteName = if (route == LifeRoute.Living) LifeRoute.Living.name else LifeRoute.Vision.name
             }
-            routeName = it.name; hud = false; closeVoice()
+            routeName = it.name; hud = false; effectsPreview = false; closeVoice()
             dispatch(BehaviorEvent.ResetInteraction)
         }
-        onBackHandler(route != LifeRoute.Living || hud || voiceOverlay) {
-            if (voiceOverlay) closeVoice()
+        onBackHandler(route != LifeRoute.Living || hud || voiceOverlay || effectsPreview) {
+            if (effectsPreview) effectsPreview = false
+            else if (voiceOverlay) closeVoice()
             else if (hud) hud = false else navigate(when (route) {
                 LifeRoute.LifeCenter -> LifeRoute.Living
                 LifeRoute.Camera -> LifeRoute.valueOf(cameraReturnRouteName)
@@ -129,7 +153,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         LaunchedEffect(hud) { if (hud) { delay(3500); hud = false } }
         when (route) {
             LifeRoute.Living -> Box(Modifier.fillMaxSize()) {
-                LivingPerception(now = now, onEvent = dispatch, onNotice = { visionNotice = it }, onStatus = { visionStatus = it })
+                if (!effectsPreview) LivingPerception(now = now, onEvent = dispatch, onNotice = { visionNotice = it }, onStatus = { visionStatus = it })
                 FaceDisplay(
                     modifier = Modifier.fillMaxSize().pointerInput(Unit) {
                         detectTapGestures(
@@ -145,6 +169,8 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     listeningActivity = behaviorState.listeningActivity,
                     contentOffsetY = if (voiceOverlay) VOICE_FACE_OFFSET_Y else 0.dp,
                 )
+                if (appActive && !effectsPreview) EffectLayer(effectScene, now, strength = effectsPreferences.strength,
+                    useEmoji = effectsPreferences.emoji, quiet = behaviorState.phase != InteractionPhase.Idle)
                 if (hud) Row(
                     Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(16.dp)
                         .background(Color(0xEE191C24), RoundedCornerShape(28.dp)).padding(8.dp)
@@ -155,6 +181,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         Text(if (voicePreferences.proactiveConversation) "对话 · $proactiveStatus" else "对话")
                     }
                     TextButton(onClick = { dispatch(BehaviorEvent.Petted); hud = false }) { Text("抚摸") }
+                    TextButton(onClick = { effectsPreview = true; hud = false; closeVoice() }) { Text("特效") }
                     TextButton(onClick = { navigate(LifeRoute.Camera) }) { Text("视觉 · $visionStatus") }
                     TextButton(onClick = { navigate(LifeRoute.LifeCenter) }) { Text("生命中心") }
                 }
@@ -182,6 +209,8 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     onClick = { navigate(LifeRoute.Camera) },
                 )
                 visionNotice?.let { AppToast(it) }
+                if (effectsPreview) EffectsPreviewDialog(effectsPreferences,
+                    onChange = { effectsPreferences = it; FaceEffectsSettings.save(it) }, onClose = { effectsPreview = false })
             }
             LifeRoute.Conversation -> ChatScreen(onBack = { navigate(LifeRoute.Living) })
             LifeRoute.Voice -> VoiceSettingsScreen(onBack = { navigate(LifeRoute.LifeCenter) })

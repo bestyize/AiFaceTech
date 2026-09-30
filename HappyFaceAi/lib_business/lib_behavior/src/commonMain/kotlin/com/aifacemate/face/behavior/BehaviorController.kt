@@ -5,6 +5,8 @@ import com.aifacemate.face.model.FaceExpression
 enum class InteractionPhase { Idle, Listening, Processing, Speaking }
 enum class VisualGesture { ThumbsUp, OpenPalm, Victory, Fist, Pointing, Pinch }
 enum class FacialAppearance { Smile, Sad, Surprise }
+enum class BehaviorEffectCue { Celebration, Affection, Comfort, Reward }
+data class BehaviorEffectIntent(val sequence: Long, val cue: BehaviorEffectCue, val createdAtMillis: Long, val priority: Int)
 
 sealed interface BehaviorEvent {
     data class PhaseChanged(val phase: InteractionPhase) : BehaviorEvent
@@ -31,6 +33,7 @@ data class BehaviorState(
     val reason: String,
     val expiresAtMillis: Long? = null,
     val listeningActivity: Float = 0f,
+    val effectIntent: BehaviorEffectIntent? = null,
 )
 
 /** Single-owner deterministic rules. No hardware, network, wall clock or UI lifecycle dependencies. */
@@ -59,6 +62,8 @@ class BehaviorController {
     private var levelAt: Long? = null
     private var pendingReplyMeaning: SpeechMeaning? = null
     private var pendingReplyUntil = 0L
+    private var effectSequence = 0L
+    private var effectIntent: BehaviorEffectIntent? = null
 
     fun accept(event: BehaviorEvent, nowMillis: Long): BehaviorState {
         expire(nowMillis)
@@ -150,10 +155,12 @@ class BehaviorController {
             }
             BehaviorEvent.VisionStopped -> clearVision()
             BehaviorEvent.VoiceCancelled -> {
+                effectIntent = null
                 phase = InteractionPhase.Idle; pendingReplyMeaning = null; clearListening()
                 if (reaction?.priority == 20) reaction = null
             }
             BehaviorEvent.ResetInteraction -> {
+                effectIntent = null
                 phase = InteractionPhase.Idle; reaction = null; pendingReplyMeaning = null
                 clearListening(); clearVision()
             }
@@ -173,7 +180,8 @@ class BehaviorController {
             if (phase == InteractionPhase.Listening && listeningMeaning != null) "listening_${listeningMeaning!!.reason}"
             else if (phase != InteractionPhase.Idle) phase.name.lowercase() else reaction?.reason ?: "base",
             if (phase == InteractionPhase.Idle) reaction?.until else null,
-            if (phase == InteractionPhase.Listening) levelAt?.let { speechLevel * (1f - (nowMillis - it).coerceAtLeast(0) / 400f).coerceIn(0f, 1f) } ?: 0f else 0f)
+            if (phase == InteractionPhase.Listening) levelAt?.let { speechLevel * (1f - (nowMillis - it).coerceAtLeast(0) / 400f).coerceIn(0f, 1f) } ?: 0f else 0f,
+            effectIntent?.takeIf { nowMillis - it.createdAtMillis in 0..1500 })
     }
 
     private fun expire(now: Long) {
@@ -191,6 +199,14 @@ class BehaviorController {
     private fun react(expression: FaceExpression, reason: String, priority: Int, duration: Long, cooldown: Long, now: Long): Boolean {
         if (cooldowns[reason]?.let { now < it } == true || reaction?.let { it.priority > priority } == true) return false
         reaction = Reaction(expression, reason, priority, now + duration)
+        val cue = when (reason) {
+            "gesture_victory", "good_news" -> BehaviorEffectCue.Celebration
+            "praise", "petting" -> BehaviorEffectCue.Affection
+            "comfort" -> BehaviorEffectCue.Comfort
+            "thumbs_up" -> BehaviorEffectCue.Reward
+            else -> null
+        }
+        if (cue != null) effectIntent = BehaviorEffectIntent(++effectSequence, cue, now, priority)
         cooldowns[reason] = now + cooldown
         return true
     }
