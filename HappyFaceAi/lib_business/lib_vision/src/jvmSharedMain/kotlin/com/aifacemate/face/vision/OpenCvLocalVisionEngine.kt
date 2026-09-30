@@ -1,6 +1,7 @@
 package com.aifacemate.face.vision
 
 import java.io.File
+import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.*
 import kotlinx.coroutines.Dispatchers
@@ -159,11 +160,7 @@ internal class OpenCvLocalVisionEngine(private val directory: () -> File) {
     private fun withBgr(frame: RgbaFrame, process: (Mat) -> List<LocalVisualFinding>): List<LocalVisualFinding> {
         val rgba32 = Mat(frame.height, frame.width, org.bytedeco.opencv.global.opencv_core.CV_8UC4)
         try {
-            val input = rgba32.data().asBuffer()
-            for (index in 0 until frame.width * frame.height) {
-                val at = index * 4
-                input.put(frame.pixels[at]); input.put(frame.pixels[at + 1]); input.put(frame.pixels[at + 2]); input.put(frame.pixels[at + 3])
-            }
+            rgba32.bytes().put(frame.pixels, 0, frame.width * frame.height * 4)
             val bgr = Mat(); cvtColor(rgba32, bgr, COLOR_RGBA2BGR)
             try { return process(bgr) } finally { bgr.close() }
         } finally { rgba32.close() }
@@ -185,7 +182,7 @@ internal class OpenCvLocalVisionEngine(private val directory: () -> File) {
         a /= norm; b /= norm
         val matrix = Mat(2, 3, CV_64F)
         val values = doubleArrayOf(a, -b, targetX - a * sourceX + b * sourceY, b, a, targetY - b * sourceX - a * sourceY)
-        val native = matrix.data().asBuffer().order(ByteOrder.nativeOrder()).asDoubleBuffer()
+        val native = matrix.bytes().asDoubleBuffer()
         native.put(values); native.rewind()
         return Mat().also { aligned -> warpAffine(image, aligned, matrix, Size(112, 112), INTER_LINEAR, BORDER_CONSTANT, Scalar()) }
             .also { matrix.close() }
@@ -208,8 +205,8 @@ internal class OpenCvLocalVisionEngine(private val directory: () -> File) {
         rgb.convertTo(normalized, CV_32FC3, 1.0 / 255.0, 0.0)
         pad.close(); rgb.close()
         val input = Mat(4, intArrayOf(1, 192, 192, 3), CV_32F)
-        val source = normalized.data().asBuffer().order(ByteOrder.nativeOrder()).asFloatBuffer()
-        val destination = input.data().asBuffer().order(ByteOrder.nativeOrder()).asFloatBuffer()
+        val source = normalized.bytes().asFloatBuffer()
+        val destination = input.bytes().asFloatBuffer()
         destination.put(source); normalized.close()
         return PalmTensor(input, max(width, height).toFloat(), padLeft / scale, padTop / scale)
     }
@@ -217,7 +214,7 @@ internal class OpenCvLocalVisionEngine(private val directory: () -> File) {
     private fun findPalms(tensor: PalmTensor, width: Int, height: Int): List<DetectedPalm> {
         palmNet!!.setInput(tensor.mat)
         return MatVector().use { outputs ->
-            palmNet!!.forward(outputs)
+            palmNet!!.forward(outputs, palmNet!!.unconnectedOutLayersNames)
             check(outputs.size() == 2L) { "手掌检测模型输出维度不正确" }
             val deltas = outputs.get(0).use { it.floatValues(2016 * 18) }
             val scores = outputs.get(1).use { it.floatValues(2016) }
@@ -276,8 +273,8 @@ internal class OpenCvLocalVisionEngine(private val directory: () -> File) {
                 val rgb = Mat(); cvtColor(rotated, rgb, COLOR_BGR2RGB)
                 val resized = Mat(); resize(rgb, resized, Size(224, 224)); rgb.close()
                 val modelInput = Mat(4, intArrayOf(1, 224, 224, 3), CV_32F)
-                val source = resized.data().asBuffer()
-                val destination = modelInput.data().asBuffer().order(ByteOrder.nativeOrder()).asFloatBuffer()
+                val source = resized.bytes()
+                val destination = modelInput.bytes().asFloatBuffer()
                 repeat(224 * 224 * 3) { destination.put((source.get().toInt() and 255) / 255f) }
                 resized.close()
                 return modelInput
@@ -302,7 +299,7 @@ internal class OpenCvLocalVisionEngine(private val directory: () -> File) {
             try {
                 warpAffine(firstCrop.image, rotated, rotation, firstCrop.image.size(), INTER_LINEAR, BORDER_CONSTANT, Scalar())
                 val affine = DoubleArray(6)
-                rotation.data().asBuffer().order(ByteOrder.nativeOrder()).asDoubleBuffer().get(affine)
+                rotation.bytes().asDoubleBuffer().get(affine)
                 val aligned = palmPoints.map { (x, y) ->
                     (affine[0] * x + affine[1] * y + affine[2]).toFloat() to
                         (affine[3] * x + affine[4] * y + affine[5]).toFloat()
@@ -315,8 +312,8 @@ internal class OpenCvLocalVisionEngine(private val directory: () -> File) {
                     val resized = Mat(); resize(rgb, resized, Size(224, 224)); rgb.close()
                     try {
                         val input = Mat(4, intArrayOf(1, 224, 224, 3), CV_32F)
-                        val pixels = resized.data().asBuffer()
-                        val output = input.data().asBuffer().order(ByteOrder.nativeOrder()).asFloatBuffer()
+                        val pixels = resized.bytes()
+                        val output = input.bytes().asFloatBuffer()
                         repeat(224 * 224 * 3) { output.put((pixels.get().toInt() and 0xff) / 255f) }
                         return input
                     } finally { resized.close() }
@@ -355,7 +352,7 @@ internal class OpenCvLocalVisionEngine(private val directory: () -> File) {
     private fun classifyHand(input: Mat): Pair<Float, List<PixelBox>> {
         handNet!!.setInput(input)
         return MatVector().use { outputs ->
-            handNet!!.forward(outputs)
+            handNet!!.forward(outputs, handNet!!.unconnectedOutLayersNames)
             check(outputs.size() == 4L) { "手部关键点模型输出维度不正确" }
             val landmarks = outputs.get(0).use { it.floatValues(63) }
             val confidence = outputs.get(1).use { it.floatValues(1).first() }
@@ -393,10 +390,16 @@ internal class OpenCvLocalVisionEngine(private val directory: () -> File) {
     }
 }
 
+/** JavaCPP leaves Mat.data() without a capacity, so size the view explicitly before reading or writing. */
+private fun Mat.bytes(): ByteBuffer {
+    require(isContinuous) { "OpenCV Mat must be continuous" }
+    return data().capacity(total() * elemSize()).asBuffer().order(ByteOrder.nativeOrder())
+}
+
 private fun Mat.floatValues(count: Int): FloatArray {
     require(total() * channels() >= count) { "视觉模型输出维度错误: ${total()}×${channels()}，预期 $count" }
     val result = FloatArray(count)
-    data().asBuffer().order(ByteOrder.nativeOrder()).asFloatBuffer().get(result)
+    bytes().asFloatBuffer().get(result)
     return result
 }
 
