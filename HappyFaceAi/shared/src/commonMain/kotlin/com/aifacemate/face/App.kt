@@ -109,6 +109,10 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     })) },
                     onUserText = { dispatch(BehaviorEvent.UserText(it)) },
                 )
+                if (visionStatus == "监测中") VisionObservationIcon(
+                    modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(4.dp),
+                    onClick = { navigate(LifeRoute.Camera) },
+                )
                 visionNotice?.let { AppToast(it) }
             }
             LifeRoute.Conversation -> ChatScreen(onBack = { navigate(LifeRoute.Living) })
