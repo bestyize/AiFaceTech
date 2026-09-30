@@ -135,6 +135,19 @@ fun main(args: Array<String>) {
             click("voice.tts.System", scroll = true); check(state.value.traditionalTts == TraditionalTts.System)
             shot("system-services")
             click("voice.mode.Realtime"); check(state.value.doubaoAppId == "example-app")
+            val previousMode = state.value.mode
+            val previousProvider = state.value.provider
+            click("voice.mode.Proactive")
+            check(state.value.mode == previousMode && state.value.provider == previousProvider) { "Proactive page changed speech transport" }
+            shot("proactive")
+            val previousEnabled = state.value.proactiveConversation
+            click("voice.proactiveConversation")
+            check(state.value.proactiveConversation != previousEnabled)
+            check(state.value.mode == previousMode)
+            click("voice.save"); check(saved?.proactiveConversation == state.value.proactiveConversation)
+            click("voice.proactive.configure")
+            check(tagged("voice.provider.Doubao").config.getOrNull(SemanticsProperties.Selected) == true)
+            click("voice.mode.Proactive")
             click("voice.back"); check(backed == 1)
             println("PASS ${viewport.name}: fixed actions, modes, providers, form edits, model action, display toggle, save/back")
         } finally { scene.close() }

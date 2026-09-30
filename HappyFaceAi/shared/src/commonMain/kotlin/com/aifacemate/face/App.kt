@@ -49,14 +49,18 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         val voicePreferences = remember(route) { VoicePreferencesStore.load().forDevice() }
         val proactiveReady = remember(route, voicePreferences) { proactiveVoiceReady(voicePreferences) }
         var appActive by remember { mutableStateOf(true) }
-        LifecycleEventEffect(Lifecycle.Event.ON_START) { appActive = true }
-        LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-            appActive = false; voiceOverlay = false; proactiveOpening = null; proactive.resetEvidence()
-        }
         LaunchedEffect(visionNotice) { if (visionNotice != null) { delay(4000); visionNotice = null } }
         val behavior = remember { BehaviorController() }
         val clock = remember { TimeSource.Monotonic.markNow() }
         val now = { clock.elapsedNow().inWholeMilliseconds }
+        val closeVoice: () -> Unit = {
+            if (voiceOverlay) proactive.conversationEnded(now())
+            voiceOverlay = false; proactiveOpening = null
+        }
+        LifecycleEventEffect(Lifecycle.Event.ON_START) { appActive = true }
+        LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+            appActive = false; closeVoice(); proactive.resetEvidence()
+        }
         var behaviorState by remember { mutableStateOf(behavior.state(now())) }
         val dispatch: (BehaviorEvent) -> Unit = { event ->
             val time = now()
@@ -79,11 +83,11 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             if (it == LifeRoute.Camera) {
                 cameraReturnRouteName = if (route == LifeRoute.Living) LifeRoute.Living.name else LifeRoute.Vision.name
             }
-            routeName = it.name; hud = false; voiceOverlay = false; proactiveOpening = null
+            routeName = it.name; hud = false; closeVoice()
             dispatch(BehaviorEvent.ResetInteraction)
         }
         onBackHandler(route != LifeRoute.Living || hud || voiceOverlay) {
-            if (voiceOverlay) { voiceOverlay = false; proactiveOpening = null }
+            if (voiceOverlay) closeVoice()
             else if (hud) hud = false else navigate(when (route) {
                 LifeRoute.LifeCenter -> LifeRoute.Living
                 LifeRoute.Camera -> LifeRoute.valueOf(cameraReturnRouteName)
@@ -122,9 +126,10 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                 }
                 if (voiceOverlay) VoiceConversationOverlay(
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    onClose = { voiceOverlay = false; proactiveOpening = null },
+                    onClose = closeVoice,
                     proactiveOpening = proactiveOpening,
                     onProactiveNoResponse = { visionNotice = "暂时没有听到回应，我先继续陪伴你" },
+                    onProactiveSessionTimeout = { visionNotice = "这一轮先聊到这里，需要时可以再开启对话" },
                     onVisualStateChange = { dispatch(BehaviorEvent.PhaseChanged(when (it) {
                         VoiceVisualState.Idle -> InteractionPhase.Idle
                         VoiceVisualState.Listening -> InteractionPhase.Listening

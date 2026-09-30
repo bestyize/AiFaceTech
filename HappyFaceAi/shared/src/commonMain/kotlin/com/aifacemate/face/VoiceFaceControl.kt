@@ -37,6 +37,7 @@ data class VoiceFaceControlState(
     val actionEnabled: Boolean = true,
     val notice: String? = null,
     val replyActive: Boolean = false,
+    val automaticListening: Boolean = false,
 ) {
     val actionLabel: String get() = when {
         notice != null -> "查看对话提示"
@@ -72,6 +73,7 @@ fun VoiceFaceControl(
             !state.actionEnabled && state.phase == VoiceFacePhase.Idle -> "长按查看详情"
             state.phase == VoiceFacePhase.Idle -> "长按查看对话记录"
             state.realtime -> "再次点击，结束对话"
+            state.phase == VoiceFacePhase.Listening && state.automaticListening -> "说完后自动提交，可直接接话"
             state.phase == VoiceFacePhase.Listening -> "再次点击，结束说话"
             state.phase == VoiceFacePhase.Speaking -> "再次点击，停止朗读"
             else -> "长按查看对话记录"

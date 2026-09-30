@@ -4,6 +4,16 @@ import com.aifacemate.face.behavior.proactive.ProactiveConversationController
 import kotlin.test.*
 
 class ProactiveConversationTest {
+    @Test fun endingLongConversationStartsANewQuietPeriod() {
+        val controller = ProactiveConversationController()
+        for (time in 0L..800L step 400) controller.observe(smile(time), true, time)
+        assertNotNull(controller.observe(smile(1200), true, 1200))
+        controller.conversationEnded(100000)
+        controller.observe(BehaviorEvent.Vision(false, null, 100400, faceAnalyzed = true), true, 100400)
+        for (time in 100800L..159600L step 400) assertNull(controller.observe(smile(time), true, time))
+        for (time in 160000L..160800L step 400) assertNull(controller.observe(smile(time), true, time))
+        assertNotNull(controller.observe(smile(161200), true, 161200))
+    }
     private fun smile(time: Long) = BehaviorEvent.Vision(true, null, time, faceAnalyzed = true, appearance = FacialAppearance.Smile)
     @Test fun onlyStableVisibleSmileStartsOneConversation() {
         val controller = ProactiveConversationController()

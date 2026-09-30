@@ -55,6 +55,9 @@ fun VoicePreferences.forDevice(): VoicePreferences {
 /** Voice settings remain separate from the LLM selected in AI 大脑. */
 object VoicePreferencesStore {
     private const val PREFIX = "voice."
+    fun setProactiveConversation(enabled: Boolean) {
+        SettingsStore.put(PREFIX + "proactiveConversation", enabled.toString())
+    }
     fun load(): VoicePreferences {
         val savedMode = SettingsStore.get(PREFIX + "mode")
         val legacySystemMode = savedMode == "Native"

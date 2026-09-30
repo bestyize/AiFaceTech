@@ -2,7 +2,7 @@ package com.aifacemate.face.behavior.proactive
 
 enum class ListeningDecision { Continue, Submit, NoResponse }
 
-/** Initial automatic listen only. A finite window; silence is activity evidence, not an emotion. */
+/** One automatic listening window. Silence is activity evidence, not an emotion. */
 class ListeningWindow(private val beganAt: Long, private val segmented: Boolean) {
     private var lastSpeechAt: Long? = null
     fun activity(level: Float, now: Long) {

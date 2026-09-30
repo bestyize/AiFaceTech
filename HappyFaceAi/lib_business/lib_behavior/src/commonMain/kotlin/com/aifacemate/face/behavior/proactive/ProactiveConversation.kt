@@ -33,6 +33,11 @@ class ProactiveConversationController {
     }
 
     fun resetEvidence() { firstSmileAt = null; confirmations = 0 }
+    fun conversationEnded(nowMillis: Long) {
+        nextAllowedAt = maxOf(nextAllowedAt, nowMillis + 60_000)
+        armed = false
+        resetEvidence()
+    }
 }
 
 /** Replaceable wording strategy; a future implementation can generate text through the configured LLM. */
