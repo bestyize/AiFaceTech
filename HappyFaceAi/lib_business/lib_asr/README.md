@@ -15,7 +15,7 @@
 该 AAR 把 ONNX Runtime 静态链接进识别库，与视觉模块的 ONNX Runtime `1.30.0` 分离；不再靠 `pickFirst` 处理两个不兼容的共享库。
 官方 AAR 的 SHA-256 为 `b22c3fc1b6a45666d28892bb2f7694beeb77a8362d7ebd77c1a5431ec9435471`。
 模型不放入安装包，Android/JVM 视觉运行库版本不变。
-当前 APK 支持 ARM64、ARMv7 和 x86_64。官方静态 AAR 的 32 位 x86 分支仍依赖共享运行库，故暂不打包该 ABI，避免保留不可用的语音后端。
+当前 APK 只打包 ARM64（arm64-v8a），不支持 32 位 ARM 与 x86/x86_64 设备或模拟器。
 
 当前按现有单次录音流程识别 16 kHz 单声道 PCM16 WAV。SenseVoice 无需识别 API Key；
 MiMo 仍用于语音合成；仅在已配置 MiMo API Key 时提供在线识别回退。
