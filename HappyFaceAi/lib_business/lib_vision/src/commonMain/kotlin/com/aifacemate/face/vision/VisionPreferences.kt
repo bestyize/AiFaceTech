@@ -57,7 +57,8 @@ object VisionPreferencesStore {
 
     fun save(value: VisionPreferences) {
         val config = value.normalized()
-        require(config.modelPathError(false) == null && config.modelPathError(true) == null) {
+        require(config.modelPathError(false) == null && config.modelPathError(true) == null &&
+            config.modelPathError(false, gesture = true) == null) {
             "Invalid vision model path"
         }
         val fields = mapOf(

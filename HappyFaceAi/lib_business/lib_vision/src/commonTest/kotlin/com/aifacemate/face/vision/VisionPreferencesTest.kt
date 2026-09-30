@@ -52,7 +52,8 @@ class VisionPreferencesTest {
 
     @Test
     fun missingOrWrongModelPathsCannotBeSaved() {
-        assertFailsWith<IllegalArgumentException> { VisionPreferencesStore.save(VisionPreferences(expressionEnabled = true)) }
+        assertFailsWith<IllegalArgumentException> { VisionPreferencesStore.save(VisionPreferences(expressionModelPath = "face.tflite")) }
+        assertFailsWith<IllegalArgumentException> { VisionPreferencesStore.save(VisionPreferences(gestureModelPath = "hand.task")) }
         assertFailsWith<IllegalArgumentException> { VisionPreferencesStore.save(VisionPreferences(yoloModelPath = "yolo26m.pt")) }
         assertEquals(VisionPreferences(), VisionPreferencesStore.load())
     }
