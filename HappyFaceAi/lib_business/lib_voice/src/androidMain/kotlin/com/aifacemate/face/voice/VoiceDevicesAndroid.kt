@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -42,6 +43,9 @@ actual fun systemTtsAvailable(): Boolean {
 actual fun createNativeSpeechEngine(): NativeSpeechEngine = AndroidNativeSpeech()
 
 private class AndroidNativeSpeech : NativeSpeechEngine {
+    private val events = kotlinx.coroutines.flow.MutableSharedFlow<VoiceObservation>(extraBufferCapacity = 16,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+    override val observations = events.asSharedFlow()
     private val main = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
@@ -73,10 +77,16 @@ private class AndroidNativeSpeech : NativeSpeechEngine {
                         finishIfRequested(service)
                     }
                 }
-                override fun onRmsChanged(rmsdB: Float) = Unit
+                override fun onRmsChanged(rmsdB: Float) {
+                    if (continuation.isActive && recognizer === service && rmsdB.isFinite())
+                        events.tryEmit(VoiceObservation.Level(((rmsdB + 2f) / 12f).coerceIn(0f, 1f)))
+                }
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
                 override fun onEndOfSpeech() = Unit
-                override fun onPartialResults(partialResults: Bundle?) = Unit
+                override fun onPartialResults(partialResults: Bundle?) {
+                    if (continuation.isActive && recognizer === service) events.tryEmit(VoiceObservation.PartialText(
+                        partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()))
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
                 override fun onError(error: Int) {
                     if (continuation.isActive) continuation.resumeWithException(IllegalStateException("系统识别失败：$error"))
@@ -92,6 +102,7 @@ private class AndroidNativeSpeech : NativeSpeechEngine {
             service.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             })
         }
         }

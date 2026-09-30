@@ -10,10 +10,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.asSharedFlow
 
 actual fun createVoiceService(): VoiceService = AndroidVoiceService()
 
 private class AndroidVoiceService : VoiceService {
+    private val events = kotlinx.coroutines.flow.MutableSharedFlow<VoiceObservation>(extraBufferCapacity = 8,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+    override val observations = events.asSharedFlow()
     @Volatile private var stopped = false
     @Volatile private var finishRequested = false
     @Volatile private var recorder: AudioRecord? = null
@@ -32,11 +36,15 @@ private class AndroidVoiceService : VoiceService {
                 if (!stopped && !finishRequested) line.startRecording()
                 val output = ByteArrayOutputStream()
                 val frame = ByteArray(640)
+                var activityFrames = 0
                 val endAt = System.currentTimeMillis() + maxDurationMs
                 while (!stopped && !finishRequested && System.currentTimeMillis() < endAt) {
                     val n = try { line.read(frame, 0, frame.size, AudioRecord.READ_NON_BLOCKING) }
                     catch (error: Exception) { if (stopped || finishRequested) break else throw error }
-                    if (n > 0) output.write(frame, 0, n)
+                    if (n > 0) {
+                        output.write(frame, 0, n)
+                        if (++activityFrames % 5 == 0) events.tryEmit(VoiceObservation.Level(pcm16Activity(frame, n)))
+                    }
                     else if (n < 0 && !stopped && !finishRequested) error("录音失败：$n")
                     else if (n == 0) delay(10)
                 }

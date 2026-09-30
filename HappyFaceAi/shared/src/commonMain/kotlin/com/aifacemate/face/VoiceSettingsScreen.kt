@@ -233,6 +233,11 @@ fun VoiceSettingsContent(
                         VoiceHint(if (preferences.mode == VoiceMode.Realtime)
                             "实时服务负责连续聆听、理解并生成语音；独立识别与朗读选项不会参与此模式。"
                         else "AI 大脑负责生成回复；语音识别与朗读分别配置，可自由组合。")
+                        if (preferences.keepFaceVisible) VoiceHint(
+                            if (preferences.mode == VoiceMode.Realtime || preferences.traditionalAsr == TraditionalAsr.System)
+                                "倾听时随声音轻微活动；识别服务提供中间文字时，可边听边回应表情。"
+                            else "录音时随声音轻微活动，结束识别后按内容回应表情。边听边按内容回应可选择系统识别或实时语音。"
+                        )
                     }
                 }
 

@@ -18,6 +18,7 @@ kotlin {
     }
 
     sourceSets {
+        commonTest.dependencies { implementation(libs.kotlin.test) }
         val jvmSharedMain by creating { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(jvmSharedMain)
         jvmSharedMain.dependencies { implementation(libs.kotlinx.coroutinesCore) }

@@ -43,6 +43,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
+import kotlin.time.TimeSource
+import com.aifacemate.face.voice.VoiceObservation
+import com.aifacemate.face.voice.pcm16Activity
 
 enum class VoiceVisualState { Idle, Listening, Processing, Speaking }
 
@@ -57,8 +60,10 @@ fun VoiceConversationOverlay(
     onClose: () -> Unit,
     onVisualStateChange: (VoiceVisualState) -> Unit = {},
     onUserText: (String) -> Unit = {},
+    onSpeechObservation: (VoiceObservation) -> Unit = {},
 ) {
-    ConversationPanel(modifier.fillMaxSize(), onClose, overlay = true, onVisualStateChange = onVisualStateChange, onUserText = onUserText)
+    ConversationPanel(modifier.fillMaxSize(), onClose, overlay = true, onVisualStateChange = onVisualStateChange,
+        onUserText = onUserText, onSpeechObservation = onSpeechObservation)
 }
 
 @Composable
@@ -73,7 +78,10 @@ private fun ConversationPanel(
     overlay: Boolean = false,
     onVisualStateChange: (VoiceVisualState) -> Unit = {},
     onUserText: (String) -> Unit = {},
+    onSpeechObservation: (VoiceObservation) -> Unit = {},
 ) {
+    val currentSpeechObservation = rememberUpdatedState(onSpeechObservation)
+    val observationsActive = remember { mutableStateOf(true) }
     val currentUserText = rememberUpdatedState(onUserText)
     val preferences = remember { VoicePreferencesStore.load().forDevice() }
     val scope = rememberCoroutineScope()
@@ -93,6 +101,17 @@ private fun ConversationPanel(
     var stoppingRealtime by remember { mutableStateOf(false) }
     var replyStreaming by remember { mutableStateOf(false) }
     var pcmPlayer by remember { mutableStateOf<SpeechPcmPlayer?>(null) }
+    fun observe(observation: VoiceObservation) {
+        if (observationsActive.value && overlay && preferences.keepFaceVisible && facePhase == VoiceFacePhase.Listening)
+            currentSpeechObservation.value(observation)
+    }
+    fun cancelFeedback() {
+        if (observationsActive.value && overlay && preferences.keepFaceVisible) currentSpeechObservation.value(VoiceObservation.Cancelled)
+    }
+    LaunchedEffect(voice, native) {
+        launch { voice.observations.collect { observe(it) } }
+        native?.let { launch { it.observations.collect { observe(it) } } }
+    }
 
     suspend fun answerWithSpeech() {
         replyStreaming = true
@@ -173,7 +192,7 @@ private fun ConversationPanel(
     fun show(role: String, text: String) {
         if (text.isNotBlank()) {
             messages.add(ChatMessage(role, text))
-            if (role == "user" && overlay && preferences.keepFaceVisible) currentUserText.value(text)
+            if (role == "user" && observationsActive.value && overlay && preferences.keepFaceVisible) currentUserText.value(text)
         }
     }
 
@@ -202,8 +221,8 @@ private fun ConversationPanel(
         turnJob = scope.launch {
             status = "AI 大脑正在思考"
             try { show("assistant", askBrain(question)); status = "可以继续对话" }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { status = error.message ?: "对话失败"; notice = "查看提示" }
+            catch (cancelled: CancellationException) { cancelFeedback(); throw cancelled }
+            catch (error: Exception) { cancelFeedback(); status = error.message ?: "对话失败"; notice = "查看提示" }
             finally { busy = false; if (!live) facePhase = VoiceFacePhase.Idle }
         }
     }
@@ -268,8 +287,8 @@ private fun ConversationPanel(
                     return@launch
                 }
                 answerWithSpeech()
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { status = error.message ?: "语音对话失败"; notice = "查看提示" }
+            } catch (cancelled: CancellationException) { cancelFeedback(); throw cancelled }
+            catch (error: Exception) { cancelFeedback(); status = error.message ?: "语音对话失败"; notice = "查看提示" }
             finally { capturing = false; busy = false; replyStreaming = false; facePhase = VoiceFacePhase.Idle }
         }
     }
@@ -300,7 +319,15 @@ private fun ConversationPanel(
                 val connected = RealtimeConversationEngine().connect(config)
                 session = connected
                 capture = launch {
-                    try { device.capture { connected.sendAudio(com.aifacemate.face.voice.realtime.RealtimeAudio(it)) } }
+                    var activityAt = TimeSource.Monotonic.markNow()
+                    try { device.capture {
+                        connected.sendAudio(com.aifacemate.face.voice.realtime.RealtimeAudio(it))
+                        if (activityAt.elapsedNow().inWholeMilliseconds >= 80) {
+                            val level = pcm16Activity(it)
+                            withContext(Dispatchers.Main) { observe(VoiceObservation.Level(level)) }
+                            activityAt = TimeSource.Monotonic.markNow()
+                        }
+                    } }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: Exception) {
                         status = error.message ?: "麦克风采集失败"
@@ -312,6 +339,7 @@ private fun ConversationPanel(
                 connected.events.collect { event ->
                     when (event) {
                         is RealtimeEvent.InputText -> if (event.final) show("user", event.text)
+                            else observe(VoiceObservation.PartialText(event.text))
                         is RealtimeEvent.OutputText -> if (event.final) show("assistant", event.text)
                         is RealtimeEvent.OutputAudio -> device.play(event)
                         is RealtimeEvent.ToolCall -> {
@@ -330,8 +358,8 @@ private fun ConversationPanel(
                         else -> Unit
                     }
                 }
-            } catch (cancelled: CancellationException) { status = "对话已结束"; throw cancelled }
-            catch (error: Exception) { status = error.message ?: "实时对话失败"; notice = "查看提示" }
+            } catch (cancelled: CancellationException) { cancelFeedback(); status = "对话已结束"; throw cancelled }
+            catch (error: Exception) { cancelFeedback(); status = error.message ?: "实时对话失败"; notice = "查看提示" }
             finally {
                 runCatching { device.close() }
                 withContext(NonCancellable) {
@@ -348,10 +376,12 @@ private fun ConversationPanel(
             if (live) {
                 if (!stoppingRealtime) {
                     stoppingRealtime = true; status = "正在结束对话"; facePhase = VoiceFacePhase.Processing
+                    cancelFeedback()
                     realtimeJob?.cancel()
                 }
             } else startRealtime()
         } else if (replyStreaming || facePhase == VoiceFacePhase.Speaking) {
+            cancelFeedback()
             turnJob?.cancel(); pcmPlayer?.close(); voice.stop(); native?.stop(); status = "已停止回复"
         } else startSingleTurn()
     }
@@ -372,6 +402,7 @@ private fun ConversationPanel(
     LaunchedEffect(visualState) { if (overlay && preferences.keepFaceVisible) currentVisualCallback.value(visualState) }
     DisposableEffect(Unit) {
         onDispose {
+            observationsActive.value = false
             currentVisualCallback.value(VoiceVisualState.Idle)
             currentRealtime.value?.cancel(); currentTurn.value?.cancel(); voice.stop(); native?.stop()
             currentPcmPlayer.value?.close()

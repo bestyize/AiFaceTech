@@ -3,6 +3,7 @@ package com.aifacemate.face.voice
 import com.aifacemate.face.voice.realtime.RealtimeEvent
 
 interface NativeSpeechEngine {
+    val observations: kotlinx.coroutines.flow.Flow<VoiceObservation> get() = kotlinx.coroutines.flow.emptyFlow()
     /** Recognize one utterance with the platform speech service. */
     suspend fun recognize(): String
     /** Stop listening and await recognition of the audio already received. */

@@ -14,6 +14,9 @@ import kotlinx.coroutines.withContext
 actual fun createVoiceService(): VoiceService = DesktopVoiceService()
 
 private class DesktopVoiceService : VoiceService {
+    private val events = kotlinx.coroutines.flow.MutableSharedFlow<VoiceObservation>(extraBufferCapacity = 8,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+    override val observations: kotlinx.coroutines.flow.Flow<VoiceObservation> get() = events
     @Volatile private var recording: TargetDataLine? = null
     @Volatile private var playback: SourceDataLine? = null
     @Volatile private var stopped = false
@@ -39,7 +42,10 @@ private class DesktopVoiceService : VoiceService {
                         delay(10)
                     } else {
                         val count = line.read(frame, 0, ready)
-                        if (count > 0) output.write(frame, 0, count)
+                        if (count > 0) {
+                            output.write(frame, 0, count)
+                            events.tryEmit(VoiceObservation.Level(pcm16Activity(frame, count)))
+                        }
                         else delay(10)
                     }
                 }

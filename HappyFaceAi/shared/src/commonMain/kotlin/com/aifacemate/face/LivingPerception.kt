@@ -4,6 +4,8 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.aifacemate.face.behavior.BehaviorEvent
+import com.aifacemate.face.behavior.VisualGesture
+import com.aifacemate.face.behavior.FacialAppearance
 import com.aifacemate.face.camera.*
 import com.aifacemate.face.vision.*
 import kotlinx.coroutines.*
@@ -137,9 +139,20 @@ internal fun LivingPerception(now: () -> Long, onEvent: (BehaviorEvent) -> Unit,
 internal fun PerceptionState.toBehaviorEvent(persons: Boolean, gestures: Boolean): BehaviorEvent.Vision? {
     val result = observation ?: return null
     val sampled = sampledAtMillis ?: return null
+    val selectedGesture = result.hands.filter { it.gesture != null }.maxByOrNull { it.hand.score }?.gesture
     return BehaviorEvent.Vision(
         personVisible = if (persons) result.faces.isNotEmpty() || result.objects.any { it.label == "person" } else null,
-        thumbsUp = if (gestures) result.hands.any { it.gesture == HandGesture.ThumbsUp } else null,
+        thumbsUp = if (gestures) selectedGesture == HandGesture.ThumbsUp else null,
         capturedAtMillis = sampled,
+        gesture = if (gestures) selectedGesture?.let { VisualGesture.valueOf(it.name) } else null,
+        faceAnalyzed = persons && statuses[VisionTask.Expressions] == VisionTaskStatus.Running,
+        appearance = result.faces.mapNotNull { it.expression }.maxByOrNull { it.confidence }?.expression?.let {
+            when (it) {
+                Expression.Happy, Expression.Smiling -> FacialAppearance.Smile
+                Expression.Sad -> FacialAppearance.Sad
+                Expression.Surprise -> FacialAppearance.Surprise
+                else -> null
+            }
+        },
     )
 }

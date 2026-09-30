@@ -85,6 +85,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     },
                     expression = behaviorState.expression,
                     diffuseGlow = diffuseGlow,
+                    listeningActivity = behaviorState.listeningActivity,
                     contentOffsetY = if (voiceOverlay) VOICE_FACE_OFFSET_Y else 0.dp,
                 )
                 if (hud) Row(
@@ -108,6 +109,11 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         VoiceVisualState.Speaking -> InteractionPhase.Speaking
                     })) },
                     onUserText = { dispatch(BehaviorEvent.UserText(it)) },
+                    onSpeechObservation = { observation -> dispatch(when (observation) {
+                        com.aifacemate.face.voice.VoiceObservation.Cancelled -> BehaviorEvent.VoiceCancelled
+                        is com.aifacemate.face.voice.VoiceObservation.PartialText -> BehaviorEvent.ListeningText(observation.text)
+                        is com.aifacemate.face.voice.VoiceObservation.Level -> BehaviorEvent.SpeechLevel(observation.value)
+                    }) },
                 )
                 if (visionStatus == "监测中") VisionObservationIcon(
                     modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(4.dp),
