@@ -11,18 +11,19 @@ import kotlinx.coroutines.flow.take
 fun main(args: Array<String>) = runBlocking {
     require(args.size == 2 && args[0].isNotBlank()) { "Set -PvisionModel=/absolute/path/yolo26m.onnx and optionally -PcameraDevice=0" }
     val camera = createDesktopCameraController()
+    val pipeline = PerceptionPipeline(VisionRuntime.registry, VisionPreferences(yoloEnabled = true, yoloModelPath = args[0]))
     try {
         camera.start(args[1])
         withTimeout(30_000) {
             while (camera.state.value.status == CameraStatus.Starting) delay(25)
             check(camera.state.value.status == CameraStatus.Running) { camera.state.value.error ?: "Camera unavailable" }
             camera.frames.filterNotNull().take(3).collect { frame ->
-                val found = Yolo26mModel.detect(RgbaFrame(frame.width, frame.height, frame.rgba),
-                    VisionPreferences(yoloEnabled = true, yoloModelPath = args[0]))
-                check(found.all { it.confidence.isFinite() && it.classId in 0..79 })
+                val found = pipeline.analyze(RgbaFrame(frame.width, frame.height, frame.rgba)).objects
+                check(pipeline.status[VisionTask.Objects] == VisionTaskStatus.Running) { "YOLO failed: ${pipeline.status}" }
+                check(found.all { it.score.isFinite() && it.classIndex in 0..79 })
                 println("PASS live camera frame ${frame.sequence}: ${frame.width}x${frame.height}, ${found.size} YOLO detections")
             }
         }
-    } finally { camera.stop(); camera.close(); Yolo26mModel.unload() }
+    } finally { camera.stop(); camera.close(); pipeline.close() }
     println("PASS camera and YOLO resources released")
 }

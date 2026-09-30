@@ -73,10 +73,10 @@ object Yolo26mCodec {
         rows: FloatArray,
         transform: Letterbox,
         confidenceThreshold: Float = 0.25f,
-    ): List<VisionDetection> {
+    ): List<DetectedObject> {
         require(rows.size % 6 == 0) { "Expected YOLO26 nms=False output shaped [1,N,6]" }
         require(confidenceThreshold.isFinite() && confidenceThreshold in 0f..1f)
-        val result = ArrayList<VisionDetection>()
+        val result = ArrayList<DetectedObject>()
         for (offset in rows.indices step 6) {
             val confidence = rows[offset + 4]
             val classValue = rows[offset + 5]
@@ -93,7 +93,11 @@ object Yolo26mCodec {
             val right = ((x2 - transform.left) / transform.scaleX).coerceIn(0f, transform.sourceWidth.toFloat())
             val bottom = ((y2 - transform.top) / transform.scaleY).coerceIn(0f, transform.sourceHeight.toFloat())
             if (right <= left || bottom <= top) continue
-            result.add(VisionDetection(classValue.toInt(), confidence, PixelBox(left, top, right, bottom)))
+            val classIndex = classValue.toInt()
+            result.add(DetectedObject(Coco80.names[classIndex], classIndex, NormalizedBox(
+                left / transform.sourceWidth, top / transform.sourceHeight,
+                right / transform.sourceWidth, bottom / transform.sourceHeight,
+            ), confidence))
         }
         return result
     }

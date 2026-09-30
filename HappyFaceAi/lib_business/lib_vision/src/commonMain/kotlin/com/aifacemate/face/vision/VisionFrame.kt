@@ -8,23 +8,6 @@ class RgbaFrame(val width: Int, val height: Int, val pixels: ByteArray) {
     }
 }
 
-/** Box coordinates are pixels in the original frame, not in the 640×640 model input. */
-data class PixelBox(val left: Float, val top: Float, val right: Float, val bottom: Float)
-
-data class VisionDetection(
-    val classId: Int,
-    val confidence: Float,
-    val box: PixelBox,
-    val label: String = Coco80.names.getOrNull(classId) ?: "#$classId",
-)
-
-/** The caller owns the detector and must close it when the camera/image session ends. */
-interface VisionDetector {
-    /** Inference is synchronous and can be expensive; call on a worker thread. */
-    fun detect(frame: RgbaFrame, confidenceThreshold: Float = 0.25f): List<VisionDetection>
-    fun close()
-}
-
 /** Names in the standard COCO 80-class order used by the official yolo26m.pt detection weights. */
 object Coco80 {
     val names = listOf(

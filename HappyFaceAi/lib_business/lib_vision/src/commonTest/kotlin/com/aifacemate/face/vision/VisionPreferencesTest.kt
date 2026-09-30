@@ -4,8 +4,8 @@ import com.aifacemate.face.data.SettingsStore
 import kotlin.test.*
 
 class VisionPreferencesTest {
-    private val keys = listOf("yolo.enabled", "yolo.modelPath", "yolo.confidence",
-        "expression.enabled", "expression.modelPath", "expression.confidence").map { "vision.$it" }
+    private val keys = (listOf("yolo", "expression", "gesture").flatMap { task -> listOf("enabled", "modelPath", "confidence").map { "$task.$it" } } +
+        VisionTask.entries.flatMap { it.capabilities }.map { "provider.${it.id}" }).map { "vision.$it" }
     private var original = emptyMap<String, String?>()
 
     @BeforeTest
@@ -56,6 +56,21 @@ class VisionPreferencesTest {
         assertFailsWith<IllegalArgumentException> { VisionPreferencesStore.save(VisionPreferences(gestureModelPath = "hand.task")) }
         assertFailsWith<IllegalArgumentException> { VisionPreferencesStore.save(VisionPreferences(yoloModelPath = "yolo26m.pt")) }
         assertEquals(VisionPreferences(), VisionPreferencesStore.load())
+    }
+
+    @Test
+    fun taskAccessorsAndProviderChoicesRoundTrip() {
+        val config = VisionPreferences().update(VisionTask.Gestures, enabled = true, threshold = .8f, modelPath = "/models/hand.onnx")
+            .withProvider(HandLandmarker.id, "vision.hands.rknn")
+        assertTrue(config.enabled(VisionTask.Gestures))
+        assertEquals(.8f, config.threshold(VisionTask.Gestures))
+        assertEquals("/models/hand.onnx", config.options(VisionTask.Gestures).customModelPath)
+        assertNull(config.options(VisionTask.Objects).customModelPath)
+        VisionPreferencesStore.save(config)
+        assertEquals(config, VisionPreferencesStore.load())
+        assertEquals("vision.hands.rknn", VisionPreferencesStore.load().providerId(HandLandmarker))
+        VisionPreferencesStore.save(config.copy(providerIds = emptyMap()))
+        assertNull(VisionPreferencesStore.load().providerId(HandLandmarker))
     }
 
     @Test

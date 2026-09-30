@@ -14,9 +14,9 @@ import com.aifacemate.face.CameraScreenContent
 import com.aifacemate.face.CameraScreen
 import com.aifacemate.face.camera.*
 import com.aifacemate.face.theme.AppColors
-import com.aifacemate.face.vision.PixelBox
-import com.aifacemate.face.vision.VisionDetection
-import com.aifacemate.face.vision.VisionPreferences
+import com.aifacemate.face.capability.ProviderRegistry
+import com.aifacemate.face.capability.currentDeviceEnvironment
+import com.aifacemate.face.vision.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -54,8 +54,14 @@ fun main(args: Array<String>) {
             MaterialTheme(colorScheme = darkColorScheme(primary = AppColors.Amber, background = AppColors.Background, surface = AppColors.Card)) {
                 val display = CameraFrame(frame.width, frame.height, frame.rgba, frame.sequence, state.value.deviceId == "front")
                 CameraScreenContent(state.value, bitmap, display,
-                    CameraDetections(640, 480, display.mirrored, listOf(VisionDetection(0, .85f, PixelBox(140f, 90f, 370f, 400f)))),
-                    "person 85% · 本机识别", { backed++ },
+                    CameraDetections(display.mirrored, VisionObservation(640, 480,
+                        objects = listOf(DetectedObject("person", 0, NormalizedBox(140f / 640, 90f / 480, 370f / 640, 400f / 480), .85f)),
+                        faces = listOf(FaceObservation(DetectedFace(NormalizedBox(210f / 640, 110f / 480, 300f / 640, 220f / 480), .9f),
+                            ExpressionResult(Expression.Happy, .91f))),
+                        hands = listOf(HandObservation(DetectedHand(NormalizedBox(400f / 640, 200f / 480, 480f / 640, 300f / 480), .95f,
+                            emptyList()), HandGesture.ThumbsUp)),
+                    )),
+                    "开心 91% · 点赞 · person 85% · 108 ms", { backed++ },
                     { starts++; state.value = state.value.copy(status = CameraStatus.Running, error = null) },
                     { stops++; state.value = state.value.copy(status = CameraStatus.Idle) },
                     { state.value = state.value.copy(deviceId = it) })
@@ -149,7 +155,7 @@ private fun verifySessionLifecycle(frame: CameraFrame) {
     owner.registry.currentState = Lifecycle.State.RESUMED
     val scene = ImageComposeScene(800, 480, Density(1f)) {
         CompositionLocalProvider(LocalLifecycleOwner provides owner) {
-            MaterialTheme { CameraScreen({}, camera, VisionPreferences()) }
+            MaterialTheme { CameraScreen({}, camera, VisionPreferences(), PerceptionService(ProviderRegistry(emptyList(), currentDeviceEnvironment()))) }
         }
     }
     try {

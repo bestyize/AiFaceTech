@@ -10,11 +10,46 @@ import androidx.compose.ui.unit.Density
 import com.aifacemate.face.VisionSettingsContent
 import com.aifacemate.face.feature.lifecenter.*
 import com.aifacemate.face.model.FaceExpression
-import com.aifacemate.face.vision.VisionPreferences
+import com.aifacemate.face.capability.*
+import com.aifacemate.face.vision.*
+import com.aifacemate.face.settingsState
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
 
 private data class VisionViewport(val name: String, val width: Int, val height: Int, val density: Float = 1f, val font: Float = 1f)
+
+/** Metadata-only providers: the page reads names, sizes and availability from them, and they are never opened. */
+private class FixtureProvider<C : AutoCloseable>(
+    override val id: String,
+    override val capability: CapabilityKey<C>,
+    override val displayName: String,
+    override val description: String,
+    override val models: List<ModelSpec>,
+    override val acceptsCustomModel: Boolean,
+    private val supported: Boolean,
+    private val installed: () -> Boolean,
+) : Provider<C> {
+    override fun availability(environment: DeviceEnvironment, options: ProviderOptions) = when {
+        !supported -> Availability.Unsupported("此设备暂不支持 ONNX Runtime 本地推理")
+        models.isEmpty() || installed() || (acceptsCustomModel && options.customModelPath != null) -> Availability.Ready
+        else -> Availability.NeedsModels(models)
+    }
+    override suspend fun open(options: ProviderOptions): C = error("UI fixtures are never opened")
+}
+
+private fun fixtureRegistry(supported: Boolean = true, installed: (VisionTask) -> Boolean): ProviderRegistry {
+    fun <C : AutoCloseable> provider(id: String, capability: CapabilityKey<C>, name: String, detail: String, task: VisionTask,
+        models: List<ModelSpec>, custom: Boolean = true, builtIn: Boolean = false) =
+        FixtureProvider(id, capability, name, detail, models, custom && !builtIn, supported || builtIn) { installed(task) }
+    return ProviderRegistry(listOf(
+        provider("fixture.objects", ObjectDetector, "YOLO26m", "COCO 80 类", VisionTask.Objects, listOf(VisionModels.yolo26m)),
+        provider("fixture.faces", FaceDetector, "YuNet", "人脸检测", VisionTask.Expressions, listOf(VisionModels.yunet), custom = false),
+        provider("fixture.expressions", ExpressionClassifier, "MobileFaceNet", "七类表情", VisionTask.Expressions, listOf(VisionModels.mobileFaceNetExpression)),
+        provider("fixture.hands", HandLandmarker, "MediaPipe", "掌心检测 + 21 点骨架", VisionTask.Gestures,
+            listOf(VisionModels.palmDetection, VisionModels.handLandmarks)),
+        provider("fixture.hands.npu", HandLandmarker, "NPU 加速", "设备内置模型", VisionTask.Gestures, emptyList(), builtIn = true),
+    ), currentDeviceEnvironment())
+}
 
 /** Uses the actual Compose semantics tree without saved settings, cameras, models or network. */
 @OptIn(ExperimentalComposeUiApi::class)
@@ -38,19 +73,24 @@ fun main(args: Array<String>) {
         var modelActions = 0
         var cancelled = 0
         var openedCamera = 0
-        val installed = mutableStateOf(false)
+        val installed = mutableStateOf(setOf(VisionTask.Expressions))
         val busy = mutableStateOf(false)
         val modelError = mutableStateOf<String?>(null)
-        val expressionsInstalled = mutableStateOf(true)
         var localActions = 0
+        val registry = fixtureRegistry { task -> task in installed.value }
         val scene = ImageComposeScene(viewport.width, viewport.height, Density(viewport.density, viewport.font)) {
-            VisionSettingsContent(state.value, { state.value = it }, { backed++ }, { saved = state.value },
-                yoloSupported = true, yoloInstalled = installed.value, yoloBusy = busy.value, yoloProgress = 45,
-                yoloError = modelError.value, onYoloModelAction = { modelActions++; installed.value = !installed.value },
-                onYoloCancel = { cancelled++; busy.value = false }, onOpenCamera = { openedCamera++ },
-                localVisionSupported = true, localModelsDownloadable = true,
-                expressionsInstalled = expressionsInstalled.value, gesturesInstalled = false,
-                onLocalModelAction = { localActions++; expressionsInstalled.value = !expressionsInstalled.value })
+            val tasks = VisionTask.entries.associateWith { task ->
+                registry.settingsState(task, state.value).let { taskState ->
+                    if (task != VisionTask.Objects) taskState
+                    else taskState.copy(busy = busy.value, progress = 45, error = modelError.value)
+                }
+            }
+            VisionSettingsContent(state.value, { state.value = it }, { backed++ }, { saved = state.value }, tasks,
+                onModelAction = { task ->
+                    if (task == VisionTask.Objects) modelActions++ else localActions++
+                    installed.value = if (task in installed.value) installed.value - task else installed.value + task
+                },
+                onCancel = { cancelled++; busy.value = false }, onOpenCamera = { openedCamera++ })
         }
         try {
             var time = 0L
@@ -126,10 +166,14 @@ fun main(args: Array<String>) {
                 val detail = tagged("vision.configuration").boundsInRoot
                 check(back.right <= detail.left && detail.top <= back.top + viewport.density) { "${viewport.name}: landscape has no top bar; back=$back detail=$detail" }
             }
+            check(tagged("vision.yolo.modelStatus").config[SemanticsProperties.Text].any { it.text == "未下载" })
+            check(nodes().any { node -> node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "COCO 80 类 · 约 82 MB" } == true }) {
+                "Model size comes from the provider's model list"
+            }
             click("vision.yolo.modelAction", scroll = true)
-            check(installed.value && modelActions == 1)
+            check(VisionTask.Objects in installed.value && modelActions == 1)
             click("vision.yolo.modelAction", scroll = true)
-            check(!installed.value && modelActions == 2)
+            check(VisionTask.Objects !in installed.value && modelActions == 2)
             busy.value = true; frame()
             check(tagged("vision.save").config.contains(SemanticsProperties.Disabled))
             check(tagged("vision.camera").config.contains(SemanticsProperties.Disabled))
@@ -157,13 +201,18 @@ fun main(args: Array<String>) {
             shot("yolo-configured")
             click("vision.tab.expression"); shot("expression")
             click("vision.expression.enabled", scroll = true)
-            click("vision.expression.modelAction", scroll = true); check(localActions == 1 && !expressionsInstalled.value)
-            click("vision.expression.modelAction", scroll = true); check(localActions == 2 && expressionsInstalled.value)
+            click("vision.expression.modelAction", scroll = true); check(localActions == 1 && VisionTask.Expressions !in installed.value)
+            click("vision.expression.modelAction", scroll = true); check(localActions == 2 && VisionTask.Expressions in installed.value)
             click("vision.expression.advanced", scroll = true)
             scrollTo("vision.expression.modelPath")
             check(tagged("vision.expression.modelPath").config[SemanticsActions.SetText].action?.invoke(AnnotatedString("/models/expression.txt")) == true)
             frame()
             click("vision.tab.gesture"); shot("gesture")
+            // Two packaged hand providers: the page offers a choice and saves the provider id.
+            click("vision.provider.fixture.hands.npu", scroll = true)
+            check(state.value.providerId(HandLandmarker) == "fixture.hands.npu")
+            check(tagged("vision.gesture.modelStatus").config[SemanticsProperties.Text].any { it.text == "系统内置 · 无需下载" })
+            shot("gesture-provider")
             click("vision.save"); check(saved == null) { "Invalid expression path must block save" }
             check(tagged("vision.tab.expression").config.getOrNull(SemanticsProperties.Selected) == true) { "Validation jumps to the invalid tab" }
             scrollTo("vision.expression.modelPath")
@@ -196,8 +245,10 @@ fun main(args: Array<String>) {
         check(navigation == LifeRoute.Vision)
         println("PASS life center vision navigation")
     } finally { center.close() }
+    val unsupportedRegistry = fixtureRegistry(supported = false) { false }
     val unsupported = ImageComposeScene(800, 480, Density(1f)) {
-        VisionSettingsContent(VisionPreferences(), {}, {}, {}, yoloSupported = false)
+        VisionSettingsContent(VisionPreferences(), {}, {}, {},
+            VisionTask.entries.associateWith { unsupportedRegistry.settingsState(it, VisionPreferences()) })
     }
     try {
         unsupported.render().encodeToData(EncodedImageFormat.PNG)!!.use {
