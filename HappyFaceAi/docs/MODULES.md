@@ -9,6 +9,7 @@
 | `lib_common:lib_storage` | SettingsStore 的 Android、iOS、JVM 实现 | 平台 SDK |
 | `lib_common:lib_ui` | 可复用弹窗和 Toast | lib_theme |
 | `lib_business:lib_face` | 表情参数、动画、Canvas 与预览组件 | Compose |
+| `lib_business:lib_behavior` | 统一事件、交互阶段、表情决策、反应时长与冷却 | lib_face |
 | `lib_business:lib_models` | 供应商目录、模型能力识别与平台 HTTP 请求 | Kotlin / coroutines |
 | `lib_business:lib_brains` | AI 大脑状态、设置、交互页面 | lib_models、lib_storage、lib_ui、lib_resource |
 | `lib_business:lib_lifecenter` | 生命中心页面、路由模型 | lib_face、lib_theme |
@@ -23,6 +24,8 @@
 依赖方向：入口 → shared / 业务模块 → 通用模块。通用模块不引用业务模块；模型请求模块也不引用 AI 大脑 UI。实时协议实现放在 lib_realtime，由 lib_voice 对外聚合；平台采集/播放及 Face 联动在入口接入。视觉模型导出与平台适配见 [`lib_vision/README.md`](../lib_business/lib_vision/README.md)。
 
 相机采集独立在 [`lib_camera`](../lib_business/lib_camera/README.md)，不依赖视觉模型。共享摄像头页面把相机帧交给 `lib_vision` 的 `PerceptionService`，只负责显示预览和识别框：Android/Desktop 支持 YOLO、本地七类表情分类和静态手势识别；iOS 使用系统 Vision 分析人脸动作线索及手势，YOLO 后端仍待接入。
+
+陪伴页通过 `LivingPerception` 按视觉设置运行感知，将人出现、点赞事件交给 [`lib_behavior`](../lib_business/lib_behavior/README.md)。语音阶段、提交的用户文字和抚摸按钮也进入同一个行为控制器；`lib_face` 只渲染控制器决定的表情。行为核心不依赖语音、视觉或相机模块。
 
 ## 常用命令
 

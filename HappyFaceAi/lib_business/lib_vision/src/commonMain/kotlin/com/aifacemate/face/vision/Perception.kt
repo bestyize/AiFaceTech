@@ -135,6 +135,8 @@ data class PerceptionState(
     val observation: VisionObservation? = null,
     /** Time spent on the last analyzed frame, useful when comparing devices. */
     val analysisMillis: Long? = null,
+    /** Optional caller-supplied monotonic timestamp, preserved with this result. */
+    val sampledAtMillis: Long? = null,
 )
 
 /**
@@ -158,7 +160,7 @@ class PerceptionService(
                 if (!pipeline.active) return@collect
                 val started = TimeSource.Monotonic.markNow()
                 val observation = pipeline.analyze(frame)
-                current.value = PerceptionState(true, pipeline.status, observation, started.elapsedNow().inWholeMilliseconds)
+                current.value = PerceptionState(true, pipeline.status, observation, started.elapsedNow().inWholeMilliseconds, frame.sampledAtMillis)
                 delay(minIntervalMillis)
             }
         } finally {

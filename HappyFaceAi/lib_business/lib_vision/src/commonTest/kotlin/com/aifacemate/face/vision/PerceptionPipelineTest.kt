@@ -125,10 +125,11 @@ class PerceptionPipelineTest {
             service.run(frames.filterNotNull(), VisionPreferences(yoloEnabled = true), minIntervalMillis = 0)
         }
         assertTrue(service.state.value.running)
-        frames.value = frame
+        frames.value = RgbaFrame(frame.width, frame.height, frame.pixels, sampledAtMillis = 1234)
         val state = service.state.first { it.observation != null }
         assertEquals("cup", state.observation!!.objects.single().label)
         assertEquals(VisionTaskStatus.Running, state.statuses[VisionTask.Objects])
+        assertEquals(1234L, state.sampledAtMillis)
         session.cancel()
         session.join()
         assertEquals(PerceptionState(), service.state.value)
