@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import com.aifacemate.face.VisionSettingsContent
 import com.aifacemate.face.feature.lifecenter.*
@@ -25,25 +24,24 @@ private class FixtureProvider<C : AutoCloseable>(
     override val displayName: String,
     override val description: String,
     override val models: List<ModelSpec>,
-    override val acceptsCustomModel: Boolean,
     private val supported: Boolean,
     private val installed: () -> Boolean,
 ) : Provider<C> {
-    override fun availability(environment: DeviceEnvironment, options: ProviderOptions) = when {
+    override fun availability(environment: DeviceEnvironment) = when {
         !supported -> Availability.Unsupported("此设备暂不支持 ONNX Runtime 本地推理")
-        models.isEmpty() || installed() || (acceptsCustomModel && options.customModelPath != null) -> Availability.Ready
+        models.isEmpty() || installed() -> Availability.Ready
         else -> Availability.NeedsModels(models)
     }
-    override suspend fun open(options: ProviderOptions): C = error("UI fixtures are never opened")
+    override suspend fun open(): C = error("UI fixtures are never opened")
 }
 
 private fun fixtureRegistry(supported: Boolean = true, installed: (VisionTask) -> Boolean): ProviderRegistry {
     fun <C : AutoCloseable> provider(id: String, capability: CapabilityKey<C>, name: String, detail: String, task: VisionTask,
-        models: List<ModelSpec>, custom: Boolean = true, builtIn: Boolean = false) =
-        FixtureProvider(id, capability, name, detail, models, custom && !builtIn, supported || builtIn) { installed(task) }
+        models: List<ModelSpec>, builtIn: Boolean = false) =
+        FixtureProvider(id, capability, name, detail, models, supported || builtIn) { installed(task) }
     return ProviderRegistry(listOf(
         provider("fixture.objects", ObjectDetector, "YOLO26m", "COCO 80 类", VisionTask.Objects, listOf(VisionModels.yolo26m)),
-        provider("fixture.faces", FaceDetector, "YuNet", "人脸检测", VisionTask.Expressions, listOf(VisionModels.yunet), custom = false),
+        provider("fixture.faces", FaceDetector, "YuNet", "人脸检测", VisionTask.Expressions, listOf(VisionModels.yunet)),
         provider("fixture.expressions", ExpressionClassifier, "MobileFaceNet", "七类表情", VisionTask.Expressions, listOf(VisionModels.mobileFaceNetExpression)),
         provider("fixture.hands", HandLandmarker, "MediaPipe", "掌心检测 + 21 点骨架", VisionTask.Gestures,
             listOf(VisionModels.palmDetection, VisionModels.handLandmarks)),
@@ -186,13 +184,12 @@ fun main(args: Array<String>) {
             click("vision.yolo.enabled", scroll = true)
             check(tagged("vision.tab.yolo").config[SemanticsProperties.StateDescription] == "需下载模型")
             click("vision.save")
-            check(saved?.yoloEnabled == true && saved?.yoloModelPath == "") { "Empty path should select downloaded model" }
+            check(saved?.yoloEnabled == true) { "Enabling YOLO is saved before its model is downloaded" }
             saved = null
-            check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "vision.yolo.modelPath" }) { "Custom path starts collapsed" }
-            click("vision.yolo.advanced", scroll = true)
-            scrollTo("vision.yolo.modelPath")
-            check(tagged("vision.yolo.modelPath").config[SemanticsActions.SetText].action?.invoke(AnnotatedString("/models/yolo26m.onnx")) == true)
-            frame()
+            check(nodes().none { node -> node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "高级" || it.text.contains("自定义") } == true }) {
+                "Custom model options are gone"
+            }
+            click("vision.yolo.modelAction", scroll = true)
             check(tagged("vision.tab.yolo").config[SemanticsProperties.StateDescription] == "已开启")
             scrollTo("vision.yolo.confidence")
             check(tagged("vision.yolo.confidence").config[SemanticsActions.SetProgress].action?.invoke(0.4f) == true)
@@ -203,33 +200,22 @@ fun main(args: Array<String>) {
             click("vision.expression.enabled", scroll = true)
             click("vision.expression.modelAction", scroll = true); check(localActions == 1 && VisionTask.Expressions !in installed.value)
             click("vision.expression.modelAction", scroll = true); check(localActions == 2 && VisionTask.Expressions in installed.value)
-            click("vision.expression.advanced", scroll = true)
-            scrollTo("vision.expression.modelPath")
-            check(tagged("vision.expression.modelPath").config[SemanticsActions.SetText].action?.invoke(AnnotatedString("/models/expression.txt")) == true)
-            frame()
             click("vision.tab.gesture"); shot("gesture")
             // Two packaged hand providers: the page offers a choice and saves the provider id.
             click("vision.provider.fixture.hands.npu", scroll = true)
             check(state.value.providerId(HandLandmarker) == "fixture.hands.npu")
             check(tagged("vision.gesture.modelStatus").config[SemanticsProperties.Text].any { it.text == "系统内置 · 无需下载" })
             shot("gesture-provider")
-            click("vision.save"); check(saved == null) { "Invalid expression path must block save" }
-            check(tagged("vision.tab.expression").config.getOrNull(SemanticsProperties.Selected) == true) { "Validation jumps to the invalid tab" }
-            scrollTo("vision.expression.modelPath")
-            check(nodes().any { node -> node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.contains(".onnx 扩展名") } == true })
-            shot("expression-invalid")
-            check(tagged("vision.expression.modelPath").config[SemanticsActions.SetText].action?.invoke(AnnotatedString("/models/expression.onnx")) == true)
-            frame()
+            click("vision.tab.expression")
             scrollTo("vision.expression.confidence")
             check(tagged("vision.expression.confidence").config[SemanticsActions.SetProgress].action?.invoke(0.8f) == true)
             frame(); check(state.value.expressionConfidenceThreshold == 0.8f)
             click("vision.tab.yolo")
             check(state.value.yoloEnabled && state.value.expressionEnabled)
-            check(state.value.yoloModelPath == "/models/yolo26m.onnx")
             click("vision.save"); check(saved == state.value)
             click("vision.camera", scroll = true); check(openedCamera == 1)
             click("vision.back"); check(backed == 1)
-            println("PASS ${viewport.name}: model download/delete/cancel, busy/error states, tabs, fields, thresholds, validation, save/back, scroll reachability")
+            println("PASS ${viewport.name}: model download/delete/cancel, busy/error states, tabs, provider choice, thresholds, save/back, scroll reachability")
         } finally { scene.close() }
     }
     var navigation: LifeRoute? = null

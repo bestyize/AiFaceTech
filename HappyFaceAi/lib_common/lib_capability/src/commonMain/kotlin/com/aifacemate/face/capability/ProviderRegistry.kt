@@ -25,6 +25,5 @@ class ProviderRegistry(providers: List<Provider<*>>, val environment: DeviceEnvi
             ?: candidates.firstOrNull()
     }
 
-    fun availability(provider: Provider<*>, options: ProviderOptions = ProviderOptions()): Availability =
-        provider.availability(environment, options)
+    fun availability(provider: Provider<*>): Availability = provider.availability(environment)
 }

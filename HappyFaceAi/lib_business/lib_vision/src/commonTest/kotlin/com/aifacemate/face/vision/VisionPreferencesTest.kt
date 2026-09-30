@@ -4,8 +4,9 @@ import com.aifacemate.face.data.SettingsStore
 import kotlin.test.*
 
 class VisionPreferencesTest {
-    private val keys = (listOf("yolo", "expression", "gesture").flatMap { task -> listOf("enabled", "modelPath", "confidence").map { "$task.$it" } } +
-        VisionTask.entries.flatMap { it.capabilities }.map { "provider.${it.id}" }).map { "vision.$it" }
+    private val retired = listOf("yolo", "expression", "gesture").map { "vision.$it.modelPath" }
+    private val keys = (listOf("yolo", "expression", "gesture").flatMap { task -> listOf("enabled", "confidence").map { "vision.$task.$it" } } +
+        VisionTask.entries.flatMap { it.capabilities }.map { "vision.provider.${it.id}" } + retired)
     private var original = emptyMap<String, String?>()
 
     @BeforeTest
@@ -27,15 +28,15 @@ class VisionPreferencesTest {
     }
 
     @Test
-    fun bothConfigurationsRoundTripIndependently() {
-        val config = VisionPreferences(true, " C:\\models\\yolo26m.onnx ", 0.4f, true, "/models/expression.ONNX", 0.8f)
+    fun tasksRoundTripIndependently() {
+        val config = VisionPreferences(yoloEnabled = true, yoloConfidenceThreshold = 0.4f, expressionEnabled = true,
+            expressionConfidenceThreshold = 0.8f)
         VisionPreferencesStore.save(config)
-        assertEquals(config.copy(yoloModelPath = "C:\\models\\yolo26m.onnx"), VisionPreferencesStore.load())
+        assertEquals(config, VisionPreferencesStore.load())
         VisionPreferencesStore.save(VisionPreferencesStore.load().copy(yoloEnabled = false, yoloConfidenceThreshold = 0.1f))
         val loaded = VisionPreferencesStore.load()
         assertFalse(loaded.yoloEnabled)
         assertTrue(loaded.expressionEnabled)
-        assertEquals(config.expressionModelPath, loaded.expressionModelPath)
         assertEquals(config.expressionConfidenceThreshold, loaded.expressionConfidenceThreshold)
     }
 
@@ -51,32 +52,25 @@ class VisionPreferencesTest {
     }
 
     @Test
-    fun missingOrWrongModelPathsCannotBeSaved() {
-        assertFailsWith<IllegalArgumentException> { VisionPreferencesStore.save(VisionPreferences(expressionModelPath = "face.tflite")) }
-        assertFailsWith<IllegalArgumentException> { VisionPreferencesStore.save(VisionPreferences(gestureModelPath = "hand.task")) }
-        assertFailsWith<IllegalArgumentException> { VisionPreferencesStore.save(VisionPreferences(yoloModelPath = "yolo26m.pt")) }
-        assertEquals(VisionPreferences(), VisionPreferencesStore.load())
+    fun customModelPathsFromEarlierReleasesAreIgnoredAndRemovedOnSave() {
+        retired.forEach { SettingsStore.put(it, "/models/custom.onnx") }
+        SettingsStore.put("vision.yolo.enabled", "true")
+        val loaded = VisionPreferencesStore.load()
+        assertEquals(VisionPreferences(yoloEnabled = true), loaded)
+        VisionPreferencesStore.save(loaded)
+        retired.forEach { assertNull(SettingsStore.get(it)) }
     }
 
     @Test
     fun taskAccessorsAndProviderChoicesRoundTrip() {
-        val config = VisionPreferences().update(VisionTask.Gestures, enabled = true, threshold = .8f, modelPath = "/models/hand.onnx")
+        val config = VisionPreferences().update(VisionTask.Gestures, enabled = true, threshold = .8f)
             .withProvider(HandLandmarker.id, "vision.hands.rknn")
         assertTrue(config.enabled(VisionTask.Gestures))
         assertEquals(.8f, config.threshold(VisionTask.Gestures))
-        assertEquals("/models/hand.onnx", config.options(VisionTask.Gestures).customModelPath)
-        assertNull(config.options(VisionTask.Objects).customModelPath)
         VisionPreferencesStore.save(config)
         assertEquals(config, VisionPreferencesStore.load())
         assertEquals("vision.hands.rknn", VisionPreferencesStore.load().providerId(HandLandmarker))
         VisionPreferencesStore.save(config.copy(providerIds = emptyMap()))
         assertNull(VisionPreferencesStore.load().providerId(HandLandmarker))
-    }
-
-    @Test
-    fun emptyYoloPathSelectsTheManagedModel() {
-        val config = VisionPreferences(yoloEnabled = true)
-        VisionPreferencesStore.save(config)
-        assertEquals(config, VisionPreferencesStore.load())
     }
 }

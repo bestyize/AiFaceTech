@@ -42,9 +42,9 @@ ONNX 提供者只负责运行模型；图像缩放、人脸对齐、YuNet 解码
 
 表情分类只给出七类外观标签（愤怒、厌恶、恐惧、开心、平静、难过、惊讶），不能据此推断真实情绪。手势是本机几何规则识别的静态手势（点赞、张开手掌、握拳、V 字、指向、捏合），不识别挥手等动作。
 
-### 自定义模型
+### 模型文件
 
-YOLO、表情分类和手部关键点模型可以在设置「高级」中替换为本机 `.onnx` 文件；打开时检查输入输出形状，不符合时报错并释放会话。YOLO 需要 FP32 `[1,3,640,640]` → `[1,N,6]`（导出时设置 `nms=False`）：
+应用只加载上面这些固定版本、校验过的模型，设置页不提供自定义模型文件。更换模型时，在 `VisionModels` 中更新文件、大小和 SHA-256，并确认形状仍符合对应提供者的检查。YOLO 需要 FP32 `[1,3,640,640]` → `[1,N,6]`（导出时设置 `nms=False`）：
 
 ```python
 from ultralytics import YOLO
@@ -52,7 +52,7 @@ from ultralytics import YOLO
 YOLO("yolo26m.pt").export(format="onnx", imgsz=640, batch=1, dynamic=False, nms=False)
 ```
 
-请根据 Ultralytics 的 AGPL-3.0 / Enterprise 条款确认模型的使用条件。部署到机器人前请在目标设备实测内存、帧耗时和功耗。
+桌面工具 `runYolo26m` 和 `verifyCameraVision` 可以直接传入本机导出的 `.onnx` 文件做测试，不经过设置。请根据 Ultralytics 的 AGPL-3.0 / Enterprise 条款确认模型的使用条件。部署到机器人前请在目标设备实测内存、帧耗时和功耗。
 
 ## 验证
 
