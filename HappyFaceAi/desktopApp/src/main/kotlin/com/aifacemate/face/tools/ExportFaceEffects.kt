@@ -106,7 +106,7 @@ fun main(args: Array<String>) {
             val close = tagged("effects.close").boundsInRoot
             check(close.height >= 47 && close.top >= 0 && close.bottom <= height)
             val panel = tagged("effects.menu.panel").boundsInRoot
-            check(panel.left >= 0 && panel.top >= 0 && panel.right <= width && panel.bottom <= height)
+            check(panel.left == 0f && panel.top == 0f && panel.width == width.toFloat() && panel.height == height.toFloat())
             scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
                 File(output, "preview-menu-$width-$height.png").writeBytes(it.bytes)
             }; shots++
@@ -122,8 +122,6 @@ fun main(args: Array<String>) {
                 check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })
                 click("effects.menu")
             }
-            click("effects.menu.scrim")
-            click("effects.menu")
             click("effects.menu.collapse")
             click("effects.menu")
             closeMenuSignal.value++; repeat(3) { frame() }

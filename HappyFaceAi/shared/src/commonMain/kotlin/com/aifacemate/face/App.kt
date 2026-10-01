@@ -43,6 +43,8 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var diffuseGlow by rememberSaveable { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
         var hud by remember { mutableStateOf(false) }
         var effectsPreview by remember { mutableStateOf(false) }
+        var faceMenuOpen by remember { mutableStateOf(false) }
+        var faceMenuCloseSignal by remember { mutableStateOf(0) }
         var effectsPreferences by remember { mutableStateOf(FaceEffectsSettings.load()) }
         val effects = remember { EffectController() }
         var effectScene by remember { mutableStateOf<EffectScene?>(null) }
@@ -138,11 +140,12 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             if (it == LifeRoute.Camera) {
                 cameraReturnRouteName = if (route == LifeRoute.Living) LifeRoute.Living.name else LifeRoute.Vision.name
             }
-            routeName = it.name; hud = false; effectsPreview = false; closeVoice()
+            routeName = it.name; hud = false; effectsPreview = false; faceMenuOpen = false; faceMenuCloseSignal = 0; closeVoice()
             dispatch(BehaviorEvent.ResetInteraction)
         }
         onBackHandler(route != LifeRoute.Living || hud || voiceOverlay || effectsPreview) {
             if (effectsPreview) effectsPreview = false
+            else if (route == LifeRoute.Appearance && faceMenuOpen) faceMenuCloseSignal++
             else if (voiceOverlay) closeVoice()
             else if (hud) hud = false else navigate(when (route) {
                 LifeRoute.LifeCenter -> LifeRoute.Living
@@ -233,6 +236,8 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     diffuseGlow = diffuseGlow,
                     onDiffuseGlowChange = { diffuseGlow = it },
                     onBack = { navigate(LifeRoute.LifeCenter) },
+                    onMenuOpenChange = { faceMenuOpen = it },
+                    closeMenuSignal = faceMenuCloseSignal,
                 )
             }
             else -> FeaturePlaceholder(defaultFeatures.first { it.route == route }) { navigate(LifeRoute.LifeCenter) }

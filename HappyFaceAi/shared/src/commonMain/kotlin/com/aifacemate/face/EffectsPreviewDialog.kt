@@ -1,12 +1,9 @@
 package com.aifacemate.face
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
@@ -15,7 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -27,6 +23,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.aifacemate.face.effects.*
 import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.ui.FaceDisplay
+import com.aifacemate.face.ui.FullscreenPreviewMenu
 import kotlinx.coroutines.delay
 import kotlin.time.TimeSource
 
@@ -64,7 +61,6 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
     MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFF1C779), onPrimary = Color(0xFF221D13))) {
     CompositionLocalProvider(LocalContentColor provides Color(0xFFF4F3EF)) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding()) {
-        val popupHeight = (maxHeight - 24.dp).coerceAtLeast(120.dp)
         @Composable fun Preview(modifier: Modifier) {
             BoxWithConstraints(modifier.background(Color.Black).clipToBounds().testTag("effects.preview.pane"),
                 contentAlignment = Alignment.Center) {
@@ -76,7 +72,7 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
             }
         }
         @Composable fun Controls(modifier: Modifier) {
-            Column(modifier.verticalScroll(rememberScrollState()).testTag("effects.controls.pane"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(modifier.testTag("effects.controls.pane"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("effects.enabled")
                     .toggleable(preferences.enabled, role = Role.Switch, onValueChange = { onChange(preferences.copy(enabled = it)) }),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -105,37 +101,10 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
             }
         }
         Preview(Modifier.fillMaxSize())
-        if (!controlsOpen) IconButton(onClick = { setMenuOpen(true) },
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(48.dp).testTag("effects.menu")
-                .semantics { contentDescription = "打开特效菜单" }) {
-            Canvas(Modifier.size(22.dp)) {
-                repeat(3) { i ->
-                    drawLine(Color.White.copy(alpha = .65f), Offset(2f, size.height * (.23f + i * .27f)),
-                        Offset(size.width - 2f, size.height * (.23f + i * .27f)), 2f, StrokeCap.Round)
-                }
-            }
-        }
-        if (controlsOpen) {
-            Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .30f))
-                .testTag("effects.menu.scrim").clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { setMenuOpen(false) })
-            Surface(modifier = Modifier.align(Alignment.Center).padding(12.dp).widthIn(max = 420.dp)
-                .fillMaxWidth().heightIn(max = popupHeight).testTag("effects.menu.panel"),
-                color = Color(0xF0181F22), contentColor = Color(0xFFF4F3EF), shape = RoundedCornerShape(18.dp),
-                shadowElevation = 8.dp) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        IconButton(onClick = { setMenuOpen(false) }, modifier = Modifier.size(48.dp).testTag("effects.menu.collapse")
-                            .semantics { contentDescription = "收起特效菜单" }) {
-                            Canvas(Modifier.size(18.dp)) {
-                                drawLine(Color.White.copy(alpha = .8f), Offset(2f, 2f), Offset(size.width - 2f, size.height - 2f), 2f, StrokeCap.Round)
-                                drawLine(Color.White.copy(alpha = .8f), Offset(size.width - 2f, 2f), Offset(2f, size.height - 2f), 2f, StrokeCap.Round)
-                            }
-                        }
-                    }
-                    Controls(Modifier.weight(1f, fill = false).fillMaxWidth())
-                    TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("effects.close")) { Text("返回猫脸") }
-                }
-            }
+        FullscreenPreviewMenu(controlsOpen, { setMenuOpen(true) }, { setMenuOpen(false) },
+            prefix = "effects", description = "特效菜单",
+            footer = { TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("effects.close")) { Text("返回猫脸") } }) {
+            Controls(Modifier.fillMaxWidth())
         }
     }
     }
