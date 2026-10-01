@@ -77,7 +77,7 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
         @Composable fun Controls(modifier: Modifier) {
             Column(modifier.testTag("effects.controls.pane"), verticalArrangement = Arrangement.spacedBy(if (compactControls) 4.dp else 8.dp)) {
                 if (options) {
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("effects.enabled")
+                Row(Modifier.fillMaxWidth().padding(horizontal = 40.dp).heightIn(min = 48.dp).testTag("effects.enabled")
                     .toggleable(preferences.enabled, role = Role.Switch, onValueChange = { onChange(preferences.copy(enabled = it)) }),
                     verticalAlignment = Alignment.CenterVertically) {
                     Text("开启惊喜特效", Modifier.weight(1f))
@@ -97,10 +97,11 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
                 if (!compactControls) Text("关闭 emoji 后使用自绘图形。", style = MaterialTheme.typography.bodySmall)
                 } else {
                 if (!preferences.enabled) Text("特效已关闭，请在设置中开启。", style = MaterialTheme.typography.bodySmall)
-                EffectId.entries.chunked(effectColumns).forEach { effects ->
-                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                EffectId.entries.chunked(effectColumns).forEachIndexed { index, effects ->
+                  Row(Modifier.fillMaxWidth().then(if (index == 0) Modifier.padding(horizontal = 40.dp) else Modifier), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                   effects.forEach { effect ->
                     OutlinedButton(enabled = preferences.enabled, modifier = Modifier.weight(1f).heightIn(min = 40.dp).testTag("effects.preview.${effect.name}"),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         onClick = {
                             sequence++
                             val next = EffectScene("preview-$sequence", effect, clock.elapsedNow().inWholeMilliseconds, 100, sequence)

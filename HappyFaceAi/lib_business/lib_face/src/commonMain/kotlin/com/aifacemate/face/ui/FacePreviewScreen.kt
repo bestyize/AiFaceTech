@@ -180,9 +180,10 @@ private fun ControlPane(
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
         if (!options) Text("${expression.cnName} · ${expression.ordinal + 1} / 100",
-            color = Color.White.copy(alpha = .7f), fontSize = 13.sp, modifier = Modifier.testTag("face.current"))
+            color = Color.White.copy(alpha = .7f), fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 40.dp).heightIn(min = 32.dp).testTag("face.current"))
         if (options) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FlowRow(Modifier.padding(horizontal = 40.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             CompactChip("生命感", animate, { onAnimateChange(!animate) }, Modifier.testTag("face.life"))
             CompactChip("扩散光晕", diffuseGlow > .01f,
                 { onDiffuseGlowChange(if (diffuseGlow > .01f) 0f else DEFAULT_DIFFUSE_GLOW) }, Modifier.testTag("face.glow"))

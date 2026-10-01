@@ -1,10 +1,12 @@
 package com.aifacemate.face.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -40,10 +42,11 @@ fun FullscreenPreviewMenu(open: Boolean, onOpen: () -> Unit, onCollapse: () -> U
         if (open) Surface(Modifier.fillMaxSize().testTag("$prefix.menu.panel"),
             color = Color(0xF0181F22), contentColor = Color(0xFFF4F3EF)) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 40.dp).heightIn(min = 32.dp), contentAlignment = Alignment.Center) { navigation() }
-                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).testTag("$prefix.controls.scroll"),
-                        verticalArrangement = Arrangement.spacedBy(6.dp), content = content)
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("$prefix.controls.scroll")
+                    .padding(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = content)
+                Box(Modifier.align(Alignment.BottomEnd).clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xF0181F22)).testTag("$prefix.navigation")) {
+                    navigation()
                 }
                 if (onBack != null) Box(Modifier.align(Alignment.TopStart).size(32.dp).clip(CircleShape)
                     .clickable(role = Role.Button, onClick = onBack).testTag(backTag)

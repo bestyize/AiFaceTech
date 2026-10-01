@@ -70,7 +70,7 @@ fun main(args: Array<String>) {
             check(nodes().count { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("face.expression.") == true } == 100)
             val area = tagged("face.controls.scroll").boundsInRoot
             val collapse = tagged("face.menu.collapse").boundsInRoot
-            check(area.top <= 60f && area.bottom == height - 12f) { "Close control reserved a header row: $area" }
+            check(area.top == 12f && area.bottom == height - 12f) { "Close control reserved a header row: $area" }
             check(collapse.width == 32f && collapse.height == 32f && collapse.top == 12f)
             save("menu")
             click("face.tab.settings"); save("settings"); click("face.life"); click("face.glow"); check(glow.value == 0f)
