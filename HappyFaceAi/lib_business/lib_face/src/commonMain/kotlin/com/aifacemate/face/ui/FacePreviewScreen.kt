@@ -84,6 +84,7 @@ fun FacePreviewScreen(
 
     var animate by remember { mutableStateOf(true) }
     var surface by remember { mutableStateOf(FaceSurface.PRODUCT_MOCKUP) }
+    var options by remember { mutableStateOf(false) }
     // 扩散光晕开关：只关掉最外层那圈大面积辉光，近边发光保留
     var internalDiffuseGlow by remember { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
     val currentDiffuseGlow = diffuseGlow ?: internalDiffuseGlow
@@ -91,18 +92,20 @@ fun FacePreviewScreen(
         if (onDiffuseGlowChange != null) onDiffuseGlowChange(value) else internalDiffuseGlow = value
     }
 
-    Box(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(StageTop, StageBottom)))) {
+    BoxWithConstraints(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(StageTop, StageBottom)))) {
+        val compactControls = maxHeight < 360.dp || maxWidth < 600.dp
         PreviewPane(currentExpression, animate && !menuOpen, surface, currentDiffuseGlow,
             Modifier.fillMaxSize().testTag("face.preview.pane"))
         FullscreenPreviewMenu(menuOpen, { setMenuOpen(true) }, { setMenuOpen(false) },
             prefix = "face", description = "表情菜单",
-            footer = if (onBack != null) ({
-                TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("face.back")) {
-                    Text("返回上一页")
+            onBack = onBack, navigation = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    CompactChip("表情", !options, { options = false }, Modifier.testTag("face.tab.expressions"), compact = true)
+                    CompactChip("设置", options, { options = true }, Modifier.testTag("face.tab.settings"), compact = true)
                 }
-            }) else null) {
+            }) {
             ControlPane(currentExpression, selectExpression, animate, { animate = it }, surface, { surface = it },
-                currentDiffuseGlow, selectDiffuseGlow, Modifier.fillMaxWidth())
+                currentDiffuseGlow, selectDiffuseGlow, options, compactControls, Modifier.fillMaxWidth())
         }
     }
 }
@@ -171,11 +174,14 @@ private fun ControlPane(
     animate: Boolean, onAnimateChange: (Boolean) -> Unit,
     surface: FaceSurface, onSurfaceChange: (FaceSurface) -> Unit,
     diffuseGlow: Float, onDiffuseGlowChange: (Float) -> Unit,
+    options: Boolean,
+    compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("当前：${expression.cnName} · ${expression.enName}（${expression.ordinal + 1} / 100）",
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
+        if (!options) Text("${expression.cnName} · ${expression.ordinal + 1} / 100",
             color = Color.White.copy(alpha = .7f), fontSize = 13.sp, modifier = Modifier.testTag("face.current"))
+        if (options) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             CompactChip("生命感", animate, { onAnimateChange(!animate) }, Modifier.testTag("face.life"))
             CompactChip("扩散光晕", diffuseGlow > .01f,
@@ -189,14 +195,16 @@ private fun ControlPane(
                 { onSurfaceChange(FaceSurface.DEVICE_SCREEN) }, Modifier.testTag("face.surface.DEVICE_SCREEN"))
         }
         HorizontalDivider(color = Color.White.copy(alpha = .08f))
+        } else {
         expressionGroups().forEach { group ->
             Text("${group.title} · ${group.expressions.size}", color = Color.White.copy(alpha = .6f), fontSize = 12.sp)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 group.expressions.forEach { item ->
                     CompactChip(item.cnName, item == expression, { onExpressionChange(item) },
-                        Modifier.testTag("face.expression.${item.name}"))
+                        Modifier.testTag("face.expression.${item.name}"), compact = compact)
                 }
             }
+        }
         }
     }
 }
@@ -210,11 +218,12 @@ private fun CompactChip(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     val chosen = selected
     Box(
         modifier = modifier
-            .heightIn(min = 48.dp).widthIn(min = 64.dp)
+            .heightIn(min = if (compact) 32.dp else 48.dp).widthIn(min = if (compact) 54.dp else 64.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) Accent else Color.White.copy(alpha = 0.08f))
             .clickable(onClick = onClick)

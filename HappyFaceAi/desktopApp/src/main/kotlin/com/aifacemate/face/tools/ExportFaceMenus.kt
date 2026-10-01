@@ -46,12 +46,12 @@ fun main(args: Array<String>) {
                     for (step in 0..(range.maxValue() / 16).toInt() + 10) {
                         val bounds = tagged(tag).boundsInRoot
                         val area = tagged("face.controls.scroll").boundsInRoot
-                        if (bounds.height >= 47 && bounds.top >= area.top && bounds.bottom <= area.bottom) { reached = true; break }
+                        if (bounds.height >= 31 && bounds.top >= area.top && bounds.bottom <= area.bottom) { reached = true; break }
                         scroll(0f, 16f); repeat(8) { frame() }
                     }
                     check(reached) { "$width x $height cannot reach $tag" }
                 }
-                check(tagged(tag).boundsInRoot.height >= if (tag == "face.menu.collapse") 32 else 47)
+                check(tagged(tag).boundsInRoot.height >= 31)
                 check(tagged(tag).config[SemanticsActions.OnClick].action!!.invoke()); frame()
             }
             fun save(state: String) {
@@ -70,12 +70,12 @@ fun main(args: Array<String>) {
             check(nodes().count { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("face.expression.") == true } == 100)
             val area = tagged("face.controls.scroll").boundsInRoot
             val collapse = tagged("face.menu.collapse").boundsInRoot
-            check(area.top == 12f) { "Close control reserved a header row: $area" }
-            check(collapse.width == 32f && collapse.height == 32f && collapse.left >= area.right)
+            check(area.top <= 60f && area.bottom == height - 12f) { "Close control reserved a header row: $area" }
+            check(collapse.width == 32f && collapse.height == 32f && collapse.top == 12f)
             save("menu")
-            click("face.life"); click("face.glow"); check(glow.value == 0f)
+            click("face.tab.settings"); save("settings"); click("face.life"); click("face.glow"); check(glow.value == 0f)
             click("face.surface.DEVICE_SCREEN")
-            click("face.expression.HAPPY"); check(expression.value == FaceExpression.HAPPY && !open)
+            click("face.tab.expressions"); click("face.expression.HAPPY"); check(expression.value == FaceExpression.HAPPY && !open)
             click("face.menu")
             click("face.expression.NEW_DAY"); check(expression.value == FaceExpression.NEW_DAY && !open)
             click("face.menu"); closeSignal.value++; repeat(3) { frame() }; check(!open)
