@@ -103,6 +103,8 @@ fun main(args: Array<String>) {
             }; shots++
             click("effects.menu")
             check(reportedMenuOpen)
+            check(tagged("effects.controls.scroll").boundsInRoot.top == 12f)
+            check(tagged("effects.menu.collapse").boundsInRoot.height == 32f)
             val close = tagged("effects.close").boundsInRoot
             check(close.height >= 47 && close.top >= 0 && close.bottom <= height)
             val panel = tagged("effects.menu.panel").boundsInRoot
@@ -113,7 +115,9 @@ fun main(args: Array<String>) {
             val padding = Offset((panel.left + panel.right) / 2, panel.top + 6)
             scene.sendPointerEvent(PointerEventType.Press, padding); frame()
             scene.sendPointerEvent(PointerEventType.Release, padding); frame()
-            check(reportedMenuOpen) { "Popup padding tap leaked through to the scrim" }
+            check(reportedMenuOpen)
+            check(tagged("effects.controls.scroll").boundsInRoot.top == 12f)
+            check(tagged("effects.menu.collapse").boundsInRoot.height == 32f) { "Popup padding tap leaked through to the scrim" }
             click("effects.enabled"); check(!preferences.value.enabled)
             click("effects.enabled"); check(preferences.value.enabled)
             click("effects.emoji"); check(!preferences.value.emoji)

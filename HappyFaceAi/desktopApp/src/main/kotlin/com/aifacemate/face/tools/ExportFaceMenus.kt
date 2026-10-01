@@ -51,7 +51,7 @@ fun main(args: Array<String>) {
                     }
                     check(reached) { "$width x $height cannot reach $tag" }
                 }
-                check(tagged(tag).boundsInRoot.height >= 47)
+                check(tagged(tag).boundsInRoot.height >= if (tag == "face.menu.collapse") 32 else 47)
                 check(tagged(tag).config[SemanticsActions.OnClick].action!!.invoke()); frame()
             }
             fun save(state: String) {
@@ -68,6 +68,10 @@ fun main(args: Array<String>) {
             val panel = tagged("face.menu.panel").boundsInRoot
             check(panel.left == 0f && panel.top == 0f && panel.width == width.toFloat() && panel.height == height.toFloat())
             check(nodes().count { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("face.expression.") == true } == 100)
+            val area = tagged("face.controls.scroll").boundsInRoot
+            val collapse = tagged("face.menu.collapse").boundsInRoot
+            check(area.top == 12f) { "Close control reserved a header row: $area" }
+            check(collapse.width == 32f && collapse.height == 32f && collapse.left >= area.right)
             save("menu")
             click("face.life"); click("face.glow"); check(glow.value == 0f)
             click("face.surface.DEVICE_SCREEN")
