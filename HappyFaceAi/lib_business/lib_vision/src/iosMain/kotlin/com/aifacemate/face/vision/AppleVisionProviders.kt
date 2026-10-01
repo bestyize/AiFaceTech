@@ -18,7 +18,7 @@ import platform.ImageIO.kCGImagePropertyOrientationUp
 import platform.Vision.*
 
 /** Apple Vision runs on the device with system models, so nothing is downloaded. There is no object detector yet. */
-internal actual fun platformVisionProviders(store: ModelStore): List<Provider<*>> = listOf(
+internal actual fun platformVisionProviders(store: ModelStore, environment: DeviceEnvironment): List<Provider<*>> = listOf(
     AppleVisionProvider("vision.face.apple-vision", FaceDetector, "系统 Vision", "人脸检测") { AppleFaceDetector() },
     AppleVisionProvider("vision.expression.apple-vision-cues", ExpressionClassifier, "系统 Vision", "微笑、张嘴等动作线索") { AppleExpressionCues() },
     AppleVisionProvider("vision.hands.apple-vision", HandLandmarker, "系统 Vision", "手部 21 点关键点") { AppleHandLandmarker() },

@@ -26,3 +26,9 @@ Android ONNX Runtime 原来使用默认 SessionOptions，每个模型都保留�
 手机安装的 Ultralytics YOLO APK 为 0.6.13。官方当前文档描述 LiteRT GPU→CPU 路径和可用的量化模型，但仅凭型号 YOLO26m 或版本号不能确认该 APK 此时实际使用的后端、精度和输入尺寸。我们的 ONNX 实现没有设置加速执行提供者，不能宣称已达到官方实现的能效。
 
 参考：[ONNX Runtime 线程配置](https://onnxruntime.ai/docs/performance/tune-performance/threading.html)、[Ultralytics GPU 配置](https://github.com/ultralytics/yolo-flutter-app/blob/main/doc/use_gpu_feature.md)。
+
+## 线程与模型尺寸（2026-10-01）
+
+- 线程限制原先只对 Android 生效。RK3566 装 Ubuntu 时识别为桌面 Linux，会使用默认线程池并允许空转。现在所有平台都关闭空转、算子间线程为 1；算子内线程 Android 为 2，其他平台取核数的一半（1–4），4 核板卡得到 2。M 系列 Mac 上 YOLO26m 用 2 线程与 4 线程均约 101 ms，三项任务每帧 115–134 ms，与修改前（116–121 ms）相当。
+- 目标检测新增 YOLO26n / s。同一台 Mac 640×480 帧：n 26 ms、s 67 ms、m 97 ms；样例人像中 person 置信度分别为 93% / 91% / 95%。手部特写等只露出部分人体的照片，n 明显更容易漏检或置信度偏低。手机、RK3566 上的实际耗时需实机测量。
+

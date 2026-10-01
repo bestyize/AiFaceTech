@@ -8,19 +8,30 @@ import ai.onnxruntime.TensorInfo
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import com.aifacemate.face.capability.DeviceEnvironment
 import com.aifacemate.face.capability.DevicePlatform
 import com.aifacemate.face.capability.currentDeviceEnvironment
+
+internal data class OnnxThreading(val intraOpThreads: Int, val interOpThreads: Int = 1)
+
+/**
+ * Perception runs continuously next to rendering and speech, and several sessions are open at once, so every
+ * platform gets a bounded pool and no spinning. Android keeps the value measured on a phone; JVM hosts, which
+ * include RK3566 boards on Ubuntu, use half the cores (4 cores → 2) and at most 4.
+ */
+internal fun onnxThreading(environment: DeviceEnvironment) = OnnxThreading(
+    if (environment.platform == DevicePlatform.Android) 2 else (environment.processors / 2).coerceIn(1, 4),
+)
 
 /** One ONNX Runtime session with a single fixed-shape float input. Not thread-safe; callers serialize runs. */
 internal class OnnxModel(path: String, description: String) : AutoCloseable {
     private val environment = OrtEnvironment.getEnvironment()
     private val session: OrtSession = OrtSession.SessionOptions().use { options ->
-        if (currentDeviceEnvironment().platform == DevicePlatform.Android) {
-            options.setIntraOpNumThreads(2)
-            options.setInterOpNumThreads(1)
-            options.addConfigEntry("session.intra_op.allow_spinning", "0")
-            options.addConfigEntry("session.inter_op.allow_spinning", "0")
-        }
+        val threading = onnxThreading(currentDeviceEnvironment())
+        options.setIntraOpNumThreads(threading.intraOpThreads)
+        options.setInterOpNumThreads(threading.interOpThreads)
+        options.addConfigEntry("session.intra_op.allow_spinning", "0")
+        options.addConfigEntry("session.inter_op.allow_spinning", "0")
         environment.createSession(path, options)
     }
     private var buffer: FloatBuffer? = null

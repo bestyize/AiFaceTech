@@ -25,7 +25,7 @@ fun main(args: Array<String>) = runBlocking {
     val root = File(args.single())
     val store = FileModelStore({ File(root, "models") })
     val registry = ProviderRegistry(onnxVisionProviders(store), currentDeviceEnvironment())
-    val models = listOf(VisionModels.yolo26m, VisionModels.yunet, VisionModels.mobileFaceNetExpression,
+    val models = Yolo26Variant.entries.map { it.model } + listOf(VisionModels.yunet, VisionModels.mobileFaceNetExpression,
         VisionModels.palmDetection, VisionModels.handLandmarks)
     var bucket = -1
     store.install(models) { done, total ->
@@ -54,10 +54,25 @@ fun main(args: Array<String>) = runBlocking {
         repeat(3) { pipeline.analyze(camera) }
         val started = TimeSource.Monotonic.markNow()
         repeat(5) { pipeline.analyze(camera) }
-        println("PASS 640×480 frame with all three tasks: ${started.elapsedNow().inWholeMilliseconds / 5} ms on this machine")
+        val detector = registry.select(ObjectDetector)!!.displayName
+        println("PASS 640×480 frame with all three tasks ($detector): ${started.elapsedNow().inWholeMilliseconds / 5} ms on this machine")
         check(VisionTask.entries.all { pipeline.status[it] == VisionTaskStatus.Running }) { "A task failed: ${pipeline.status}" }
     } finally {
         pipeline.close()
+    }
+
+    // Each detector size on the same portrait and frame, to choose a default for a new device.
+    val portrait = sample(root, "portrait.jpg", portraitSha)
+    val camera = RgbaFrame(640, 480, ByteArray(640 * 480 * 4) { (it * 31 % 251).toByte() })
+    for (provider in registry.providers(ObjectDetector)) {
+        provider.open().use { detector ->
+            val person = detector.detect(portrait, 0.25f).filter { it.label == "person" }.maxOfOrNull { it.score }
+            check(person != null) { "${provider.displayName} missed the person in portrait.jpg" }
+            repeat(3) { detector.detect(camera, 0.25f) }
+            val started = TimeSource.Monotonic.markNow()
+            repeat(5) { detector.detect(camera, 0.25f) }
+            println("PASS ${provider.displayName}: person ${(person * 100).toInt()}%, ${started.elapsedNow().inWholeMilliseconds / 5} ms per 640×480 frame")
+        }
     }
 }
 
