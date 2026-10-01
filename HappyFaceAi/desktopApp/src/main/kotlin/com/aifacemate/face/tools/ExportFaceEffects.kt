@@ -111,6 +111,9 @@ fun main(args: Array<String>) {
                 check(bounds.top >= 0 && bounds.bottom <= height) { "Effect hidden on opening $width x $height: $effect" }
             }
             val close = tagged("effects.close").boundsInRoot
+            val firstRow = tagged("effects.preview.Fireworks").boundsInRoot
+            val secondRow = tagged("effects.preview.RainToSun").boundsInRoot
+            check(kotlin.math.abs(firstRow.width - secondRow.width) < 1f && firstRow.left == secondRow.left)
             check(close.height == 32f && close.top >= 0 && close.bottom <= height)
             val panel = tagged("effects.menu.panel").boundsInRoot
             check(panel.left == 0f && panel.top == 0f && panel.width == width.toFloat() && panel.height == height.toFloat())
@@ -123,14 +126,14 @@ fun main(args: Array<String>) {
             check(reportedMenuOpen)
             check(tagged("effects.controls.scroll").boundsInRoot.bottom == height - 12f)
             check(tagged("effects.menu.collapse").boundsInRoot.height == 32f) { "Popup padding tap leaked through to the scrim" }
-            click("effects.tab.settings")
+            click("effects.settings.toggle")
             scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
                 File(output, "settings-$width-$height.png").writeBytes(it.bytes)
             }; shots++
             click("effects.enabled"); check(!preferences.value.enabled)
             click("effects.enabled"); check(preferences.value.enabled)
             click("effects.emoji"); check(!preferences.value.emoji)
-            click("effects.tab.effects")
+            click("effects.settings.toggle")
             for (effect in EffectId.entries) {
                 click("effects.preview.${effect.name}")
                 check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })

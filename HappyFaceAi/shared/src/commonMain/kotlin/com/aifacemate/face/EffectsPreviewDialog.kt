@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,9 +13,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -75,57 +71,59 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
             }
         }
         @Composable fun Controls(modifier: Modifier) {
-            Column(modifier.testTag("effects.controls.pane"), verticalArrangement = Arrangement.spacedBy(if (compactControls) 4.dp else 8.dp)) {
+            val tileColor = Color(0xFF253038)
+            Column(modifier.testTag("effects.controls.pane"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (options) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 40.dp).heightIn(min = 48.dp).testTag("effects.enabled")
-                    .toggleable(preferences.enabled, role = Role.Switch, onValueChange = { onChange(preferences.copy(enabled = it)) }),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("开启惊喜特效", Modifier.weight(1f))
-                    Switch(preferences.enabled, onCheckedChange = null)
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("强度 ${(preferences.strength * 100).toInt()}%")
-                    Slider(preferences.strength, { onChange(preferences.copy(strength = it)) }, valueRange = .2f..1f,
-                        modifier = Modifier.weight(1f))
-                }
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("effects.emoji")
-                    .toggleable(preferences.emoji, role = Role.Switch, onValueChange = { onChange(preferences.copy(emoji = it)) }),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("使用 emoji 符号", Modifier.weight(1f))
-                    Switch(preferences.emoji, onCheckedChange = null)
-                }
-                if (!compactControls) Text("关闭 emoji 后使用自绘图形。", style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { onChange(preferences.copy(enabled = !preferences.enabled)) },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("effects.enabled"),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(6.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = if (preferences.enabled) MaterialTheme.colorScheme.primary else tileColor,
+                                contentColor = if (preferences.enabled) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current)) {
+                            Text(if (preferences.enabled) "特效已开启" else "特效已关闭")
+                        }
+                        FilledTonalButton(onClick = { onChange(preferences.copy(emoji = !preferences.emoji)) },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("effects.emoji"),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(6.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = if (preferences.emoji) MaterialTheme.colorScheme.primary else tileColor,
+                                contentColor = if (preferences.emoji) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current)) {
+                            Text(if (preferences.emoji) "emoji 已开启" else "使用自绘图形")
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("强度 ${(preferences.strength * 100).toInt()}%")
+                        Slider(preferences.strength, { onChange(preferences.copy(strength = it)) }, valueRange = .2f..1f,
+                            modifier = Modifier.weight(1f))
+                    }
                 } else {
-                if (!preferences.enabled) Text("特效已关闭，请在设置中开启。", style = MaterialTheme.typography.bodySmall)
-                EffectId.entries.chunked(effectColumns).forEachIndexed { index, effects ->
-                  Row(Modifier.fillMaxWidth().then(if (index == 0) Modifier.padding(horizontal = 40.dp) else Modifier), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                  effects.forEach { effect ->
-                    OutlinedButton(enabled = preferences.enabled, modifier = Modifier.weight(1f).heightIn(min = 40.dp).testTag("effects.preview.${effect.name}"),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        onClick = {
-                            sequence++
-                            val next = EffectScene("preview-$sequence", effect, clock.elapsedNow().inWholeMilliseconds, 100, sequence)
-                            controller.clear(); controller.play(next, next.startedAtMillis); scene = next
-                            setMenuOpen(false)
-                        }) { Text(effect.label) }
-                  }
-                  }
-                }
-                TextButton(onClick = { controller.clear(); scene = null }, modifier = Modifier.heightIn(min = 32.dp).testTag("effects.stop")) { Text("停止特效") }
+                    if (!preferences.enabled) Text("特效已关闭，点击齿轮开启。", style = MaterialTheme.typography.bodySmall)
+                    EffectId.entries.chunked(effectColumns).forEach { effects ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            effects.forEach { effect ->
+                                FilledTonalButton(enabled = preferences.enabled,
+                                    modifier = Modifier.weight(1f).heightIn(min = if (compactControls) 48.dp else 64.dp).testTag("effects.preview.${effect.name}"),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = tileColor, contentColor = LocalContentColor.current),
+                                    onClick = {
+                                        sequence++
+                                        val next = EffectScene("preview-$sequence", effect, clock.elapsedNow().inWholeMilliseconds, 100, sequence)
+                                        controller.clear(); controller.play(next, next.startedAtMillis); scene = next
+                                        setMenuOpen(false)
+                                    }) { Text(effect.label) }
+                            }
+                        }
+                    }
+                    TextButton(onClick = { controller.clear(); scene = null }, modifier = Modifier.heightIn(min = 32.dp).testTag("effects.stop")) { Text("停止特效") }
                 }
             }
         }
         Preview(Modifier.fillMaxSize())
         FullscreenPreviewMenu(controlsOpen, { setMenuOpen(true) }, { setMenuOpen(false) },
             prefix = "effects", description = "特效菜单",
-            onBack = onClose, backTag = "effects.close", navigation = {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(onClick = { options = false }, modifier = Modifier.heightIn(min = 32.dp).testTag("effects.tab.effects"),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)) { Text("效果", color = if (!options) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
-                    TextButton(onClick = { options = true }, modifier = Modifier.heightIn(min = 32.dp).testTag("effects.tab.settings"),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)) { Text("设置", color = if (options) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
-                }
-            }) {
+            onBack = onClose, backTag = "effects.close", settings = options, onSettingsToggle = { options = !options }, contentMaxWidth = 560.dp) {
             Controls(Modifier.fillMaxWidth())
         }
     }

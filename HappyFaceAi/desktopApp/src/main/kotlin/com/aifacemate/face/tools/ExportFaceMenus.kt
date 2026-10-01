@@ -5,6 +5,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import com.aifacemate.face.model.FaceExpression
@@ -52,7 +53,9 @@ fun main(args: Array<String>) {
                     check(reached) { "$width x $height cannot reach $tag" }
                 }
                 check(tagged(tag).boundsInRoot.height >= 31)
-                check(tagged(tag).config[SemanticsActions.OnClick].action!!.invoke()); frame()
+                val point = tagged(tag).boundsInRoot.center
+                scene.sendPointerEvent(PointerEventType.Press, point); frame()
+                scene.sendPointerEvent(PointerEventType.Release, point); frame()
             }
             fun save(state: String) {
                 scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
@@ -68,14 +71,17 @@ fun main(args: Array<String>) {
             val panel = tagged("face.menu.panel").boundsInRoot
             check(panel.left == 0f && panel.top == 0f && panel.width == width.toFloat() && panel.height == height.toFloat())
             check(nodes().count { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("face.expression.") == true } == 100)
+            val widths = nodes().filter { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("face.expression.") == true }.map { it.boundsInRoot.width }.filter { it > 0f }
+            check(widths.max() - widths.min() <= 1f) { "Expression options have uneven widths: $widths" }
+            check(tagged("face.controls.content").boundsInRoot.width <= 880f)
             val area = tagged("face.controls.scroll").boundsInRoot
             val collapse = tagged("face.menu.collapse").boundsInRoot
             check(area.top == 12f && area.bottom == height - 12f) { "Close control reserved a header row: $area" }
             check(collapse.width == 32f && collapse.height == 32f && collapse.top == 12f)
             save("menu")
-            click("face.tab.settings"); save("settings"); click("face.life"); click("face.glow"); check(glow.value == 0f)
+            click("face.settings.toggle"); save("settings"); click("face.life"); click("face.glow"); check(glow.value == 0f)
             click("face.surface.DEVICE_SCREEN")
-            click("face.tab.expressions"); click("face.expression.HAPPY"); check(expression.value == FaceExpression.HAPPY && !open)
+            click("face.settings.toggle"); click("face.expression.HAPPY"); check(expression.value == FaceExpression.HAPPY && !open)
             click("face.menu")
             click("face.expression.NEW_DAY"); check(expression.value == FaceExpression.NEW_DAY && !open)
             click("face.menu"); closeSignal.value++; repeat(3) { frame() }; check(!open)

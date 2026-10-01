@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,7 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,7 +45,7 @@ import com.aifacemate.face.render.PANEL_ASPECT_RATIO
 private val StageTop = Color(0xFF241B16)
 private val StageBottom = Color(0xFF09090C)
 
-private val Accent = Color(0xFFFFC46B)
+private val Accent = Color(0xFFF1C779)
 
 
 /**
@@ -98,12 +95,7 @@ fun FacePreviewScreen(
             Modifier.fillMaxSize().testTag("face.preview.pane"))
         FullscreenPreviewMenu(menuOpen, { setMenuOpen(true) }, { setMenuOpen(false) },
             prefix = "face", description = "表情菜单",
-            onBack = onBack, navigation = {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    CompactChip("表情", !options, { options = false }, Modifier.testTag("face.tab.expressions"), compact = true)
-                    CompactChip("设置", options, { options = true }, Modifier.testTag("face.tab.settings"), compact = true)
-                }
-            }) {
+            onBack = onBack, settings = options, onSettingsToggle = { options = !options }) {
             ControlPane(currentExpression, selectExpression, animate, { animate = it }, surface, { surface = it },
                 currentDiffuseGlow, selectDiffuseGlow, options, compactControls, Modifier.fillMaxWidth())
         }
@@ -167,7 +159,6 @@ private fun PreviewPane(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ControlPane(
     expression: FaceExpression, onExpressionChange: (FaceExpression) -> Unit,
@@ -178,35 +169,43 @@ private fun ControlPane(
     compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
+    BoxWithConstraints(modifier) {
+    val gap = if (compact) 6.dp else 8.dp
+    val columns = ((maxWidth.value + gap.value) / ((if (compact) 68f else 88f) + gap.value)).toInt().coerceIn(2, 10)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
         if (!options) Text("${expression.cnName} · ${expression.ordinal + 1} / 100",
             color = Color.White.copy(alpha = .7f), fontSize = 13.sp,
-            modifier = Modifier.padding(horizontal = 40.dp).heightIn(min = 32.dp).testTag("face.current"))
+            modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp).testTag("face.current"),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         if (options) {
-        FlowRow(Modifier.padding(horizontal = 40.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            CompactChip("生命感", animate, { onAnimateChange(!animate) }, Modifier.testTag("face.life"))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+            CompactChip("生命感", animate, { onAnimateChange(!animate) }, Modifier.weight(1f).testTag("face.life"))
             CompactChip("扩散光晕", diffuseGlow > .01f,
-                { onDiffuseGlowChange(if (diffuseGlow > .01f) 0f else DEFAULT_DIFFUSE_GLOW) }, Modifier.testTag("face.glow"))
+                { onDiffuseGlowChange(if (diffuseGlow > .01f) 0f else DEFAULT_DIFFUSE_GLOW) }, Modifier.weight(1f).testTag("face.glow"))
         }
         Text("渲染表面", color = Color.White.copy(alpha = .65f), fontSize = 12.sp)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
             CompactChip("整机概念图", surface == FaceSurface.PRODUCT_MOCKUP,
-                { onSurfaceChange(FaceSurface.PRODUCT_MOCKUP) }, Modifier.testTag("face.surface.PRODUCT_MOCKUP"))
+                { onSurfaceChange(FaceSurface.PRODUCT_MOCKUP) }, Modifier.weight(1f).testTag("face.surface.PRODUCT_MOCKUP"))
             CompactChip("实机屏幕", surface == FaceSurface.DEVICE_SCREEN,
-                { onSurfaceChange(FaceSurface.DEVICE_SCREEN) }, Modifier.testTag("face.surface.DEVICE_SCREEN"))
+                { onSurfaceChange(FaceSurface.DEVICE_SCREEN) }, Modifier.weight(1f).testTag("face.surface.DEVICE_SCREEN"))
         }
         HorizontalDivider(color = Color.White.copy(alpha = .08f))
         } else {
         expressionGroups().forEach { group ->
-            Text("${group.title} · ${group.expressions.size}", color = Color.White.copy(alpha = .6f), fontSize = 12.sp)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                group.expressions.forEach { item ->
+            Text(group.title, color = Color.White.copy(alpha = .45f), fontSize = 11.sp)
+            group.expressions.chunked(columns).forEach { row ->
+              Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                row.forEach { item ->
                     CompactChip(item.cnName, item == expression, { onExpressionChange(item) },
-                        Modifier.testTag("face.expression.${item.name}"), compact = compact)
+                        Modifier.weight(1f).testTag("face.expression.${item.name}"), compact = compact)
                 }
+                repeat(columns - row.size) { androidx.compose.foundation.layout.Spacer(Modifier.weight(1f)) }
+              }
             }
         }
         }
+    }
     }
 }
 /**
@@ -224,19 +223,20 @@ private fun CompactChip(
     val chosen = selected
     Box(
         modifier = modifier
-            .heightIn(min = if (compact) 32.dp else 48.dp).widthIn(min = if (compact) 54.dp else 64.dp)
+            .heightIn(min = if (compact) 40.dp else 48.dp, max = if (compact) 40.dp else 48.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) Accent else Color.White.copy(alpha = 0.08f))
+            .background(if (selected) Accent else Color(0xFF253038))
             .clickable(onClick = onClick)
             .semantics { this.selected = chosen }
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .padding(horizontal = 6.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             color = if (selected) Color.Black else Color.White.copy(alpha = 0.78f),
             fontSize = 12.sp,
-            maxLines = 1,
+            maxLines = 2,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
     }
 }

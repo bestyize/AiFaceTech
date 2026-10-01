@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -21,12 +20,16 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import kotlin.math.cos
+import kotlin.math.sin
 
 /** Same full-screen control surface for face and effects previews; no page title bar. */
 @Composable
 fun FullscreenPreviewMenu(open: Boolean, onOpen: () -> Unit, onCollapse: () -> Unit,
     prefix: String, description: String, onBack: (() -> Unit)? = null, backTag: String = "$prefix.back",
-    navigation: @Composable () -> Unit,
+    settings: Boolean, onSettingsToggle: () -> Unit,
+    contentMaxWidth: Dp = 880.dp,
     content: @Composable ColumnScope.() -> Unit) {
     Box(Modifier.fillMaxSize()) {
         if (!open) IconButton(onClick = onOpen,
@@ -40,15 +43,30 @@ fun FullscreenPreviewMenu(open: Boolean, onOpen: () -> Unit, onCollapse: () -> U
             }
         }
         if (open) Surface(Modifier.fillMaxSize().testTag("$prefix.menu.panel"),
-            color = Color(0xF0181F22), contentColor = Color(0xFFF4F3EF)) {
+            color = Color(0xFA12191E), contentColor = Color(0xFFF4F3EF)) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("$prefix.controls.scroll")
-                    .padding(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = content)
-                Box(Modifier.align(Alignment.BottomEnd).clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xF0181F22)).testTag("$prefix.navigation")) {
-                    navigation()
+                    .padding(bottom = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.widthIn(max = contentMaxWidth).fillMaxWidth().testTag("$prefix.controls.content"),
+                        verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+                }
+                Box(Modifier.align(Alignment.BottomEnd).size(32.dp).clip(CircleShape)
+                    .background(if (settings) Color(0xFFF1C779) else Color(0xFF29343C))
+                    .clickable(role = Role.Button, onClick = onSettingsToggle).testTag("$prefix.settings.toggle")
+                    .semantics { contentDescription = if (settings) "返回选项" else "打开设置" }, contentAlignment = Alignment.Center) {
+                    Canvas(Modifier.size(16.dp)) {
+                        val color = if (settings) Color(0xFF221D13) else Color(0xFFF4F3EF)
+                        drawCircle(color, radius = size.width * .28f, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                        repeat(8) { i ->
+                            val angle = i * kotlin.math.PI / 4
+                            val direction = Offset(cos(angle).toFloat(), sin(angle).toFloat())
+                            drawLine(color, center + direction * (size.width * .32f), center + direction * (size.width * .44f), 1.5.dp.toPx(), StrokeCap.Round)
+                        }
+                        drawCircle(color, radius = size.width * .08f)
+                    }
                 }
                 Box(Modifier.align(Alignment.TopEnd).size(32.dp).clip(CircleShape)
+                    .background(Color(0xEB29343C))
                     .clickable(role = Role.Button, onClick = onCollapse).testTag("$prefix.menu.collapse")
                     .semantics { contentDescription = "收起$description" }, contentAlignment = Alignment.Center) {
                     Canvas(Modifier.size(14.dp)) {
@@ -59,7 +77,8 @@ fun FullscreenPreviewMenu(open: Boolean, onOpen: () -> Unit, onCollapse: () -> U
             }
         }
         if (onBack != null) Box(Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(12.dp)
-            .size(32.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onBack).testTag(backTag)
+            .size(32.dp).clip(CircleShape).background(Color(0xEB29343C))
+            .clickable(role = Role.Button, onClick = onBack).testTag(backTag)
             .semantics { contentDescription = "返回上一页" }, contentAlignment = Alignment.Center) {
             Canvas(Modifier.size(14.dp)) {
                 val color = Color.White.copy(alpha = .8f)
