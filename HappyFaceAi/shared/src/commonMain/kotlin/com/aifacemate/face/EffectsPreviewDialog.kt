@@ -20,6 +20,7 @@ import com.aifacemate.face.effects.*
 import com.aifacemate.face.model.FaceExpression
 import com.aifacemate.face.ui.FaceDisplay
 import com.aifacemate.face.ui.FullscreenPreviewMenu
+import com.aifacemate.face.ui.PreviewSettingsSection
 import kotlinx.coroutines.delay
 import kotlin.time.TimeSource
 
@@ -73,7 +74,7 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
         @Composable fun Controls(modifier: Modifier) {
             val tileColor = Color(0xFF253038)
             Column(modifier.testTag("effects.controls.pane"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (options) {
+                PreviewSettingsSection("播放设置", options, { options = !options }, "effects") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilledTonalButton(onClick = { onChange(preferences.copy(enabled = !preferences.enabled)) },
                             modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("effects.enabled"),
@@ -97,8 +98,8 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
                         Slider(preferences.strength, { onChange(preferences.copy(strength = it)) }, valueRange = .2f..1f,
                             modifier = Modifier.weight(1f))
                     }
-                } else {
-                    if (!preferences.enabled) Text("特效已关闭，点击齿轮开启。", style = MaterialTheme.typography.bodySmall)
+                }
+                    if (!preferences.enabled) Text("特效已关闭，请展开播放设置开启。", style = MaterialTheme.typography.bodySmall)
                     EffectId.entries.chunked(effectColumns).forEach { effects ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             effects.forEach { effect ->
@@ -117,13 +118,12 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
                         }
                     }
                     TextButton(onClick = { controller.clear(); scene = null }, modifier = Modifier.heightIn(min = 32.dp).testTag("effects.stop")) { Text("停止特效") }
-                }
             }
         }
         Preview(Modifier.fillMaxSize())
         FullscreenPreviewMenu(controlsOpen, { setMenuOpen(true) }, { setMenuOpen(false) },
             prefix = "effects", description = "特效菜单",
-            onBack = onClose, backTag = "effects.close", settings = options, onSettingsToggle = { options = !options }, contentMaxWidth = 560.dp) {
+            onBack = onClose, backTag = "effects.close", contentMaxWidth = 560.dp) {
             Controls(Modifier.fillMaxWidth())
         }
     }

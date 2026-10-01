@@ -21,14 +21,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
-import kotlin.math.cos
-import kotlin.math.sin
 
 /** Same full-screen control surface for face and effects previews; no page title bar. */
 @Composable
 fun FullscreenPreviewMenu(open: Boolean, onOpen: () -> Unit, onCollapse: () -> Unit,
     prefix: String, description: String, onBack: (() -> Unit)? = null, backTag: String = "$prefix.back",
-    settings: Boolean, onSettingsToggle: () -> Unit,
     contentMaxWidth: Dp = 880.dp,
     content: @Composable ColumnScope.() -> Unit) {
     Box(Modifier.fillMaxSize()) {
@@ -45,25 +42,9 @@ fun FullscreenPreviewMenu(open: Boolean, onOpen: () -> Unit, onCollapse: () -> U
         if (open) Surface(Modifier.fillMaxSize().testTag("$prefix.menu.panel"),
             color = Color(0xFA12191E), contentColor = Color(0xFFF4F3EF)) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("$prefix.controls.scroll")
-                    .padding(bottom = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("$prefix.controls.scroll"), horizontalAlignment = Alignment.CenterHorizontally) {
                     Column(Modifier.widthIn(max = contentMaxWidth).fillMaxWidth().testTag("$prefix.controls.content"),
                         verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
-                }
-                Box(Modifier.align(Alignment.BottomEnd).size(32.dp).clip(CircleShape)
-                    .background(if (settings) Color(0xFFF1C779) else Color(0xFF29343C))
-                    .clickable(role = Role.Button, onClick = onSettingsToggle).testTag("$prefix.settings.toggle")
-                    .semantics { contentDescription = if (settings) "返回选项" else "打开设置" }, contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.size(16.dp)) {
-                        val color = if (settings) Color(0xFF221D13) else Color(0xFFF4F3EF)
-                        drawCircle(color, radius = size.width * .28f, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
-                        repeat(8) { i ->
-                            val angle = i * kotlin.math.PI / 4
-                            val direction = Offset(cos(angle).toFloat(), sin(angle).toFloat())
-                            drawLine(color, center + direction * (size.width * .32f), center + direction * (size.width * .44f), 1.5.dp.toPx(), StrokeCap.Round)
-                        }
-                        drawCircle(color, radius = size.width * .08f)
-                    }
                 }
                 Box(Modifier.align(Alignment.TopEnd).size(32.dp).clip(CircleShape)
                     .background(Color(0xEB29343C))
@@ -87,5 +68,24 @@ fun FullscreenPreviewMenu(open: Boolean, onOpen: () -> Unit, onCollapse: () -> U
                 drawLine(color, Offset(2f, size.height / 2), Offset(size.width * .45f, size.height - 2f), 2f, StrokeCap.Round)
             }
         }
+    }
+}
+
+/** Inline section at the start of the option list, independent of floating navigation. */
+@Composable
+fun PreviewSettingsSection(title: String, expanded: Boolean, onToggle: () -> Unit, prefix: String,
+    content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .background(Color(0xFF202A31)).clickable(role = Role.Button, onClick = onToggle)
+            .testTag("$prefix.settings.toggle").semantics {
+                contentDescription = "$title，${if (expanded) "收起" else "展开"}"
+            }, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = Color(0xFFF4F3EF), style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.width(12.dp))
+            Text(if (expanded) "收起 ▴" else "展开 ▾", color = Color(0xFFB6BDC1), style = MaterialTheme.typography.labelSmall)
+        }
+        if (expanded) Column(Modifier.fillMaxWidth().testTag("$prefix.settings.section"),
+            verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
 }

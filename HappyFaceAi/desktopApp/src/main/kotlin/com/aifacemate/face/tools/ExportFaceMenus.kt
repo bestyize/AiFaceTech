@@ -38,7 +38,7 @@ fun main(args: Array<String>) {
             }
             fun tagged(tag: String) = nodes().first { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
             fun click(tag: String) {
-                if (tag.startsWith("face.expression.") || tag in listOf("face.life", "face.glow", "face.surface.DEVICE_SCREEN")) {
+                if (tag.startsWith("face.expression.") || tag in listOf("face.life", "face.glow", "face.surface.DEVICE_SCREEN", "face.settings.toggle")) {
                     val container = tagged("face.controls.scroll")
                     val scroll = container.config[SemanticsActions.ScrollBy].action!!
                     val range = container.config[SemanticsProperties.VerticalScrollAxisRange]
@@ -79,7 +79,7 @@ fun main(args: Array<String>) {
             check(area.top == 12f && area.bottom == height - 12f) { "Close control reserved a header row: $area" }
             check(collapse.width == 32f && collapse.height == 32f && collapse.top == 12f)
             save("menu")
-            click("face.settings.toggle"); save("settings"); click("face.life"); click("face.glow"); check(glow.value == 0f)
+            click("face.settings.toggle"); check(nodes().count { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("face.expression.") == true } == 100); save("settings"); click("face.life"); click("face.glow"); check(glow.value == 0f)
             click("face.surface.DEVICE_SCREEN")
             click("face.settings.toggle"); click("face.expression.HAPPY"); check(expression.value == FaceExpression.HAPPY && !open)
             click("face.menu")

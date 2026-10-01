@@ -95,9 +95,9 @@ fun FacePreviewScreen(
             Modifier.fillMaxSize().testTag("face.preview.pane"))
         FullscreenPreviewMenu(menuOpen, { setMenuOpen(true) }, { setMenuOpen(false) },
             prefix = "face", description = "表情菜单",
-            onBack = onBack, settings = options, onSettingsToggle = { options = !options }) {
+            onBack = onBack) {
             ControlPane(currentExpression, selectExpression, animate, { animate = it }, surface, { surface = it },
-                currentDiffuseGlow, selectDiffuseGlow, options, compactControls, Modifier.fillMaxWidth())
+                currentDiffuseGlow, selectDiffuseGlow, options, { options = !options }, compactControls, Modifier.fillMaxWidth())
         }
     }
 }
@@ -166,6 +166,7 @@ private fun ControlPane(
     surface: FaceSurface, onSurfaceChange: (FaceSurface) -> Unit,
     diffuseGlow: Float, onDiffuseGlowChange: (Float) -> Unit,
     options: Boolean,
+    onOptionsToggle: () -> Unit,
     compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -173,11 +174,7 @@ private fun ControlPane(
     val gap = if (compact) 6.dp else 8.dp
     val columns = ((maxWidth.value + gap.value) / ((if (compact) 68f else 88f) + gap.value)).toInt().coerceIn(2, 10)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
-        if (!options) Text("${expression.cnName} · ${expression.ordinal + 1} / 100",
-            color = Color.White.copy(alpha = .7f), fontSize = 13.sp,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp).testTag("face.current"),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        if (options) {
+        PreviewSettingsSection("显示设置", options, onOptionsToggle, "face") {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
             CompactChip("生命感", animate, { onAnimateChange(!animate) }, Modifier.weight(1f).testTag("face.life"))
             CompactChip("扩散光晕", diffuseGlow > .01f,
@@ -191,7 +188,11 @@ private fun ControlPane(
                 { onSurfaceChange(FaceSurface.DEVICE_SCREEN) }, Modifier.weight(1f).testTag("face.surface.DEVICE_SCREEN"))
         }
         HorizontalDivider(color = Color.White.copy(alpha = .08f))
-        } else {
+        }
+        Text("${expression.cnName} · ${expression.ordinal + 1} / 100",
+            color = Color.White.copy(alpha = .7f), fontSize = 13.sp,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp).testTag("face.current"),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         expressionGroups().forEach { group ->
             Text(group.title, color = Color.White.copy(alpha = .45f), fontSize = 11.sp)
             group.expressions.chunked(columns).forEach { row ->
@@ -203,7 +204,6 @@ private fun ControlPane(
                 repeat(columns - row.size) { androidx.compose.foundation.layout.Spacer(Modifier.weight(1f)) }
               }
             }
-        }
         }
     }
     }
