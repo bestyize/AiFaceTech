@@ -5,6 +5,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import com.aifacemate.face.model.FaceExpression
@@ -37,7 +38,7 @@ fun main(args: Array<String>) {
             }
             fun tagged(tag: String) = nodes().first { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
             fun click(tag: String) {
-                if (tag.startsWith("face.expression.") || tag in listOf("face.life", "face.glow", "face.surface.DEVICE_SCREEN")) {
+                if (tag.startsWith("face.expression.") || tag in listOf("face.life", "face.glow", "face.surface.DEVICE_SCREEN", "face.settings.toggle")) {
                     val container = tagged("face.controls.scroll")
                     val scroll = container.config[SemanticsActions.ScrollBy].action!!
                     val range = container.config[SemanticsProperties.VerticalScrollAxisRange]
@@ -46,13 +47,15 @@ fun main(args: Array<String>) {
                     for (step in 0..(range.maxValue() / 16).toInt() + 10) {
                         val bounds = tagged(tag).boundsInRoot
                         val area = tagged("face.controls.scroll").boundsInRoot
-                        if (bounds.height >= 47 && bounds.top >= area.top && bounds.bottom <= area.bottom) { reached = true; break }
+                        if (bounds.height >= 31 && bounds.top >= area.top && bounds.bottom <= area.bottom) { reached = true; break }
                         scroll(0f, 16f); repeat(8) { frame() }
                     }
                     check(reached) { "$width x $height cannot reach $tag" }
                 }
-                check(tagged(tag).boundsInRoot.height >= if (tag == "face.menu.collapse") 32 else 47)
-                check(tagged(tag).config[SemanticsActions.OnClick].action!!.invoke()); frame()
+                check(tagged(tag).boundsInRoot.height >= 31)
+                val point = tagged(tag).boundsInRoot.center
+                scene.sendPointerEvent(PointerEventType.Press, point); frame()
+                scene.sendPointerEvent(PointerEventType.Release, point); frame()
             }
             fun save(state: String) {
                 scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
@@ -68,19 +71,22 @@ fun main(args: Array<String>) {
             val panel = tagged("face.menu.panel").boundsInRoot
             check(panel.left == 0f && panel.top == 0f && panel.width == width.toFloat() && panel.height == height.toFloat())
             check(nodes().count { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("face.expression.") == true } == 100)
+            val widths = nodes().filter { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("face.expression.") == true }.map { it.boundsInRoot.width }.filter { it > 0f }
+            check(widths.max() - widths.min() <= 1f) { "Expression options have uneven widths: $widths" }
+            check(tagged("face.controls.content").boundsInRoot.width <= 880f)
             val area = tagged("face.controls.scroll").boundsInRoot
             val collapse = tagged("face.menu.collapse").boundsInRoot
-            check(area.top == 12f) { "Close control reserved a header row: $area" }
-            check(collapse.width == 32f && collapse.height == 32f && collapse.left >= area.right)
+            check(area.top == 12f && area.bottom == height - 12f) { "Close control reserved a header row: $area" }
+            check(collapse.width == 32f && collapse.height == 32f && collapse.top == 12f)
             save("menu")
-            click("face.life"); click("face.glow"); check(glow.value == 0f)
+            click("face.settings.toggle"); check(nodes().count { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("face.expression.") == true } == 100); save("settings"); click("face.life"); click("face.glow"); check(glow.value == 0f)
             click("face.surface.DEVICE_SCREEN")
-            click("face.expression.HAPPY"); check(expression.value == FaceExpression.HAPPY && !open)
+            click("face.settings.toggle"); click("face.expression.HAPPY"); check(expression.value == FaceExpression.HAPPY && !open)
             click("face.menu")
             click("face.expression.NEW_DAY"); check(expression.value == FaceExpression.NEW_DAY && !open)
             click("face.menu"); closeSignal.value++; repeat(3) { frame() }; check(!open)
             click("face.menu"); click("face.menu.collapse"); check(!open)
-            click("face.menu"); click("face.back"); check(returned)
+            click("face.back"); check(returned)
             println("PASS face menu $width x $height: full-screen, 100 expressions, scrolling, toggles and return")
         } finally { scene.close() }
     }

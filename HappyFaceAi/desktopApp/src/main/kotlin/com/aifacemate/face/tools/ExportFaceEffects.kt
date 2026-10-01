@@ -80,7 +80,7 @@ fun main(args: Array<String>) {
                 repeat((range.maxValue() / 16).toInt() + 8) {
                     val bounds = tagged(tag).boundsInRoot
                     val area = nodes().first { it.id == container.id }.boundsInRoot
-                    if (bounds.height >= 47f && bounds.top >= area.top && bounds.bottom <= area.bottom) return
+                    if (bounds.height >= 31f && bounds.top >= area.top && bounds.bottom <= area.bottom) return
                     scroll(0f, 16f); repeat(8) { frame() }
                 }
                 error("$width x $height cannot reach $tag")
@@ -92,6 +92,7 @@ fun main(args: Array<String>) {
             }
             frame()
             check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })
+            check(tagged("effects.close").boundsInRoot.height == 32f)
             val menu = tagged("effects.menu").boundsInRoot
             check(menu.height >= 47 && menu.top >= 0 && menu.right <= width)
             val preview = tagged("effects.preview.pane").boundsInRoot
@@ -103,10 +104,17 @@ fun main(args: Array<String>) {
             }; shots++
             click("effects.menu")
             check(reportedMenuOpen)
-            check(tagged("effects.controls.scroll").boundsInRoot.top == 12f)
+            check(tagged("effects.controls.scroll").boundsInRoot.bottom == height - 12f)
             check(tagged("effects.menu.collapse").boundsInRoot.height == 32f)
+            for (effect in EffectId.entries) {
+                val bounds = tagged("effects.preview.${effect.name}").boundsInRoot
+                check(bounds.top >= 0 && bounds.bottom <= height) { "Effect hidden on opening $width x $height: $effect" }
+            }
             val close = tagged("effects.close").boundsInRoot
-            check(close.height >= 47 && close.top >= 0 && close.bottom <= height)
+            val firstRow = tagged("effects.preview.Fireworks").boundsInRoot
+            val secondRow = tagged("effects.preview.RainToSun").boundsInRoot
+            check(kotlin.math.abs(firstRow.width - secondRow.width) < 1f && firstRow.left == secondRow.left)
+            check(close.height == 32f && close.top >= 0 && close.bottom <= height)
             val panel = tagged("effects.menu.panel").boundsInRoot
             check(panel.left == 0f && panel.top == 0f && panel.width == width.toFloat() && panel.height == height.toFloat())
             scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
@@ -116,11 +124,16 @@ fun main(args: Array<String>) {
             scene.sendPointerEvent(PointerEventType.Press, padding); frame()
             scene.sendPointerEvent(PointerEventType.Release, padding); frame()
             check(reportedMenuOpen)
-            check(tagged("effects.controls.scroll").boundsInRoot.top == 12f)
+            check(tagged("effects.controls.scroll").boundsInRoot.bottom == height - 12f)
             check(tagged("effects.menu.collapse").boundsInRoot.height == 32f) { "Popup padding tap leaked through to the scrim" }
+            click("effects.settings.toggle")
+            scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
+                File(output, "settings-$width-$height.png").writeBytes(it.bytes)
+            }; shots++
             click("effects.enabled"); check(!preferences.value.enabled)
             click("effects.enabled"); check(preferences.value.enabled)
             click("effects.emoji"); check(!preferences.value.emoji)
+            click("effects.settings.toggle")
             for (effect in EffectId.entries) {
                 click("effects.preview.${effect.name}")
                 check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })
@@ -131,7 +144,7 @@ fun main(args: Array<String>) {
             closeMenuSignal.value++; repeat(3) { frame() }
             check(!reportedMenuOpen && nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })
             click("effects.menu")
-            click("effects.stop"); click("effects.close"); check(closed)
+            click("effects.stop"); click("effects.menu.collapse"); click("effects.close"); check(closed)
             scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
                 File(output, "preview-$width-$height.png").writeBytes(it.bytes)
             }; shots++
