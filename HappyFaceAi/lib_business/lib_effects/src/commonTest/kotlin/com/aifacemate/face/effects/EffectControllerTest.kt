@@ -3,6 +3,12 @@ package com.aifacemate.face.effects
 import kotlin.test.*
 
 class EffectControllerTest {
+    @Test fun mutedEventsCannotReplayWhenEffectsAreEnabledAgain() {
+        val controller = EffectController()
+        controller.discard("muted")
+        assertFalse(controller.play(EffectScene("muted", EffectId.Hearts, 0), 100))
+        assertTrue(controller.play(EffectScene("fresh", EffectId.Hearts, 100), 100))
+    }
     @Test fun expiryCancellationAndDuplicatesNeverQueueAReplay() {
         val controller = EffectController()
         val scene = EffectScene("one", EffectId.Fireworks, 0)

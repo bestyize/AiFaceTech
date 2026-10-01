@@ -9,6 +9,7 @@
 | `lib_common:lib_storage` | SettingsStore 的 Android、iOS、JVM 实现 | 平台 SDK |
 | `lib_common:lib_ui` | 可复用弹窗和 Toast | lib_theme |
 | `lib_business:lib_face` | 表情参数、动画、Canvas 与预览组件 | Compose |
+| `lib_business:lib_effects` | 惊喜场景请求、去重/优先级/生命周期、透明粒子与符号图层 | Compose |
 | `lib_business:lib_behavior` | 统一事件、交互阶段、表情决策、反应时长与冷却 | lib_face |
 | `lib_business:lib_models` | 供应商目录、模型能力识别与平台 HTTP 请求 | Kotlin / coroutines |
 | `lib_business:lib_brains` | AI 大脑状态、设置、交互页面 | lib_models、lib_storage、lib_ui、lib_resource |

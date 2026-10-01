@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import com.aifacemate.face.*
@@ -53,9 +55,12 @@ fun main(args: Array<String>) {
     for ((width, height) in listOf(320 to 240, 480 to 320, 800 to 480, 390 to 844)) {
         val preferences = mutableStateOf(FaceEffectsPreferences())
         var closed = false
+        var reportedMenuOpen = false
+        val closeMenuSignal = mutableStateOf(0)
         val scene = ImageComposeScene(width, height, Density(1f)) {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                EffectsPreviewContent(preferences.value, { preferences.value = it }, { closed = true })
+                EffectsPreviewContent(preferences.value, { preferences.value = it }, { closed = true },
+                    onMenuOpenChange = { reportedMenuOpen = it }, closeMenuSignal = closeMenuSignal.value)
             }
         }
         try {
@@ -66,17 +71,66 @@ fun main(args: Array<String>) {
                 return scene.semanticsOwners.flatMap { visit(it.rootSemanticsNode) }
             }
             fun tagged(tag: String) = nodes().first { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
+            fun scrollTo(tag: String) {
+                fun contains(n: SemanticsNode): Boolean = n.config.getOrNull(SemanticsProperties.TestTag) == tag || n.children.any(::contains)
+                val container = nodes().firstOrNull { it.config.contains(SemanticsActions.ScrollBy) && contains(it) } ?: return
+                val scroll = container.config[SemanticsActions.ScrollBy].action!!
+                val range = container.config[SemanticsProperties.VerticalScrollAxisRange]
+                scroll(0f, -range.maxValue()); repeat(8) { frame() }
+                repeat((range.maxValue() / 16).toInt() + 8) {
+                    val bounds = tagged(tag).boundsInRoot
+                    val area = nodes().first { it.id == container.id }.boundsInRoot
+                    if (bounds.height >= 47f && bounds.top >= area.top && bounds.bottom <= area.bottom) return
+                    scroll(0f, 16f); repeat(8) { frame() }
+                }
+                error("$width x $height cannot reach $tag")
+            }
             fun click(tag: String) {
+                scrollTo(tag)
                 check(tagged(tag).config[SemanticsActions.OnClick].action!!.invoke())
                 frame()
             }
             frame()
+            check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })
+            val menu = tagged("effects.menu").boundsInRoot
+            check(menu.height >= 47 && menu.top >= 0 && menu.right <= width)
+            val preview = tagged("effects.preview.pane").boundsInRoot
+            val face = tagged("effects.preview.canvas").boundsInRoot
+            check(preview.width == width.toFloat() && preview.height == height.toFloat())
+            check(kotlin.math.abs(face.width / face.height - 16f / 9f) < .03f) { "Face preview was stretched: $face" }
+            scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
+                File(output, "preview-collapsed-$width-$height.png").writeBytes(it.bytes)
+            }; shots++
+            click("effects.menu")
+            check(reportedMenuOpen)
+            check(tagged("effects.controls.scroll").boundsInRoot.top == 12f)
+            check(tagged("effects.menu.collapse").boundsInRoot.height == 32f)
             val close = tagged("effects.close").boundsInRoot
             check(close.height >= 47 && close.top >= 0 && close.bottom <= height)
+            val panel = tagged("effects.menu.panel").boundsInRoot
+            check(panel.left == 0f && panel.top == 0f && panel.width == width.toFloat() && panel.height == height.toFloat())
+            scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
+                File(output, "preview-menu-$width-$height.png").writeBytes(it.bytes)
+            }; shots++
+            val padding = Offset((panel.left + panel.right) / 2, panel.top + 6)
+            scene.sendPointerEvent(PointerEventType.Press, padding); frame()
+            scene.sendPointerEvent(PointerEventType.Release, padding); frame()
+            check(reportedMenuOpen)
+            check(tagged("effects.controls.scroll").boundsInRoot.top == 12f)
+            check(tagged("effects.menu.collapse").boundsInRoot.height == 32f) { "Popup padding tap leaked through to the scrim" }
             click("effects.enabled"); check(!preferences.value.enabled)
             click("effects.enabled"); check(preferences.value.enabled)
             click("effects.emoji"); check(!preferences.value.emoji)
-            for (effect in EffectId.entries) click("effects.preview.${effect.name}")
+            for (effect in EffectId.entries) {
+                click("effects.preview.${effect.name}")
+                check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })
+                click("effects.menu")
+            }
+            click("effects.menu.collapse")
+            click("effects.menu")
+            closeMenuSignal.value++; repeat(3) { frame() }
+            check(!reportedMenuOpen && nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })
+            click("effects.menu")
             click("effects.stop"); click("effects.close"); check(closed)
             scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
                 File(output, "preview-$width-$height.png").writeBytes(it.bytes)

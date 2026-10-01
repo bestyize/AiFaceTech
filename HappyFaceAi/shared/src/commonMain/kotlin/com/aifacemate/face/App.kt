@@ -43,6 +43,8 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         var diffuseGlow by rememberSaveable { mutableStateOf(DEFAULT_DIFFUSE_GLOW) }
         var hud by remember { mutableStateOf(false) }
         var effectsPreview by remember { mutableStateOf(false) }
+        var faceMenuOpen by remember { mutableStateOf(false) }
+        var faceMenuCloseSignal by remember { mutableStateOf(0) }
         var effectsPreferences by remember { mutableStateOf(FaceEffectsSettings.load()) }
         val effects = remember { EffectController() }
         var effectScene by remember { mutableStateOf<EffectScene?>(null) }
@@ -78,7 +80,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
         }
         LifecycleEventEffect(Lifecycle.Event.ON_START) { appActive = true }
         LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-            appActive = false; closeVoice(); proactive.resetEvidence()
+            appActive = false; effectsPreview = false; closeVoice(); proactive.resetEvidence()
         }
         var behaviorState by remember { mutableStateOf(behavior.state(now())) }
         var lastProactiveDiagnosticAt by remember { mutableStateOf(-3000L) }
@@ -95,7 +97,7 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     }
                     effects.play(EffectScene("behavior-${intent.sequence}", effect, intent.createdAtMillis, intent.priority, intent.sequence.toInt()), time)
                     effectScene = effects.sceneAt(time)
-                }
+                } else effects.discard("behavior-${intent.sequence}")
             }
             if (event == BehaviorEvent.VoiceCancelled || event == BehaviorEvent.ResetInteraction) { effects.clear(); effectScene = null }
             if (event is BehaviorEvent.Vision) {
@@ -138,11 +140,12 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
             if (it == LifeRoute.Camera) {
                 cameraReturnRouteName = if (route == LifeRoute.Living) LifeRoute.Living.name else LifeRoute.Vision.name
             }
-            routeName = it.name; hud = false; effectsPreview = false; closeVoice()
+            routeName = it.name; hud = false; effectsPreview = false; faceMenuOpen = false; faceMenuCloseSignal = 0; closeVoice()
             dispatch(BehaviorEvent.ResetInteraction)
         }
         onBackHandler(route != LifeRoute.Living || hud || voiceOverlay || effectsPreview) {
             if (effectsPreview) effectsPreview = false
+            else if (route == LifeRoute.Appearance && faceMenuOpen) faceMenuCloseSignal++
             else if (voiceOverlay) closeVoice()
             else if (hud) hud = false else navigate(when (route) {
                 LifeRoute.LifeCenter -> LifeRoute.Living
@@ -165,12 +168,14 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         )
                     },
                     expression = behaviorState.expression,
+                    animate = appActive && !effectsPreview,
                     diffuseGlow = diffuseGlow,
                     listeningActivity = behaviorState.listeningActivity,
                     contentOffsetY = if (voiceOverlay) VOICE_FACE_OFFSET_Y else 0.dp,
                 )
                 if (appActive && !effectsPreview) EffectLayer(effectScene, now, strength = effectsPreferences.strength,
-                    useEmoji = effectsPreferences.emoji, quiet = behaviorState.phase != InteractionPhase.Idle)
+                    useEmoji = effectsPreferences.emoji, quiet = behaviorState.phase != InteractionPhase.Idle,
+                    faceOffsetY = if (voiceOverlay) VOICE_FACE_OFFSET_Y else 0.dp)
                 if (hud) Row(
                     Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(16.dp)
                         .background(Color(0xEE191C24), RoundedCornerShape(28.dp)).padding(8.dp)
@@ -231,6 +236,8 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                     diffuseGlow = diffuseGlow,
                     onDiffuseGlowChange = { diffuseGlow = it },
                     onBack = { navigate(LifeRoute.LifeCenter) },
+                    onMenuOpenChange = { faceMenuOpen = it },
+                    closeMenuSignal = faceMenuCloseSignal,
                 )
             }
             else -> FeaturePlaceholder(defaultFeatures.first { it.route == route }) { navigate(LifeRoute.LifeCenter) }

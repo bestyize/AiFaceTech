@@ -38,6 +38,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":lib_common:lib_ui"))
             api(libs.compose.runtime)
             api(libs.compose.foundation)
             api(libs.compose.ui)

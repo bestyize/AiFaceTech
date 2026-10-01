@@ -10,20 +10,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,11 +30,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -47,17 +47,13 @@ import com.aifacemate.face.render.PANEL_ASPECT_RATIO
 
 private val StageTop = Color(0xFF241B16)
 private val StageBottom = Color(0xFF09090C)
-private val PanelSurface = Color(0xFF121218)
+
 private val Accent = Color(0xFFFFC46B)
 
-/** 左预览 + 右操作 的分栏阈值；窄屏自动退化成上下布局。 */
-private val SIDE_BY_SIDE_THRESHOLD = 720.dp
 
 /**
- * 表情调试台：左边是预览区，右边是操作区。
- *
- * 操作区刻意做得紧凑：标题左侧，「生命感」与「返回上一页」收纳到右上角，
- * 渲染表面一行小胶囊，剩下的空间全部留给 100 个表情位（全部展开、可滚动）。
+ * 表情预览默认全屏显示，右上角菜单展开全屏半透明功能区。
+ * 功能区可滚动，选择表情后自动收起。
  *
  * 表情与「扩散光晕」开关都可以由外部托管：
  * 传进来就用外部的，不传就自己管，这样全屏页与调试台能共用同一份状态。
@@ -72,12 +68,18 @@ fun FacePreviewScreen(
     diffuseGlow: Float? = null,
     onDiffuseGlowChange: ((Float) -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    onMenuOpenChange: (Boolean) -> Unit = {},
+    closeMenuSignal: Int = 0,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
+    fun setMenuOpen(open: Boolean) { menuOpen = open; onMenuOpenChange(open) }
+    androidx.compose.runtime.LaunchedEffect(closeMenuSignal) { if (closeMenuSignal > 0) setMenuOpen(false) }
     // 外部托管表情时用外部的，否则自己管，方便单独预览这个页面
     var internalExpression by remember { mutableStateOf(FaceExpression.IDLE) }
     val currentExpression = expression ?: internalExpression
     val selectExpression: (FaceExpression) -> Unit = { selected ->
         if (onExpressionChange != null) onExpressionChange(selected) else internalExpression = selected
+        setMenuOpen(false)
     }
 
     var animate by remember { mutableStateOf(true) }
@@ -89,63 +91,21 @@ fun FacePreviewScreen(
         if (onDiffuseGlowChange != null) onDiffuseGlowChange(value) else internalDiffuseGlow = value
     }
 
-    BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(StageTop, StageBottom))),
-    ) {
-        val sideBySide = maxWidth >= SIDE_BY_SIDE_THRESHOLD
-        val controlWidth = minOf(420.dp, maxWidth * 0.42f)
-
-        if (sideBySide) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                PreviewPane(
-                    expression = currentExpression,
-                    animate = animate,
-                    surface = surface,
-                    diffuseGlow = currentDiffuseGlow,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-                ControlPane(
-                    expression = currentExpression,
-                    onExpressionChange = selectExpression,
-                    animate = animate,
-                    onAnimateChange = { animate = it },
-                    surface = surface,
-                    onSurfaceChange = { surface = it },
-                    diffuseGlow = currentDiffuseGlow,
-                    onDiffuseGlowChange = selectDiffuseGlow,
-                    onBack = onBack,
-                    modifier = Modifier.width(controlWidth).fillMaxHeight(),
-                )
-            }
-        } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                PreviewPane(
-                    expression = currentExpression,
-                    animate = animate,
-                    surface = surface,
-                    diffuseGlow = currentDiffuseGlow,
-                    modifier = Modifier.fillMaxWidth().weight(0.55f),
-                )
-                ControlPane(
-                    expression = currentExpression,
-                    onExpressionChange = selectExpression,
-                    animate = animate,
-                    onAnimateChange = { animate = it },
-                    surface = surface,
-                    onSurfaceChange = { surface = it },
-                    diffuseGlow = currentDiffuseGlow,
-                    onDiffuseGlowChange = selectDiffuseGlow,
-                    onBack = onBack,
-                    // 窄屏上下布局：预览占 55%、操作区占 45%，列表在操作区内滚动
-                    modifier = Modifier.fillMaxWidth().weight(0.45f),
-                )
-            }
+    Box(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(StageTop, StageBottom)))) {
+        PreviewPane(currentExpression, animate && !menuOpen, surface, currentDiffuseGlow,
+            Modifier.fillMaxSize().testTag("face.preview.pane"))
+        FullscreenPreviewMenu(menuOpen, { setMenuOpen(true) }, { setMenuOpen(false) },
+            prefix = "face", description = "表情菜单",
+            footer = if (onBack != null) ({
+                TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("face.back")) {
+                    Text("返回上一页")
+                }
+            }) else null) {
+            ControlPane(currentExpression, selectExpression, animate, { animate = it }, surface, { surface = it },
+                currentDiffuseGlow, selectDiffuseGlow, Modifier.fillMaxWidth())
         }
     }
 }
-
 @Composable
 private fun PreviewPane(
     expression: FaceExpression,
@@ -207,142 +167,39 @@ private fun PreviewPane(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ControlPane(
-    expression: FaceExpression,
-    onExpressionChange: (FaceExpression) -> Unit,
-    animate: Boolean,
-    onAnimateChange: (Boolean) -> Unit,
-    surface: FaceSurface,
-    onSurfaceChange: (FaceSurface) -> Unit,
-    diffuseGlow: Float,
-    onDiffuseGlowChange: (Float) -> Unit,
-    onBack: (() -> Unit)?,
+    expression: FaceExpression, onExpressionChange: (FaceExpression) -> Unit,
+    animate: Boolean, onAnimateChange: (Boolean) -> Unit,
+    surface: FaceSurface, onSurfaceChange: (FaceSurface) -> Unit,
+    diffuseGlow: Float, onDiffuseGlowChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .background(PanelSurface)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        // 紧凑标题行：左侧标题，右上角收纳「生命感」与「返回上一页」
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "脸部表情系统 · Alpha 1",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = buildString {
-                        append(expression.cnName)
-                        append(" · ")
-                        append(expression.enName)
-                        append("（")
-                        append(expression.ordinal + 1)
-                        append(" / ")
-                        append(FaceExpression.entries.size)
-                        append("）")
-                    },
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 1.dp),
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CompactChip(
-                    label = "生命感",
-                    selected = animate,
-                    onClick = { onAnimateChange(!animate) },
-                )
-                if (onBack != null) {
-                    CompactActionButton(
-                        label = "返回上一页",
-                        onClick = onBack,
-                    )
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("当前：${expression.cnName} · ${expression.enName}（${expression.ordinal + 1} / 100）",
+            color = Color.White.copy(alpha = .7f), fontSize = 13.sp, modifier = Modifier.testTag("face.current"))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            CompactChip("生命感", animate, { onAnimateChange(!animate) }, Modifier.testTag("face.life"))
+            CompactChip("扩散光晕", diffuseGlow > .01f,
+                { onDiffuseGlowChange(if (diffuseGlow > .01f) 0f else DEFAULT_DIFFUSE_GLOW) }, Modifier.testTag("face.glow"))
+        }
+        Text("渲染表面", color = Color.White.copy(alpha = .65f), fontSize = 12.sp)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            CompactChip("整机概念图", surface == FaceSurface.PRODUCT_MOCKUP,
+                { onSurfaceChange(FaceSurface.PRODUCT_MOCKUP) }, Modifier.testTag("face.surface.PRODUCT_MOCKUP"))
+            CompactChip("实机屏幕", surface == FaceSurface.DEVICE_SCREEN,
+                { onSurfaceChange(FaceSurface.DEVICE_SCREEN) }, Modifier.testTag("face.surface.DEVICE_SCREEN"))
+        }
+        HorizontalDivider(color = Color.White.copy(alpha = .08f))
+        expressionGroups().forEach { group ->
+            Text("${group.title} · ${group.expressions.size}", color = Color.White.copy(alpha = .6f), fontSize = 12.sp)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                group.expressions.forEach { item ->
+                    CompactChip(item.cnName, item == expression, { onExpressionChange(item) },
+                        Modifier.testTag("face.expression.${item.name}"))
                 }
             }
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(top = 8.dp),
-        ) {
-            Text(
-                text = "渲染表面",
-                color = Color.White.copy(alpha = 0.45f),
-                fontSize = 11.sp,
-            )
-            CompactChip(
-                label = "整机概念图",
-                selected = surface == FaceSurface.PRODUCT_MOCKUP,
-                onClick = { onSurfaceChange(FaceSurface.PRODUCT_MOCKUP) },
-            )
-            CompactChip(
-                label = "实机屏幕",
-                selected = surface == FaceSurface.DEVICE_SCREEN,
-                onClick = { onSurfaceChange(FaceSurface.DEVICE_SCREEN) },
-            )
-            CompactChip(
-                label = "扩散光晕",
-                selected = diffuseGlow > 0.01f,
-                onClick = {
-                    onDiffuseGlowChange(if (diffuseGlow > 0.01f) 0f else DEFAULT_DIFFUSE_GLOW)
-                },
-            )
-        }
-
-        HorizontalDivider(
-            color = Color.White.copy(alpha = 0.08f),
-            modifier = Modifier.padding(vertical = 10.dp),
-        )
-
-        // 剩下的空间全部给 100 个表情位，操作区自己滚动
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            expressionGroups().forEach { group ->
-                Text(
-                    text = "${group.title} · ${group.expressions.size}",
-                    color = Color.White.copy(alpha = 0.4f),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(bottom = 12.dp),
-                ) {
-                    group.expressions.forEach { item ->
-                        CompactChip(
-                            label = item.cnName,
-                            selected = item == expression,
-                            onClick = { onExpressionChange(item) },
-                        )
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
-
 /**
  * 紧凑胶囊：操作区里的开关与表情位都用它。
  * 比 Material 的 FilterChip 矮一截，同样的高度能多放一行表情。
@@ -354,41 +211,21 @@ private fun CompactChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val chosen = selected
     Box(
         modifier = modifier
+            .heightIn(min = 48.dp).widthIn(min = 64.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) Accent else Color.White.copy(alpha = 0.08f))
             .clickable(onClick = onClick)
+            .semantics { this.selected = chosen }
             .padding(horizontal = 10.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             color = if (selected) Color.Black else Color.White.copy(alpha = 0.78f),
             fontSize = 12.sp,
-            maxLines = 1,
-        )
-    }
-}
-
-/** 右上角的主操作按钮：返回上一级页面。 */
-@Composable
-private fun CompactActionButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Accent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-    ) {
-        Text(
-            text = label,
-            color = Color.Black,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
             maxLines = 1,
         )
     }

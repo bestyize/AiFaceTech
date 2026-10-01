@@ -15,8 +15,7 @@ class EffectController {
     private val seen = ArrayDeque<String>()
     fun play(scene: EffectScene, now: Long): Boolean {
         if (scene.instanceId in seen || scene.startedAtMillis > now || now - scene.startedAtMillis >= scene.effect.durationMillis) return false
-        seen.addLast(scene.instanceId)
-        if (seen.size > 32) seen.removeFirst()
+        discard(scene.instanceId)
         val current = sceneAt(now)
         if (current != null && (current.effect == scene.effect || current.priority > scene.priority)) return false
         active = scene
@@ -27,4 +26,9 @@ class EffectController {
         return active
     }
     fun clear() { active = null }
+    fun discard(instanceId: String) {
+        if (instanceId in seen) return
+        seen.addLast(instanceId)
+        if (seen.size > 32) seen.removeFirst()
+    }
 }

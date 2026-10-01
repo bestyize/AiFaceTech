@@ -233,3 +233,11 @@ tasks.register<JavaExec>("runYolo26m") {
         )
     }
 }
+
+tasks.register<JavaExec>("exportFaceMenus") {
+    group = "verification"
+    description = "Render and verify full-screen expression menus across small, medium and large displays"
+    mainClass.set("com.aifacemate.face.tools.ExportFaceMenusKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    args(layout.buildDirectory.dir("face-menus").get().asFile.absolutePath)
+}

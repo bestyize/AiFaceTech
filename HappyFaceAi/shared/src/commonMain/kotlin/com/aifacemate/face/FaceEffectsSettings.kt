@@ -11,7 +11,7 @@ object FaceEffectsSettings {
     )
     fun save(value: FaceEffectsPreferences) {
         SettingsStore.put("effects.enabled", value.enabled.toString())
-        SettingsStore.put("effects.strength", value.strength.coerceIn(.2f, 1f).toString())
+        SettingsStore.put("effects.strength", (value.strength.takeIf { it.isFinite() } ?: .75f).coerceIn(.2f, 1f).toString())
         SettingsStore.put("effects.emoji", value.emoji.toString())
     }
 }
