@@ -31,6 +31,7 @@ private class DesktopVoiceService : VoiceService {
                 .getOrElse { return@withContext VoiceCaptureResult.Failure("麦克风不可用") }
             recording = line
             val output = ByteArrayOutputStream()
+            val speech = SpeechCapture()
             try {
                 line.open(format)
                 if (!stopped && !finishRequested) line.start()
@@ -45,6 +46,7 @@ private class DesktopVoiceService : VoiceService {
                         if (count > 0) {
                             output.write(frame, 0, count)
                             events.tryEmit(VoiceObservation.Level(pcm16Activity(frame, count)))
+                            speech.accept(frame, count)?.let { events.tryEmit(it) }
                         }
                         else delay(10)
                     }
@@ -52,7 +54,8 @@ private class DesktopVoiceService : VoiceService {
                 when {
                     stopped -> VoiceCaptureResult.Failure("录音已取消")
                     output.size() == 0 -> VoiceCaptureResult.Failure("录音时间过短")
-                    else -> VoiceCaptureResult.Success(VoiceClip(wav(output.toByteArray())))
+                    else -> speech.finish(output.toByteArray())?.let { VoiceCaptureResult.Success(VoiceClip(wav(it))) }
+                        ?: VoiceCaptureResult.NoSpeech
                 }
             } catch (error: Exception) {
                 VoiceCaptureResult.Failure("录音失败：${error.message}")
@@ -60,6 +63,7 @@ private class DesktopVoiceService : VoiceService {
                 runCatching { line.stop() }
                 line.close()
                 recording = null
+                speech.close()
             }
         }
     }

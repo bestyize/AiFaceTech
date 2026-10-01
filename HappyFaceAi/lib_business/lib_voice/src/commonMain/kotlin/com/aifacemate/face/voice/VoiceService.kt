@@ -1,7 +1,12 @@
 package com.aifacemate.face.voice
 
 data class VoiceClip(val bytes: ByteArray, val mimeType: String = "audio/wav")
-sealed interface VoiceCaptureResult { data class Success(val clip: VoiceClip) : VoiceCaptureResult; data class Failure(val reason: String) : VoiceCaptureResult }
+sealed interface VoiceCaptureResult {
+    data class Success(val clip: VoiceClip) : VoiceCaptureResult
+    /** The recording held only noise or silence, so nothing should be recognized or sent. */
+    data object NoSpeech : VoiceCaptureResult
+    data class Failure(val reason: String) : VoiceCaptureResult
+}
 sealed interface VoicePlaybackResult { data object Complete : VoicePlaybackResult; data class Failure(val reason: String) : VoicePlaybackResult }
 
 interface VoiceService {

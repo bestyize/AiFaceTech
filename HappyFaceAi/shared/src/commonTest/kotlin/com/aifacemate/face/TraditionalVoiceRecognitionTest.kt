@@ -33,6 +33,15 @@ class TraditionalVoiceRecognitionTest {
         assertEquals(1, fallbacks)
     }
 
+    @Test fun punctuationFromNoiseIsNoSpeechAndUsesTheOnlineFallbackOnlyWithAKey(): Unit = runBlocking {
+        assertEquals("", recognizeTraditionalSpeech(TraditionalAsr.SenseVoice, false,
+            local = { "。" }, online = { error("Must not call online service") }))
+        var fallbacks = 0
+        assertEquals("在线识别结果", recognizeTraditionalSpeech(TraditionalAsr.SenseVoice, true,
+            local = { "." }, online = { "在线识别结果" }, onFallback = { fallbacks++ }))
+        assertEquals(1, fallbacks)
+    }
+
     @Test fun onlineRecognitionRequiresItsOwnCredentials(): Unit = runBlocking {
         assertFailsWith<IllegalStateException> {
             recognizeTraditionalSpeech(TraditionalAsr.Mimo, false,

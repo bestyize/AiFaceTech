@@ -203,11 +203,12 @@ fun App(onBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> }) 
                         VoiceVisualState.Speaking -> InteractionPhase.Speaking
                     })) },
                     onUserText = { dispatch(BehaviorEvent.UserText(it)) },
-                    onSpeechObservation = { observation -> dispatch(when (observation) {
+                    onSpeechObservation = { observation -> when (observation) {
                         com.aifacemate.face.voice.VoiceObservation.Cancelled -> BehaviorEvent.VoiceCancelled
                         is com.aifacemate.face.voice.VoiceObservation.PartialText -> BehaviorEvent.ListeningText(observation.text)
                         is com.aifacemate.face.voice.VoiceObservation.Level -> BehaviorEvent.SpeechLevel(observation.value)
-                    }) },
+                        is com.aifacemate.face.voice.VoiceObservation.Voice -> null
+                    }?.let(dispatch) },
                 )
                 if (visionStatus == "监测中") VisionObservationIcon(
                     modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(4.dp),

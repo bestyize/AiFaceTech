@@ -32,6 +32,7 @@ private class AndroidVoiceService : VoiceService {
             val line = AudioRecord(MediaRecorder.AudioSource.MIC, 16_000, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, 6_400))
             recorder = line
+            val speech = SpeechCapture()
             try {
                 if (!stopped && !finishRequested) line.startRecording()
                 val output = ByteArrayOutputStream()
@@ -44,6 +45,7 @@ private class AndroidVoiceService : VoiceService {
                     if (n > 0) {
                         output.write(frame, 0, n)
                         if (++activityFrames % 5 == 0) events.tryEmit(VoiceObservation.Level(pcm16Activity(frame, n)))
+                        speech.accept(frame, n)?.let { events.tryEmit(it) }
                     }
                     else if (n < 0 && !stopped && !finishRequested) error("录音失败：$n")
                     else if (n == 0) delay(10)
@@ -51,7 +53,8 @@ private class AndroidVoiceService : VoiceService {
                 when {
                     stopped -> VoiceCaptureResult.Failure("录音已取消")
                     output.size() == 0 -> VoiceCaptureResult.Failure("录音时间过短")
-                    else -> VoiceCaptureResult.Success(VoiceClip(wav16k(output.toByteArray()), "audio/wav"))
+                    else -> speech.finish(output.toByteArray())?.let { VoiceCaptureResult.Success(VoiceClip(wav16k(it), "audio/wav")) }
+                        ?: VoiceCaptureResult.NoSpeech
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { VoiceCaptureResult.Failure(error.message ?: "录音失败") }
@@ -59,6 +62,7 @@ private class AndroidVoiceService : VoiceService {
                 runCatching { line.stop() }
                 line.release()
                 recorder = null
+                speech.close()
             }
         }
     }

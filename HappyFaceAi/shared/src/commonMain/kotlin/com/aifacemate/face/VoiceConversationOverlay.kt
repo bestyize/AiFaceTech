@@ -11,6 +11,7 @@ import com.aifacemate.face.feature.aibrain.data.AiBrainSettings
 import com.aifacemate.face.feature.aibrain.defaultAiProviders
 import com.aifacemate.face.network.NetworkClient
 import com.aifacemate.face.voice.VoiceCaptureResult
+import com.aifacemate.face.voice.asr.vad.hasSpokenContent
 import com.aifacemate.face.voice.SpeechPcmPlayer
 import com.aifacemate.face.voice.createSpeechPcmPlayer
 import com.aifacemate.face.voice.streamSpokenReply
@@ -52,6 +53,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 
 enum class VoiceVisualState { Idle, Listening, Processing, Speaking }
+
+private const val NO_SPEECH = "没有听到说话声，可以再说一次"
 
 private sealed interface ReplyPlayback {
     data class Audio(val chunk: SpeechAudioChunk) : ReplyPlayback
@@ -122,6 +125,7 @@ private fun ConversationPanel(
             when (observation) {
                 is VoiceObservation.Level -> automaticWindow?.activity(observation.value, time)
                 is VoiceObservation.PartialText -> automaticWindow?.text(observation.text, time)
+                is VoiceObservation.Voice -> automaticWindow?.voice(observation.active, time)
                 VoiceObservation.Cancelled -> Unit
             }
         }
@@ -321,6 +325,7 @@ private fun ConversationPanel(
                     facePhase = VoiceFacePhase.Processing
                     val clip = when (recorded) {
                         is VoiceCaptureResult.Success -> recorded.clip
+                        VoiceCaptureResult.NoSpeech -> { cancelFeedback(); status = NO_SPEECH; return@launch }
                         is VoiceCaptureResult.Failure -> error(recorded.reason)
                     }
                     suspend fun mimoRecognize(): String {
@@ -343,7 +348,8 @@ private fun ConversationPanel(
                         onFallback = { status = "本地识别失败，正在使用 MiMo" },
                     )
                 }.trim()
-                check(input.isNotEmpty()) { "没有识别到声音" }
+                // Recognizers turn noise into text such as "." or "。"; never send that as the user's turn.
+                if (!input.hasSpokenContent()) { cancelFeedback(); status = NO_SPEECH; return@launch }
                 show("user", input)
                 if (AiBrainSettings.savedSecret(AiBrainSettings.providerId() ?: "deepseek") == null) {
                     status = "已识别文字；配置 AI 大脑后可生成回答"

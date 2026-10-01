@@ -6,6 +6,8 @@ sealed interface VoiceObservation {
     data object Cancelled : VoiceObservation
     data class PartialText(val text: String) : VoiceObservation
     data class Level(val value: Float) : VoiceObservation
+    /** Voice activity detector state while recording; noise and silence report false. */
+    data class Voice(val active: Boolean) : VoiceObservation
 }
 
 /** Real PCM16 little-endian amplitude; never an emotion classification. */

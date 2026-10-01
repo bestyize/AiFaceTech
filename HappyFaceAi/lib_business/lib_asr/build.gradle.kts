@@ -13,6 +13,14 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies { implementation(project(":lib_common:lib_network")) }
+        val jvmSharedMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(jvmSharedMain)
+        androidMain.get().dependsOn(jvmSharedMain)
+        // Silero VAD (MIT, 2.3 MB) ships with the app so noise gating works offline from the first recording.
+        listOf(jvmMain.get(), androidMain.get()).forEach { it.resources.srcDir("src/sharedResources") }
+        val iosMain = maybeCreate("iosMain").apply { dependsOn(commonMain.get()) }
+        iosArm64Main.get().dependsOn(iosMain)
+        iosSimulatorArm64Main.get().dependsOn(iosMain)
         androidMain.dependencies {
             implementation(project(":lib_common:lib_storage"))
             implementation(libs.kotlinx.coroutinesCore)
