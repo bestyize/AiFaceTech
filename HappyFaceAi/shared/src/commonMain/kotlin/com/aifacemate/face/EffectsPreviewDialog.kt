@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -50,7 +51,7 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF0C1011)).safeDrawingPadding().padding(12.dp)) {
         val wide = maxWidth >= 640.dp
         @Composable fun Preview(modifier: Modifier) {
-            Box(modifier.background(Color.Black)) {
+            Box(modifier.background(Color.Black).clipToBounds()) {
                 FaceDisplay(expression = expression)
                 EffectLayer(scene, { clock.elapsedNow().inWholeMilliseconds }, strength = preferences.strength, useEmoji = preferences.emoji)
             }

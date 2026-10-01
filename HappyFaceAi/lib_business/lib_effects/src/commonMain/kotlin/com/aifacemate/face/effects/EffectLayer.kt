@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -60,7 +61,7 @@ fun EffectLayer(scene: EffectScene?, nowMillis: () -> Long, modifier: Modifier =
             measurer.measure(AnnotatedString(it), style = TextStyle(fontSize = 26.sp))
         }
     }
-    Canvas(modifier.fillMaxSize()) {
+    Canvas(modifier.fillMaxSize().clipToBounds()) {
         val p = scene.progress(renderAtMillis ?: frameMillis)
         if (p >= 1f) return@Canvas
         val intensity = (if (strength.isFinite()) strength.coerceIn(0f, 1f) else 0f) * if (quiet) .32f else 1f
@@ -70,7 +71,7 @@ fun EffectLayer(scene: EffectScene?, nowMillis: () -> Long, modifier: Modifier =
             val x = point.x / size.width; val y = point.y / size.height
             val faceY = (point.y - faceOffsetY.toPx()) / size.height
             return when {
-                x > .78f && y < .18f -> 0f // camera shortcut
+                x > .78f && y < .25f -> 0f // camera shortcut, including small-screen touch target
                 y > .82f -> .15f // voice/HUD area
                 x in .12f.. .88f && faceY in .22f.. .79f -> .12f // eyes and mouth, including voice-mode offset
                 else -> 1f
@@ -78,8 +79,10 @@ fun EffectLayer(scene: EffectScene?, nowMillis: () -> Long, modifier: Modifier =
         }
         fun symbol(text: String, point: Offset, alpha: Float, turn: Float = 0f) {
             val layout = glyphs.getValue(text)
-            rotate(turn, point) {
-                drawText(layout, topLeft = point - Offset(layout.size.width / 2f, layout.size.height / 2f), alpha = alpha.coerceIn(0f, 1f))
+            val edge = (size.minDimension * .075f).coerceIn(10.dp.toPx(), 26.dp.toPx())
+            val factor = edge / layout.size.height.coerceAtLeast(1)
+            withTransform({ translate(point.x, point.y); rotate(turn, Offset.Zero); scale(factor, factor, Offset.Zero) }) {
+                drawText(layout, topLeft = -Offset(layout.size.width / 2f, layout.size.height / 2f), alpha = alpha.coerceIn(0f, 1f))
             }
         }
         when (scene.effect) {
