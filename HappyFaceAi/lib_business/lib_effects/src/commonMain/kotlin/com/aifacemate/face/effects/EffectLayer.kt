@@ -17,6 +17,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlin.math.*
 import kotlin.random.Random
 
@@ -29,7 +31,7 @@ private val Palette = listOf(Gold, Aqua, Pink, Color(0xFFBFA5FF))
 @Composable
 fun EffectLayer(scene: EffectScene?, nowMillis: () -> Long, modifier: Modifier = Modifier,
     strength: Float = .75f, useEmoji: Boolean = true, quiet: Boolean = false,
-    renderAtMillis: Long? = null) {
+    renderAtMillis: Long? = null, faceOffsetY: Dp = 0.dp) {
     if (scene == null) return
     var frameMillis by remember(scene.instanceId) { mutableStateOf(nowMillis()) }
     LaunchedEffect(scene.instanceId, renderAtMillis) {
@@ -66,10 +68,11 @@ fun EffectLayer(scene: EffectScene?, nowMillis: () -> Long, modifier: Modifier =
         val fade = min(p / .10f, (1f - p) / .18f).coerceIn(0f, 1f) * intensity
         fun protection(point: Offset): Float {
             val x = point.x / size.width; val y = point.y / size.height
+            val faceY = (point.y - faceOffsetY.toPx()) / size.height
             return when {
                 x > .78f && y < .18f -> 0f // camera shortcut
                 y > .82f -> .15f // voice/HUD area
-                x in .12f.. .88f && y in .28f.. .79f -> .12f // eyes and mouth
+                x in .12f.. .88f && faceY in .22f.. .79f -> .12f // eyes and mouth, including voice-mode offset
                 else -> 1f
             }
         }
@@ -90,9 +93,10 @@ fun EffectLayer(scene: EffectScene?, nowMillis: () -> Long, modifier: Modifier =
                         drawLine(Gold.copy(alpha = fade * .5f), tip + Offset(0f, size.height * .07f), tip, 2f, StrokeCap.Round)
                     } else {
                         val age = (t - .24f) / .76f
-                        repeat(42) { i ->
+                        val count = if (quiet) 24 else 42
+                        repeat(count) { i ->
                             val speed = .55f + particles[i * 4] * .45f
-                            val angle = (i * 2 * PI / 42 + burst * .2).toFloat()
+                            val angle = (i * 2 * PI / count + burst * .2).toFloat()
                             val radius = size.minDimension * .40f * (1f - (1f - age).pow(2)) * speed
                             val position = center + Offset(cos(angle) * radius, sin(angle) * radius + size.height * age * age * .22f)
                             val alpha = fade * (1f - age) * protection(position)
@@ -103,30 +107,33 @@ fun EffectLayer(scene: EffectScene?, nowMillis: () -> Long, modifier: Modifier =
                         }
                     }
                 }
-                if (p > .45f) repeat(18) { i ->
+                if (p > .45f) repeat(if (quiet) 8 else 18) { i ->
                     val point = Offset(size.width * particles[i * 4], size.height * ((p - .45f) * .9f + particles[i * 4 + 1] * .2f))
                     drawCircle(Palette[i % 4].copy(alpha = fade * protection(point)), size.minDimension * .006f, point)
                 }
                 if (useEmoji && p > .45f) symbol("✨", Offset(size.width * .48f, size.height * .13f), fade)
             }
             EffectId.Hearts -> {
-                repeat(7) { i ->
+                repeat(if (quiet) 4 else 7) { i ->
                     val age = ((p - i * .055f) / .65f).coerceIn(0f, 1f)
                     if (age <= 0f || age >= 1f) return@repeat
                     val side = if (i % 2 == 0) .09f else .91f
                     val point = Offset(size.width * (side + sin(age * PI.toFloat() * 2 + i) * .028f),
                         size.height * (.76f - age * .65f))
-                    val alpha = fade * min(age * 5, (1f - age) * 4) * protection(point)
+                    val alpha = fade * min(age * 5, (1f - age) * 4).coerceIn(0f, 1f) * protection(point)
                     if (useEmoji && i < 4) symbol("💛", point, alpha, sin(age * PI.toFloat()) * 14f)
-                    else withTransform({ translate(point.x - 9f, point.y - 9f); scale(18f, 18f, Offset.Zero) }) {
-                        drawPath(heart, (if (i % 2 == 0) Gold else Pink).copy(alpha = alpha))
+                    else {
+                        val edge = (size.minDimension * .055f).coerceIn(12.dp.toPx(), 28.dp.toPx())
+                        withTransform({ translate(point.x - edge / 2, point.y - edge / 2); scale(edge, edge, Offset.Zero) }) {
+                            drawPath(heart, (if (i % 2 == 0) Gold else Pink).copy(alpha = alpha))
+                        }
                     }
                 }
                 if (useEmoji) symbol("✨", Offset(size.width * .12f, size.height * .12f), fade * .7f)
             }
             EffectId.RainToSun -> {
                 val rain = (1f - ((p - .48f) / .25f).coerceIn(0f, 1f)) * fade
-                repeat(64) { i ->
+                repeat(if (quiet) 32 else 64) { i ->
                     val x = particles[i * 4] * size.width
                     val y = ((particles[i * 4 + 1] + p * (1.5f + particles[i * 4 + 2])) % 1f) * size.height
                     val point = Offset(x, y)
@@ -151,7 +158,7 @@ fun EffectLayer(scene: EffectScene?, nowMillis: () -> Long, modifier: Modifier =
                 drawCircle(Gold.copy(alpha = fade * (1f - p) * .35f), size.minDimension * (.03f + p * .18f), center,
                     style = Stroke(1.5f))
                 drawStar(center, size.minDimension * (.07f + sin(p * PI.toFloat()) * .02f), fade, p * 36f, Gold)
-                repeat(8) { i ->
+                repeat(if (quiet) 4 else 8) { i ->
                     val angle = i * PI.toFloat() / 4
                     val radius = size.minDimension * (.09f + p * .17f)
                     val point = center + Offset(cos(angle), sin(angle)) * radius

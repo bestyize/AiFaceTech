@@ -66,7 +66,22 @@ fun main(args: Array<String>) {
                 return scene.semanticsOwners.flatMap { visit(it.rootSemanticsNode) }
             }
             fun tagged(tag: String) = nodes().first { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
+            fun scrollTo(tag: String) {
+                fun contains(n: SemanticsNode): Boolean = n.config.getOrNull(SemanticsProperties.TestTag) == tag || n.children.any(::contains)
+                val container = nodes().firstOrNull { it.config.contains(SemanticsActions.ScrollBy) && contains(it) } ?: return
+                val scroll = container.config[SemanticsActions.ScrollBy].action!!
+                val range = container.config[SemanticsProperties.VerticalScrollAxisRange]
+                scroll(0f, -range.maxValue()); repeat(8) { frame() }
+                repeat((range.maxValue() / 16).toInt() + 8) {
+                    val bounds = tagged(tag).boundsInRoot
+                    val area = nodes().first { it.id == container.id }.boundsInRoot
+                    if (bounds.height >= 47f && bounds.top >= area.top && bounds.bottom <= area.bottom) return
+                    scroll(0f, 16f); repeat(8) { frame() }
+                }
+                error("$width x $height cannot reach $tag")
+            }
             fun click(tag: String) {
+                scrollTo(tag)
                 check(tagged(tag).config[SemanticsActions.OnClick].action!!.invoke())
                 frame()
             }

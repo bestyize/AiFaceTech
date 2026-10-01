@@ -4,12 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -43,6 +45,8 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
         EffectId.RainToSun -> FaceExpression.COMFORTING
         EffectId.StarReward -> FaceExpression.APPROVING
     }
+    MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFF1C779), onPrimary = Color(0xFF221D13))) {
+    CompositionLocalProvider(LocalContentColor provides Color(0xFFF4F3EF)) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF0C1011)).safeDrawingPadding().padding(12.dp)) {
         val wide = maxWidth >= 640.dp
         @Composable fun Preview(modifier: Modifier) {
@@ -53,15 +57,19 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
         }
         @Composable fun Controls(modifier: Modifier) {
             Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("effects.enabled")
+                    .toggleable(preferences.enabled, role = Role.Switch, onValueChange = { onChange(preferences.copy(enabled = it)) }),
+                    verticalAlignment = Alignment.CenterVertically) {
                     Text("开启惊喜特效", Modifier.weight(1f))
-                    Switch(preferences.enabled, { onChange(preferences.copy(enabled = it)) }, Modifier.testTag("effects.enabled"))
+                    Switch(preferences.enabled, onCheckedChange = null)
                 }
                 Text("强度 ${(preferences.strength * 100).toInt()}%")
                 Slider(preferences.strength, { onChange(preferences.copy(strength = it)) }, valueRange = .2f..1f)
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("effects.emoji")
+                    .toggleable(preferences.emoji, role = Role.Switch, onValueChange = { onChange(preferences.copy(emoji = it)) }),
+                    verticalAlignment = Alignment.CenterVertically) {
                     Text("使用 emoji 符号", Modifier.weight(1f))
-                    Switch(preferences.emoji, { onChange(preferences.copy(emoji = it)) }, Modifier.testTag("effects.emoji"))
+                    Switch(preferences.emoji, onCheckedChange = null)
                 }
                 Text("关闭符号后使用自绘图形；点击下方按钮预览。", style = MaterialTheme.typography.bodySmall)
                 EffectId.entries.forEach { effect ->
@@ -88,5 +96,7 @@ fun EffectsPreviewContent(preferences: FaceEffectsPreferences, onChange: (FaceEf
                 Controls(Modifier.weight(1f).fillMaxWidth())
             }
         }
+    }
+    }
     }
 }
