@@ -80,7 +80,7 @@ fun main(args: Array<String>) {
             click("face.expression.NEW_DAY"); check(expression.value == FaceExpression.NEW_DAY && !open)
             click("face.menu"); closeSignal.value++; repeat(3) { frame() }; check(!open)
             click("face.menu"); click("face.menu.collapse"); check(!open)
-            click("face.menu"); click("face.back"); check(returned)
+            click("face.back"); check(returned)
             println("PASS face menu $width x $height: full-screen, 100 expressions, scrolling, toggles and return")
         } finally { scene.close() }
     }

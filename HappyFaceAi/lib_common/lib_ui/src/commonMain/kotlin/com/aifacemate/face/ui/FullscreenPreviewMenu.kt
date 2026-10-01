@@ -48,16 +48,6 @@ fun FullscreenPreviewMenu(open: Boolean, onOpen: () -> Unit, onCollapse: () -> U
                     .background(Color(0xF0181F22)).testTag("$prefix.navigation")) {
                     navigation()
                 }
-                if (onBack != null) Box(Modifier.align(Alignment.TopStart).size(32.dp).clip(CircleShape)
-                    .clickable(role = Role.Button, onClick = onBack).testTag(backTag)
-                    .semantics { contentDescription = "返回上一页" }, contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.size(14.dp)) {
-                        val color = Color.White.copy(alpha = .8f)
-                        drawLine(color, Offset(size.width - 2f, size.height / 2), Offset(2f, size.height / 2), 2f, StrokeCap.Round)
-                        drawLine(color, Offset(2f, size.height / 2), Offset(size.width * .45f, 2f), 2f, StrokeCap.Round)
-                        drawLine(color, Offset(2f, size.height / 2), Offset(size.width * .45f, size.height - 2f), 2f, StrokeCap.Round)
-                    }
-                }
                 Box(Modifier.align(Alignment.TopEnd).size(32.dp).clip(CircleShape)
                     .clickable(role = Role.Button, onClick = onCollapse).testTag("$prefix.menu.collapse")
                     .semantics { contentDescription = "收起$description" }, contentAlignment = Alignment.Center) {
@@ -66,6 +56,16 @@ fun FullscreenPreviewMenu(open: Boolean, onOpen: () -> Unit, onCollapse: () -> U
                         drawLine(Color.White.copy(alpha = .8f), Offset(size.width - 2f, 2f), Offset(2f, size.height - 2f), 2f, StrokeCap.Round)
                     }
                 }
+            }
+        }
+        if (onBack != null) Box(Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(12.dp)
+            .size(32.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onBack).testTag(backTag)
+            .semantics { contentDescription = "返回上一页" }, contentAlignment = Alignment.Center) {
+            Canvas(Modifier.size(14.dp)) {
+                val color = Color.White.copy(alpha = .8f)
+                drawLine(color, Offset(size.width - 2f, size.height / 2), Offset(2f, size.height / 2), 2f, StrokeCap.Round)
+                drawLine(color, Offset(2f, size.height / 2), Offset(size.width * .45f, 2f), 2f, StrokeCap.Round)
+                drawLine(color, Offset(2f, size.height / 2), Offset(size.width * .45f, size.height - 2f), 2f, StrokeCap.Round)
             }
         }
     }

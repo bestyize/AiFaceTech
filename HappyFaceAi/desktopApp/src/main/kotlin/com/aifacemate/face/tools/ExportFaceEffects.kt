@@ -92,6 +92,7 @@ fun main(args: Array<String>) {
             }
             frame()
             check(nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })
+            check(tagged("effects.close").boundsInRoot.height == 32f)
             val menu = tagged("effects.menu").boundsInRoot
             check(menu.height >= 47 && menu.top >= 0 && menu.right <= width)
             val preview = tagged("effects.preview.pane").boundsInRoot
@@ -140,7 +141,7 @@ fun main(args: Array<String>) {
             closeMenuSignal.value++; repeat(3) { frame() }
             check(!reportedMenuOpen && nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "effects.controls.pane" })
             click("effects.menu")
-            click("effects.stop"); click("effects.close"); check(closed)
+            click("effects.stop"); click("effects.menu.collapse"); click("effects.close"); check(closed)
             scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.use {
                 File(output, "preview-$width-$height.png").writeBytes(it.bytes)
             }; shots++
