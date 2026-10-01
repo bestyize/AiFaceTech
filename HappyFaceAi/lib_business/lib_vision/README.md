@@ -18,7 +18,7 @@
 
 | 平台 | 目标检测 | 人脸 / 表情 | 手部 |
 | --- | --- | --- | --- |
-| Android、桌面 JVM（含 RK3566 Android / Ubuntu） | ONNX Runtime · YOLO26m | ONNX Runtime · YuNet + MobileFaceNet 七类表情 | ONNX Runtime · MediaPipe 掌心检测 + 21 点关键点 |
+| Android、桌面 JVM（含 RK3566 Android / Ubuntu） | ONNX Runtime · YOLO26n / s / m | ONNX Runtime · YuNet + MobileFaceNet 七类表情 | ONNX Runtime · MediaPipe 掌心检测 + 21 点关键点 |
 | iOS | 暂未接入 | Apple Vision · 人脸检测与微笑 / 张嘴等动作线索 | Apple Vision · 21 点关键点 |
 
 ONNX 提供者只负责运行模型；图像缩放、人脸对齐、YuNet 解码、掌心锚框和去重（NMS）都写成 `commonMain` 里的纯 Kotlin（`ImageSampling.kt`、`FaceCodecs.kt`、`HandCodecs.kt`、`Yolo26mCodec.kt`）。以后换成其他推理后端，比如 RK3566 的 RKNN，只需要实现「运行模型」这一步，前后处理可以复用。
@@ -34,9 +34,17 @@ ONNX 提供者只负责运行模型；图像缩放、人脸对齐、YuNet 解码
 
 ## 模型
 
-全部模型按需下载，不打包进安装包，由统一的 `ModelStore` 下载到临时 `.part` 文件，校验固定的文件大小和 SHA-256 后才保留；取消或失败不会留下半截文件。Android 存放在应用私有 `noBackupFilesDir/vision/`，桌面在 `~/.aifacemate/models/vision/`，目录与之前的版本相同，已下载的模型继续有效。
+全部模型按需下载，不打包进安装包，由统一的 `ModelStore` 下载到临时 `.part` 文件，校验固定的文件大小和 SHA-256 后才保留；取消或失败不会留下半截文件。huggingface.co 无法访问时改用 hf-mirror.com 镜像，内容同样按 SHA-256 校验。镜像对桌面 JVM 的请求会跳回 huggingface.co，因此桌面端仍需能访问 huggingface.co。Android 存放在应用私有 `noBackupFilesDir/vision/`，桌面在 `~/.aifacemate/models/vision/`，目录与之前的版本相同，已下载的模型继续有效。
 
-- YOLO26m：约 82 MB，[prithivMLmods/YOLO26-ONNX](https://huggingface.co/prithivMLmods/YOLO26-ONNX) 固定提交 `c526dae7` 的社区导出。
+- YOLO26：[prithivMLmods/YOLO26-ONNX](https://huggingface.co/prithivMLmods/YOLO26-ONNX) 固定提交 `c526dae7` 的社区导出，三个尺寸输出格式相同，在设置的模型卡片中切换：
+
+  | 模型 | 文件 | COCO mAP | 计算量 | 本机实测（M 系列 Mac，640×480） |
+  | --- | --- | --- | --- | --- |
+  | YOLO26n | 约 9.9 MB | 40.9 | 5.5 GFLOPs | 26 ms |
+  | YOLO26s | 约 38 MB | 48.6 | 20.9 GFLOPs | 67 ms |
+  | YOLO26m | 约 82 MB | 53.1 | 68.4 GFLOPs | 97 ms |
+
+  默认值按设备选择：4 核及以下（如 RK3566）用 n，其他 Android 用 s，桌面用 m；已下载过的模型优先，不会因此要求重新下载。mAP 与计算量来自 [Ultralytics](https://huggingface.co/Ultralytics/YOLO26)。
 - 表情：[YuNet 人脸检测](https://github.com/opencv/opencv_zoo/tree/4.x/models/face_detection_yunet) + [MobileFaceNet 七类表情](https://github.com/opencv/opencv_zoo/tree/4.x/models/facial_expression_recognition)，合计约 5.0 MB。
 - 手势：[MediaPipe 掌心检测](https://github.com/opencv/opencv_zoo/tree/4.x/models/palm_detection_mediapipe) + [21 点手部关键点](https://github.com/opencv/opencv_zoo/tree/4.x/models/handpose_estimation_mediapipe)，合计约 8.0 MB。
 

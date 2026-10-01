@@ -2,6 +2,7 @@ package com.aifacemate.face.vision
 
 import com.aifacemate.face.capability.Availability
 import com.aifacemate.face.capability.CapabilityKey
+import com.aifacemate.face.capability.DeviceEnvironment
 import com.aifacemate.face.capability.ModelStore
 import com.aifacemate.face.capability.Provider
 import com.aifacemate.face.capability.ProviderRegistry
@@ -173,7 +174,11 @@ class PerceptionService(
 /** Composition root for vision: the providers packaged for this platform and the shared model store. */
 object VisionRuntime {
     val modelStore: ModelStore by lazy { platformModelStore() }
-    val registry: ProviderRegistry by lazy { ProviderRegistry(platformVisionProviders(modelStore), currentDeviceEnvironment()) }
+    val registry: ProviderRegistry by lazy {
+        val environment = currentDeviceEnvironment()
+        ProviderRegistry(platformVisionProviders(modelStore, environment), environment)
+    }
 }
 
-internal expect fun platformVisionProviders(store: ModelStore): List<Provider<*>>
+/** Registration order is the device default, so platforms may order providers by [environment]. */
+internal expect fun platformVisionProviders(store: ModelStore, environment: DeviceEnvironment): List<Provider<*>>

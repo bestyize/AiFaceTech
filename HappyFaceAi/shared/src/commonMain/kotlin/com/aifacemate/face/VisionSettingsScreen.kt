@@ -421,10 +421,10 @@ private fun VisionProviderChip(choice: VisionProviderChoice, modifier: Modifier,
             .border(1.dp, if (choice.selected) VisionGold else VisionBorder.copy(alpha = .65f), shape)
             .selectable(choice.selected, role = Role.RadioButton, onClick = onClick)
             .testTag("vision.provider.${choice.providerId}")
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(choice.label, color = if (choice.selected) VisionGold else VisionText, fontSize = 13.sp,
+        Text(choice.label, color = if (choice.selected) VisionGold else VisionText, fontSize = 12.sp,
             fontWeight = if (choice.selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

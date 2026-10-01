@@ -9,6 +9,8 @@ data class DeviceEnvironment(
     val platform: DevicePlatform,
     val operatingSystem: OperatingSystem,
     val architecture: CpuArchitecture,
+    /** Logical CPU cores available to the app; 1 when unknown. */
+    val processors: Int = 1,
 )
 
 expect fun currentDeviceEnvironment(): DeviceEnvironment

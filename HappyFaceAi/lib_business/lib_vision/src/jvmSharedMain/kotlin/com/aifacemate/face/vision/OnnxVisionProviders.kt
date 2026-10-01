@@ -8,12 +8,13 @@ import com.aifacemate.face.capability.ModelSpec
 import com.aifacemate.face.capability.ModelStore
 import com.aifacemate.face.capability.OperatingSystem
 import com.aifacemate.face.capability.Provider
+import com.aifacemate.face.capability.currentDeviceEnvironment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** ONNX Runtime providers shared by Android and desktop JVM hosts, including RK3566 boards on either OS. */
-fun onnxVisionProviders(store: ModelStore): List<Provider<*>> = listOf(
-    Yolo26ObjectDetectorProvider(store),
+fun onnxVisionProviders(store: ModelStore, environment: DeviceEnvironment = currentDeviceEnvironment()): List<Provider<*>> =
+    yolo26Variants(environment).map { Yolo26ObjectDetectorProvider(store, it) } + listOf(
     YunetFaceDetectorProvider(store),
     MobileFaceNetExpressionProvider(store),
     MediaPipeHandLandmarkerProvider(store),
@@ -55,13 +56,31 @@ internal abstract class OnnxProvider<C : AutoCloseable>(
     }
 }
 
-internal class Yolo26ObjectDetectorProvider(store: ModelStore) :
-    OnnxProvider<ObjectDetector>(store, listOf(VisionModels.yolo26m)) {
-    override val id = "vision.objects.yolo26m-onnx"
+/** Same COCO classes and `[1,300,6]` output; they trade accuracy for compute (5.5 / 20.9 / 68.4 GFLOPs). */
+enum class Yolo26Variant(val model: ModelSpec, val label: String) {
+    Nano(VisionModels.yolo26n, "最快"),
+    Small(VisionModels.yolo26s, "均衡"),
+    Medium(VisionModels.yolo26m, "最准"),
+}
+
+/**
+ * Device default first. Boards with four cores or fewer, such as RK3566, run CPU FP32 and need the smallest
+ * model; other phones get the balanced one; desktops have the headroom for the most accurate one.
+ */
+internal fun yolo26Variants(environment: DeviceEnvironment): List<Yolo26Variant> = when {
+    environment.processors <= 4 -> listOf(Yolo26Variant.Nano, Yolo26Variant.Small, Yolo26Variant.Medium)
+    environment.platform == DevicePlatform.Android -> listOf(Yolo26Variant.Small, Yolo26Variant.Nano, Yolo26Variant.Medium)
+    else -> listOf(Yolo26Variant.Medium, Yolo26Variant.Small, Yolo26Variant.Nano)
+}
+
+internal class Yolo26ObjectDetectorProvider(store: ModelStore, private val variant: Yolo26Variant) :
+    OnnxProvider<ObjectDetector>(store, listOf(variant.model)) {
+    /** Stable: `vision.objects.yolo26m-onnx` was the only detector before n and s were added. */
+    override val id = "vision.objects.${variant.model.id}-onnx"
     override val capability = ObjectDetector
-    override val displayName = "YOLO26m"
-    override val description = "COCO 80 类"
-    override suspend fun open(): ObjectDetector = Yolo26OnnxObjectDetector(load(VisionModels.yolo26m, "YOLO 模型"))
+    override val displayName = variant.model.id.replaceFirst("yolo", "YOLO")
+    override val description = "COCO 80 类 · ${variant.label}"
+    override suspend fun open(): ObjectDetector = Yolo26OnnxObjectDetector(load(variant.model, "YOLO 模型"))
 }
 
 internal class YunetFaceDetectorProvider(store: ModelStore) : OnnxProvider<FaceDetector>(store, listOf(VisionModels.yunet)) {

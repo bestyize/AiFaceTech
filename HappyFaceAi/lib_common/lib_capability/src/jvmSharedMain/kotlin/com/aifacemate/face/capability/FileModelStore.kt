@@ -6,6 +6,7 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -40,34 +41,51 @@ class FileModelStore(
                 val parent = target.parentFile ?: error("模型路径无效")
                 check(parent.isDirectory || parent.mkdirs()) { "无法创建模型目录" }
                 if (!valid(target, model)) {
-                    val partial = File(parent, "${target.name}.part")
-                    try {
-                        download(model.url).use { input ->
-                            partial.outputStream().buffered().use { output ->
-                                val buffer = ByteArray(64 * 1024)
-                                var received = 0L
-                                while (true) {
-                                    currentCoroutineContext().ensureActive()
-                                    val count = input.read(buffer)
-                                    if (count < 0) break
-                                    received += count
-                                    check(received <= model.sizeBytes) { "${model.fileName} 文件大小不符" }
-                                    output.write(buffer, 0, count)
-                                    onProgress(completed + received, total)
-                                }
-                            }
+                    val failures = ArrayList<Exception>()
+                    for (source in listOf(model.url) + model.mirrors) {
+                        try {
+                            fetch(source, model, target) { received -> onProgress(completed + received, total) }
+                            failures.clear()
+                            break
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            failures += failure
                         }
-                        currentCoroutineContext().ensureActive()
-                        check(valid(partial, model)) { "${model.fileName} 校验失败，请重新下载" }
-                        check(!target.exists() || target.delete()) { "无法替换 ${model.fileName}" }
-                        check(partial.renameTo(target)) { "无法保存 ${model.fileName}" }
-                    } finally {
-                        if (partial.exists()) partial.delete()
                     }
+                    if (failures.isNotEmpty()) throw failures.last().also { last -> failures.dropLast(1).forEach(last::addSuppressed) }
                 }
                 completed += model.sizeBytes
                 onProgress(completed, total)
             }
+        }
+    }
+
+    /** Downloads one source into a `.part` file and keeps it only when the size and SHA-256 match. */
+    private suspend fun fetch(source: String, model: ModelSpec, target: File, onReceived: (Long) -> Unit) {
+        val partial = File(target.parentFile, "${target.name}.part")
+        try {
+            download(source).use { input ->
+                partial.outputStream().buffered().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var received = 0L
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        received += count
+                        check(received <= model.sizeBytes) { "${model.fileName} 文件大小不符" }
+                        output.write(buffer, 0, count)
+                        onReceived(received)
+                    }
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            check(valid(partial, model)) { "${model.fileName} 校验失败，请重新下载" }
+            check(!target.exists() || target.delete()) { "无法替换 ${model.fileName}" }
+            check(partial.renameTo(target)) { "无法保存 ${model.fileName}" }
+        } finally {
+            if (partial.exists()) partial.delete()
         }
     }
 
@@ -112,20 +130,34 @@ class FileModelStore(
     }
 }
 
+/** Follows up to five redirects, including 308 which HttpURLConnection ignores, and never leaves HTTPS. */
 fun openHttpsDownload(url: String): InputStream {
-    require(URL(url).protocol == "https") { "模型下载须使用 HTTPS" }
-    val connection = URL(url).openConnection() as HttpURLConnection
-    try {
-        connection.connectTimeout = 15_000
-        connection.readTimeout = 30_000
-        connection.instanceFollowRedirects = true
-        check(connection.responseCode == 200) { "模型下载失败（HTTP ${connection.responseCode}）" }
-        val input = connection.inputStream
-        return object : FilterInputStream(input) {
-            override fun close() { try { super.close() } finally { connection.disconnect() } }
+    var current = URL(url)
+    repeat(6) {
+        require(current.protocol == "https") { "模型下载须使用 HTTPS" }
+        val connection = current.openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 30_000
+            connection.instanceFollowRedirects = false
+            when (val code = connection.responseCode) {
+                200 -> {
+                    val input = connection.inputStream
+                    return object : FilterInputStream(input) {
+                        override fun close() { try { super.close() } finally { connection.disconnect() } }
+                    }
+                }
+                301, 302, 303, 307, 308 -> {
+                    val location = connection.getHeaderField("Location") ?: error("模型下载失败（HTTP $code 缺少跳转地址）")
+                    current = URL(current, location)
+                    connection.disconnect()
+                }
+                else -> error("模型下载失败（HTTP $code）")
+            }
+        } catch (failure: Throwable) {
+            connection.disconnect()
+            throw failure
         }
-    } catch (failure: Throwable) {
-        connection.disconnect()
-        throw failure
     }
+    error("模型下载失败（跳转次数过多）")
 }

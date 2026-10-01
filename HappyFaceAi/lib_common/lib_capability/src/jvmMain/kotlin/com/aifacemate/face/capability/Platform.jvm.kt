@@ -13,6 +13,7 @@ actual fun currentDeviceEnvironment(): DeviceEnvironment {
             else -> OperatingSystem.Other
         },
         cpuArchitecture(System.getProperty("os.arch")),
+        Runtime.getRuntime().availableProcessors(),
     )
 }
 

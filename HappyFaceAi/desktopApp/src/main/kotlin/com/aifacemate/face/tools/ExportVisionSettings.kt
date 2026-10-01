@@ -42,6 +42,8 @@ private fun fixtureRegistry(supported: Boolean = true, installed: (VisionTask) -
         FixtureProvider(id, capability, name, detail, models, supported || builtIn) { installed(task) }
     return ProviderRegistry(listOf(
         provider("fixture.objects", ObjectDetector, "YOLO26m", "COCO 80 类", VisionTask.Objects, listOf(VisionModels.yolo26m)),
+        provider("fixture.objects.s", ObjectDetector, "YOLO26s", "COCO 80 类 · 均衡", VisionTask.Objects, listOf(VisionModels.yolo26s)),
+        provider("fixture.objects.n", ObjectDetector, "YOLO26n", "COCO 80 类 · 最快", VisionTask.Objects, listOf(VisionModels.yolo26n)),
         provider("fixture.faces", FaceDetector, "YuNet", "人脸检测", VisionTask.Expressions, listOf(VisionModels.yunet)),
         provider("fixture.expressions", ExpressionClassifier, "MobileFaceNet", "七类表情", VisionTask.Expressions, listOf(VisionModels.mobileFaceNetExpression)),
         provider("fixture.hands", HandLandmarker, "MediaPipe", "掌心检测 + 21 点骨架", VisionTask.Gestures,
@@ -212,6 +214,15 @@ fun main(args: Array<String>) {
             check(tagged("vision.expression.confidence").config[SemanticsActions.SetProgress].action?.invoke(0.8f) == true)
             frame(); check(state.value.expressionConfidenceThreshold == 0.8f)
             click("vision.tab.yolo")
+            // Three detector sizes: choosing one saves its id and shows that model's size.
+            click("vision.provider.fixture.objects.s", scroll = true)
+            check(state.value.providerId(ObjectDetector) == "fixture.objects.s")
+            check(nodes().any { node -> node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "COCO 80 类 · 均衡 · 约 38 MB" } == true })
+            listOf("fixture.objects", "fixture.objects.s", "fixture.objects.n").forEach { id ->
+                val chip = tagged("vision.provider.$id").boundsInRoot
+                check(chip.height >= 47 * viewport.density) { "$id chip too small: $chip" }
+            }
+            shot("yolo-sizes")
             check(state.value.yoloEnabled && state.value.expressionEnabled)
             check(saved == state.value)
             click("vision.camera", scroll = true); check(openedCamera == 1)

@@ -2,7 +2,10 @@ package com.aifacemate.face.capability
 
 import kotlin.math.roundToInt
 
-/** A pinned, downloadable model file. [directory] is relative to the platform model root. */
+/**
+ * A pinned, downloadable model file. [directory] is relative to the platform model root. [mirrors] are tried in
+ * order when [url] fails; every source must serve the same bytes, since the SHA-256 is checked either way.
+ */
 data class ModelSpec(
     val id: String,
     val directory: String,
@@ -10,6 +13,7 @@ data class ModelSpec(
     val sizeBytes: Long,
     val sha256: String,
     val url: String,
+    val mirrors: List<String> = emptyList(),
 )
 
 /** Downloads, verifies and deletes managed model files. It never touches user-provided custom models. */

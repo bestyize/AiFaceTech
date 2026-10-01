@@ -14,12 +14,16 @@ class ProviderRegistryTest {
         override val id: String,
         override val capability: CapabilityKey<C>,
         private val supported: Boolean = true,
+        private val installed: Boolean = true,
     ) : Provider<C> {
         override val displayName = id
         override val description = ""
         override val models = emptyList<ModelSpec>()
-        override fun availability(environment: DeviceEnvironment) =
-            if (supported) Availability.Ready else Availability.Unsupported("fixture")
+        override fun availability(environment: DeviceEnvironment) = when {
+            !supported -> Availability.Unsupported("fixture")
+            installed -> Availability.Ready
+            else -> Availability.NeedsModels(emptyList())
+        }
         override suspend fun open(): C = error("not opened in this test")
     }
 
@@ -45,6 +49,22 @@ class ProviderRegistryTest {
         assertEquals("npu", registry.select(Greeter, preferredId = "npu")?.id)
         assertEquals("cpu", registry.select(Greeter, preferredId = "removed-provider")?.id)
         assertNull(registry.select(Counter))
+    }
+
+    @Test
+    fun aDownloadedProviderIsUsedBeforeOneThatNeedsADownload() {
+        // A phone that already has the large model keeps using it until the user picks another one.
+        val registry = ProviderRegistry(listOf(
+            FakeProvider("small", Greeter, installed = false), FakeProvider("medium", Greeter, installed = false),
+            FakeProvider("large", Greeter),
+        ), environment)
+        assertEquals("large", registry.select(Greeter)?.id)
+        assertEquals("small", registry.select(Greeter, preferredId = "small")?.id)
+        // With nothing downloaded, registration order is the device default.
+        val fresh = ProviderRegistry(listOf(
+            FakeProvider("small", Greeter, installed = false), FakeProvider("large", Greeter, installed = false),
+        ), environment)
+        assertEquals("small", fresh.select(Greeter)?.id)
     }
 
     @Test

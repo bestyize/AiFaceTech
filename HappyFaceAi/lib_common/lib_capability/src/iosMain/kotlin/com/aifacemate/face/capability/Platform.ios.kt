@@ -1,6 +1,9 @@
 package com.aifacemate.face.capability
 
-actual fun currentDeviceEnvironment() = DeviceEnvironment(DevicePlatform.Ios, OperatingSystem.Ios, CpuArchitecture.Arm64)
+import platform.Foundation.NSProcessInfo
+
+actual fun currentDeviceEnvironment() = DeviceEnvironment(DevicePlatform.Ios, OperatingSystem.Ios, CpuArchitecture.Arm64,
+    NSProcessInfo.processInfo.activeProcessorCount.toInt())
 
 /** iOS providers use built-in system frameworks; no model is downloaded yet. */
 private object UnsupportedModelStore : ModelStore {

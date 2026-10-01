@@ -70,6 +70,40 @@ class FileModelStoreTest {
     }
 
     @Test
+    fun mirrorsAreTriedInOrderWhenTheMainSourceFails() = runBlocking {
+        val model = spec("a", first).copy(mirrors = listOf("https://mirror-1.test/a", "https://mirror-2.test/a"))
+        val requested = mutableListOf<String>()
+        val store = FileModelStore({ root }, download = { url ->
+            requested += url
+            when {
+                url.startsWith("https://example.test") -> throw IOException("blocked fixture")
+                // A mirror serving different bytes is rejected by the checksum, then the next one is tried.
+                url.startsWith("https://mirror-1") -> ByteArrayInputStream(ByteArray(first.size))
+                else -> ByteArrayInputStream(first)
+            }
+        })
+        store.install(listOf(model))
+        assertEquals(listOf(model.url) + model.mirrors, requested)
+        assertContentEquals(first, File(root, "vision/bundle/a.onnx").readBytes())
+        assertTrue(File(root, "vision/bundle").listFiles()!!.none { it.name.endsWith(".part") })
+    }
+
+    @Test
+    fun allSourcesFailingReportsEveryFailureAndCancellationIsNotRetried() = runBlocking {
+        val model = spec("a", first).copy(mirrors = listOf("https://mirror.test/a"))
+        val failing = FileModelStore({ root }, download = { url -> throw IOException("down: $url") })
+        val failure = assertFailsWith<IOException> { failing.install(listOf(model)) }
+        assertEquals("down: https://mirror.test/a", failure.message)
+        // Coroutine stack-trace recovery may wrap the thrown exception, keeping the original as its cause.
+        val original = generateSequence(failure as Throwable) { it.cause }.last()
+        assertEquals("down: ${model.url}", original.suppressed.single().message)
+        var attempts = 0
+        val cancelled = FileModelStore({ root }, download = { attempts++; throw CancellationException("fixture") })
+        assertFailsWith<CancellationException> { cancelled.install(listOf(model)) }
+        assertEquals(1, attempts)
+    }
+
+    @Test
     fun removeDeletesOnlyManagedFiles() = runBlocking {
         val model = spec("a", first)
         val store = store(mapOf("a" to first))

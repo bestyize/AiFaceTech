@@ -6,6 +6,7 @@ import com.aifacemate.face.data.AndroidAppContext
 actual fun currentDeviceEnvironment() = DeviceEnvironment(
     DevicePlatform.Android, OperatingSystem.Android,
     cpuArchitecture(Build.SUPPORTED_ABIS.firstOrNull().orEmpty()),
+    Runtime.getRuntime().availableProcessors(),
 )
 
 private val androidModelStore by lazy {

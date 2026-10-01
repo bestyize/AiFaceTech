@@ -1,8 +1,9 @@
 package com.aifacemate.face.capability
 
 /**
- * The providers packaged for this device, in preference order. Registration order is the device default;
- * a provider id saved in settings overrides it.
+ * The providers packaged for this device, in preference order. A provider id saved in settings wins; otherwise
+ * a provider that is ready (models already downloaded) is used before one that would need a download, and
+ * registration order breaks ties, so the first registered provider is the device default for new installs.
  */
 class ProviderRegistry(providers: List<Provider<*>>, val environment: DeviceEnvironment) {
     private val all = providers.toList()
@@ -17,10 +18,10 @@ class ProviderRegistry(providers: List<Provider<*>>, val environment: DeviceEnvi
         return all.filter { it.capability == capability } as List<Provider<C>>
     }
 
-    /** The preferred provider if registered, otherwise the first one this device supports. */
     fun <C : AutoCloseable> select(capability: CapabilityKey<C>, preferredId: String? = null): Provider<C>? {
         val candidates = providers(capability)
         return candidates.firstOrNull { it.id == preferredId }
+            ?: candidates.firstOrNull { it.availability(environment) == Availability.Ready }
             ?: candidates.firstOrNull { it.availability(environment) !is Availability.Unsupported }
             ?: candidates.firstOrNull()
     }
