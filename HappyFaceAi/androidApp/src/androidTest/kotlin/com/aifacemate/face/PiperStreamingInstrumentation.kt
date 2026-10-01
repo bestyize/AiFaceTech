@@ -9,11 +9,21 @@ import com.aifacemate.face.voice.tts.client.PiperAudioCallback
 import com.aifacemate.face.voice.tts.client.PiperTts
 import kotlinx.coroutines.*
 
-/** On-device JNI/PCM smoke test using the app's installed model. No microphone, keys or downloads. */
+/**
+ * On-device JNI/PCM smoke test using the app's installed model. No microphone, keys or downloads.
+ * AGP allows one runner per test APK, so `-e check speech-gate` selects [runSpeechGateCheck] instead.
+ */
 class PiperStreamingInstrumentation : Instrumentation() {
-    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
+    private var arguments: Bundle? = null
+    override fun onCreate(arguments: Bundle?) { this.arguments = arguments; super.onCreate(arguments); start() }
 
     override fun onStart() {
+        if (arguments?.getString("check") == "speech-gate") {
+            AndroidAppContext.install(targetContext)
+            val result = runSpeechGateCheck(arguments?.getString("speech"))
+            finish(if (result.getString("result").orEmpty().startsWith("PASS")) Activity.RESULT_OK else Activity.RESULT_CANCELED, result)
+            return
+        }
         val result = Bundle()
         try {
             AndroidAppContext.install(targetContext)

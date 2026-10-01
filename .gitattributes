@@ -4,3 +4,4 @@
 *.jar binary
 *.png binary
 *.apk binary
+*.onnx binary
