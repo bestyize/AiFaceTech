@@ -1,0 +1,47 @@
+name: Build HappyFaceAi Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: happyfaceai-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: HappyFaceAi
+
+jobs:
+  windows:
+    name: Windows MSI
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+      - name: Make API 37 available to Gradle
+        shell: pwsh
+        run: |
+          $source = Join-Path $env:ANDROID_SDK_ROOT 'platforms/android-37.0'
+          $alias = Join-Path $env:ANDROID_SDK_ROOT 'platforms/android-37'
+          if ((Test-Path $source) -and !(Test-Path $alias)) {
+            New-Item -ItemType Junction -Path $alias -Target $source | Out-Null
+          }
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build Windows MSI
+        run: .\gradlew.bat --no-daemon :desktopApp:packageMsi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HappyFaceAi-Windows-msi
+          path: HappyFaceAi/desktopApp/build/compose/binaries/main/msi/*.msi
+          if-no-files-found: error
+          retention-days: 14
